@@ -1,0 +1,9 @@
+Tessara
+Copyright 2026 the Tessara authors
+
+This product includes software developed for the Tessara panel project.
+
+Third-party components retain their own licenses, including but not limited to:
+- LVGL (MIT)
+- ArduinoJson (MIT)
+- PlatformIO / Espressif / Arduino toolchain packages as declared by their authors

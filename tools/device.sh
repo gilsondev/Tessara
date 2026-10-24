@@ -38,8 +38,9 @@ case "$CMD" in
     echo ""
     echo "Serial 115200 — Ctrl+C para sair. Logs do firmware abaixo."
     echo ""
+    # Note: older PIO had --no-reset; current PlatformIO 6.x does not.
     exec "$PIO" device monitor -e jc3248w535 --port "$PORT" --baud 115200 \
-      --filter time --echo --no-reset
+      --filter time --echo
     ;;
   snap)
     mkdir -p "$OUT"

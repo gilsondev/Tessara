@@ -1,15 +1,16 @@
-# Tessara painel — tasks do harness / finish gate
+# Tessara panel — harness / finish gate
 #
-# Ao finalizar uma implementação, nesta ordem:
-#   1. make test     — testes automatizados (PlatformIO native)
-#   2. make e2e      — E2E no simulador (build + screenshots; inspecionar $SIM_OUT)
-#   3. make flash    — grava no JC3248 (só com 1 e 2 verdes)
+# After any implementation, in this order:
+#   1. make test     — automated tests (PlatformIO native)
+#   2. make e2e      — simulator E2E (build + screenshots; inspect $SIM_OUT)
+#   3. make flash    — program JC3248 (only when 1 and 2 are green)
 #
-# Atalhos:
-#   make finish       — test + e2e + flash
-#   make finish-host  — test + e2e (sem placa)
-#   make device       — monitor USB para teste manual nas telas do aparelho
-#   make help         — lista targets
+# Shortcuts:
+#   make finish       — e2e + flash (e2e already runs native)
+#   make finish-host  — e2e without a board
+#   make device       — USB monitor for manual on-device checks
+#   make help         — list targets
+#   ./tools/bootstrap-env.sh — once per machine (after OS packages)
 
 .PHONY: help test test-native e2e sim sim-build sim-run verify flash finish finish-host device device-snap monitor
 
@@ -21,29 +22,30 @@ OUT  ?= /tmp/tessara-sim-out
 SCENARIO ?= normal
 export SIM_OUT := $(OUT)
 
-help: ## Lista as tasks do harness
-	@echo "Tessara painel — finish gate"
+help: ## List harness tasks
+	@echo "Tessara panel — finish gate"
 	@echo ""
-	@echo "  make test         1) testes automatizados (pio test -e native)"
-	@echo "  make e2e          2) E2E simulador (verify_all: nativos+build+screenshots)"
-	@echo "  make flash        3) flash no dispositivo (tools/flash.sh)"
-	@echo "  make device       4) acessar o aparelho (monitor USB) — teste manual / ver telas"
+	@echo "  make test         1) automated tests (pio test -e native)"
+	@echo "  make e2e          2) simulator E2E (verify_all: native+build+screenshots)"
+	@echo "  make flash        3) flash device (tools/flash.sh)"
+	@echo "  make device       4) USB monitor — manual on-device check"
 	@echo ""
-	@echo "  make finish       gate completo (e2e já inclui nativos + flash)"
-	@echo "  make finish-host  e2e sem flash (CI / sem placa)"
+	@echo "  make finish       full gate (e2e already includes native + flash)"
+	@echo "  make finish-host  e2e without flash (CI / no board)"
+	@echo "  ./tools/bootstrap-env.sh  once: venv + PlatformIO + lib deps"
 	@echo ""
-	@echo "Simulador interativo:"
+	@echo "Interactive simulator:"
 	@echo "  make sim-run      ./simulator/build/painel --scenario \$$SCENARIO --fixtures …"
 	@echo "  make sim          sim-build + sim-run (default SCENARIO=normal)"
-	@echo "  make sim-build    só compila o painel SDL"
+	@echo "  make sim-build    compile SDL painel only"
 	@echo ""
 	@echo "Extras:"
-	@echo "  make verify       alias de make e2e"
-	@echo "  make device-snap  captura framebuffer do painel (SNAP → PNG)"
-	@echo "  make monitor      alias de make device"
+	@echo "  make verify       alias of make e2e"
+	@echo "  make device-snap  capture panel framebuffer (SNAP → PNG)"
+	@echo "  make monitor      alias of make device"
 	@echo ""
-	@echo "Artefatos E2E/SNAP: \$$SIM_OUT (default $(OUT))"
-	@echo "Doc: docs/guides/finish-gate.md"
+	@echo "E2E/SNAP artifacts: \$$SIM_OUT (default $(OUT))"
+	@echo "Docs: docs/getting-started.md · docs/guides/finish-gate.md"
 
 # --- 1. Testes automatizados -------------------------------------------------
 

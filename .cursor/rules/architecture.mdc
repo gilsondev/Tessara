@@ -3,11 +3,11 @@ description: Tessara architecture — widgets via SDK, thin shell
 alwaysApply: true
 ---
 
-# Arquitetura Tessara
+# Tessara architecture
 
-- Widgets em `firmware/widgets/` — só Widget SDK + UI Kit; sem Arduino/Wi‑Fi/board.
-- Shell fino: slots, nav, tema; sem lógica de produto por id de widget.
-- Specs: `Terrara/docs/specs/`. Contrato local: `docs/guides/architecture.md`.
-- Settings de widget namespaced; device settings separados.
-- Todoist/calendar fora do aceite MVP de produto; ok como widget/padrão.
-- Não commitar `secrets.h`, `.pio/`, `.venv/`.
+- Widgets in `firmware/widgets/` — Widget SDK + UI Kit only; no Arduino/Wi‑Fi/board headers.
+- Thin shell: slots, nav, theme; no product logic keyed by widget id.
+- Contract: `docs/guides/architecture.md`. Authoring: `docs/guides/widget-authoring.md`.
+- Widget settings are namespaced; device settings stay separate.
+- Todoist/calendar are outside product MVP acceptance; OK as optional widgets/patterns.
+- Do not commit `secrets.h`, `.pio/`, `.venv/`.

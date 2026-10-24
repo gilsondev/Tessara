@@ -1,52 +1,75 @@
 # Tessara
 
-Painel de parede modular para ESP32 (JC3248W535): home de widgets, detalhe por widget, portal no celular e Agente no Mac (USB).
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-Specs de produto (ARCHITECTURE, WIDGET-SDK, SIMULATOR, …): `~/Developer/Projects/gilsondev/Terrara/docs/specs/`.
+Modular wall / desk panel for ESP32 (**JC3248W535**): widget home, per-widget detail, phone portal, and a Mac USB agent.
 
-## Layout
+**MVP acceptance:** clock + weather + shell / Widget SDK / simulator / portal.  
+Extras in-tree (Todoist, AI Tokens, screen rest, …) do not block MVP.
 
-Ver [`docs/STRUCTURE.md`](docs/STRUCTURE.md).
+> Documentation language: **English** is the default. Portuguese mirrors live under [`docs/pt/`](docs/pt/).
 
-| Path | Papel |
-|---|---|
-| `firmware/` | App do aparelho (`components/`, `widgets/`, `boards/`) |
-| `agent/` | Agente Tessara no Mac (USB; AI Tokens = 1ª capability) |
-| `simulator/` | Painel SDL + LVGL9, fixtures e `verify_all` |
-| `web/` | HTML do portal → embed PROGMEM |
-| `boards/*.json` | Perfil PlatformIO da placa |
-| `docs/` | Guides, ADRs do repo, specs/planos de features |
-
-## Build / flash
+## Quick start (no hardware)
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -U platformio
-.venv/bin/pio run -e jc3248w535
-make flash          # ou ./tools/flash.sh
-make device         # monitor USB
+# macOS — see docs/getting-started.md for Linux
+brew install cmake ninja pkg-config sdl2 freetype python3
+
+python3 -m venv .venv
+.venv/bin/pip install -U platformio
+.venv/bin/pio pkg install -e jc3248w535
+
+make finish-host    # native tests + simulator E2E
+make sim            # interactive SDL window (320×480)
 ```
 
-Segredos: copie `include/secrets.example.h` → `include/secrets.h` só se quiser seed de Wi‑Fi/token; o caminho normal é o portal / NVS.
+Full environment setup (macOS + Linux): **[`docs/getting-started.md`](docs/getting-started.md)** · PT: [`docs/pt/getting-started.md`](docs/pt/getting-started.md)
+
+## Repository layout
+
+| Path | Role |
+|---|---|
+| `firmware/` | Device app (`components/`, `widgets/`, `boards/`) |
+| `simulator/` | Same UI sources on host (LVGL9 + SDL2) + `verify_all` |
+| `web/` | Portal HTML → PROGMEM embed |
+| `agent/` | Mac USB agent (AI Tokens first capability) |
+| `docs/` | Guides, ADRs, feature plans |
+| `Makefile` | Finish gate (`make help`) |
+
+More detail: [`docs/STRUCTURE.md`](docs/STRUCTURE.md) · architecture: [`docs/guides/architecture.md`](docs/guides/architecture.md)
 
 ## Finish gate
 
-```bash
-make help
-make finish-host    # test + e2e (sim)
-make finish         # + flash
-```
+Every change that touches product code:
 
-Detalhe: [`docs/guides/finish-gate.md`](docs/guides/finish-gate.md). Agentes: [`AGENTS.md`](AGENTS.md).
+1. `make test` — PlatformIO `native` (Unity)
+2. `make e2e` — simulator build + headless screenshots (`$SIM_OUT`)
+3. `make flash` — only after 1–2 are green
+4. `make device` — USB monitor / manual check on the panel
 
-## Agent (Mac)
+Shortcuts: `make finish-host` (CI / no board) · `make finish` (+ flash).  
+See [`docs/guides/finish-gate.md`](docs/guides/finish-gate.md).
 
-```bash
-cd agent && PYTHONPATH=src python3 -m agent
-./pack_sd.sh /Volumes/YOUR_SD
-```
+## Secrets
 
-## Escopo
+Do **not** commit `include/secrets.h`, `.pio/`, or `.venv/`.  
+Optional seed: copy `include/secrets.example.h` → `include/secrets.h`. Normal path is portal / NVS.
 
-- **Aceite MVP de produto:** relógio + clima + shell/SDK/sim/portal.
-- **No repo (widgets/extras):** Todoist, AI Tokens, screen rest, heroes — úteis, não bloqueiam o MVP.
-- **Fora do aceite atual:** Calendar, marketplace, OTA IDF completo.
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE). See also [`NOTICE`](NOTICE) for third-party attribution.
+
+## Docs map
+
+| Doc | Purpose |
+|---|---|
+| [Getting started](docs/getting-started.md) | macOS + Linux toolchain |
+| [Architecture](docs/guides/architecture.md) | Layers + widget contract |
+| [Widget authoring](docs/guides/widget-authoring.md) | New widget checklist |
+| [Simulator](docs/guides/simulator.md) | Host harness (not a demo) |
+| [Finish gate](docs/guides/finish-gate.md) | Required verification order |
+| [docs/README.md](docs/README.md) | Full index |

@@ -1,92 +1,90 @@
-# Simulador = harness de teste (sem aparelho)
+# Simulator — host test harness
 
-O simulador **não** é demo nem mock visual. É a forma de **testar a implementação real** quando não há ESP32 na mesa: o binário `painel` linka as **mesmas fontes** que vão para o aparelho.
+The simulator is **not** a demo or a second UI. It is how we exercise the **real** implementation without an ESP32 on the desk: the `painel` binary links the **same** firmware sources that ship on device.
 
-Regra: se o código roda no device, o sim deve exercitar **esse** código (ou o teste nativo). Fork/`sim_*` só existe como cola (adapters host, fixtures, CLI) — nunca como segunda UI.
+Rule: if code runs on the device, the sim (or a native test) must exercise **that** code. Host-only forks under `simulator/host/` are glue (adapters, fixtures, CLI) — never a parallel product UI.
 
-## O que é firmware vs cola
+## Firmware vs glue
 
-| Camada | Fonte de verdade |
+| Concern | Source of truth |
 |---|---|
-| Home | `home.cpp` |
-| Tarefas (chips + slide + rows) | `todoist_panel` + `task_page` + `task_store` + `bitmaps` |
-| Clima | `weather_page` + `weather_icons` |
-| AI Tokens (barras + listras) | `aitokens_page` |
+| Home / shell | `firmware/components/dashboard_shell/` |
+| Widgets (Todoist, weather, AI Tokens, clock, …) | `firmware/widgets/…` |
 | Layout / allowlist / compose / web embed | `pio test -e native` |
-| Wi‑Fi / NVS / hora / bateria / SD | adapters em `simulator/host/` + fixtures JSON |
+| Wi‑Fi / NVS / time / battery / SD | `simulator/host/` adapters + JSON fixtures |
 
-## Finish gate (obrigatório ao fechar implementação)
+## Finish gate
 
-Doc completa: [`finish-gate.md`](finish-gate.md). Tasks no **`Makefile`**:
+[`finish-gate.md`](finish-gate.md) · root `Makefile`:
 
 ```bash
-cd ~/Developer/Projects/gilsondev/Tessara
 make help
-make finish        # test → e2e → flash
-make finish-host   # test → e2e (sem placa)
+make finish-host   # test → e2e (no board)
+make finish        # + flash
 ```
 
-Ordem fixa: `make test` → `make e2e` (inspecionar `$SIM_OUT`) → `make flash`.
-
-## Comando de regressão (host)
+## Full host regression
 
 ```bash
 ./simulator/scripts/verify_all.sh
+# or: make e2e
 ```
 
-1. Suite nativa (domínio + allowlist + compose + embed)  
-2. Build do `painel`  
-3. Screenshots headless de home + detalhes (código real)  
+1. Native suite (domain, allowlist, compose, embed, …)
+2. Build `painel`
+3. Headless home (+ detail) screenshots for many fixtures
 
-Artefatos: `/tmp/tessara-sim-out/` (ou `$SIM_OUT`).
+Artifacts: `/tmp/tessara-sim-out/` or `$SIM_OUT`.
 
-## Interativo (gesto / chip / slide)
+## Interactive
+
+Prerequisites: [`getting-started.md`](../getting-started.md) (SDL2, FreeType, LVGL via `pio pkg install`).
 
 ```bash
+make sim
+# equivalent:
 cmake -S simulator -B simulator/build -DCMAKE_BUILD_TYPE=Release
 cmake --build simulator/build -j
 ./simulator/build/painel --scenario normal --fixtures simulator/fixtures
 ```
 
-- Home → tiles abrem as páginas reais  
-- **Engrenagem** → `settings_panel` real (Geral, Todoist, Clima, AI Tokens, Agente; chips, QR, Pedir cotas)  
-- **Tarefas**: chips Hoje/Casa/Computador/Trabalho + swipe (mesmos filtros do device)  
-- **AI Tokens**: barras com listras do `aitokens_page` (display no formato do agente)  
-- Voltar (‹) ou **Esc** → home / fecha ajustes; **Esc** na home → sair  
+- Click home tiles → detail
+- Back / Esc on detail → home
+- Esc on home → quit
 
-## Screenshot
+## Headless screenshot
 
 ```bash
 SDL_VIDEODRIVER=dummy ./simulator/build/painel \
+  --scenario widgets_no_weather \
   --fixtures simulator/fixtures \
-  --scenario normal \
-  --screen todoist \
-  --screenshot /tmp/todoist.bmp \
+  --viewport 320x480 \
+  --screen home \
+  --screenshot /tmp/no-weather.bmp \
   --headless
 ```
 
-`--screen`: `home` \| `todoist` \| `weather` \| `aitokens` \| `settings`.
+`--screen`: `home` (default), `todoist`, `weather`, `aitokens`, … (see binary help / fixtures).
 
-## Fixtures
+The binary **fails** if fixture layout does not match mounted tiles (compose).
 
-JSON em `simulator/fixtures/`. O cenário `normal` espelha o pipeline real:
+## Fixtures (examples)
 
-| Fonte | Formato no fixture |
+| Scenario | Exercises |
 |---|---|
-| Todoist filters | `todoist.lists[]` com `name`/`query`/`tasks[]` (`id`, `content`, `priority` 1–4, `meta` = due/prazo) |
-| Home count | `todoist.total` = soma das tarefas das listas (ou omitir para calcular) |
-| Clima | `weather.*` → `weather::View` |
-| AI Tokens | `codex_5h`/`codex_week`, `claude_pct`, `cursor_a`/`cursor_b` (+ resets) como no agente |
-| Rede | `wifi.ssid` / `wifi.ip` para o card e QR nas configurações |
-| Agente | `agent.ready` / `ok` / `pack_on_sd` |
-| Relógio | `clock.month` é `tm_mon` (0–11); `wday` é `tm_wday` |
+| `normal` | Wi‑Fi on, default widgets, fresh weather |
+| `offline` | Wi‑Fi off, stale weather/AI |
+| `sem_local` | Weather “set location” |
+| `widgets_no_weather` | Dashboard without weather |
+| `widgets_with_clock` | Clock tile in compose |
+| `cold_offline` / `weather_timeout` / … | Fault paths |
 
-## Lacunas ainda abertas (próximos alvos de teste)
+## Flags
 
-Enquanto não linkados, **não** estão cobertos 100% pelo sim:
-
-- Setup / screensaver / loader overlays  
-- Portal web ao vivo (só embed + nativos)  
-- Agent/Bridge USB real (fixtures de snapshot)  
-
-Tudo o que entrar no firmware de UI deve migrar para o sim **antes** de depender do aparelho para validar.
+- `--viewport WxH` — default `320x480` (also `480x320`)
+- `--scenario name`
+- `--fixtures dir`
+- `--screen …`
+- `--screenshot path.bmp`
+- `--settings dir` — isolated store (not device NVS)
+- `--headless`

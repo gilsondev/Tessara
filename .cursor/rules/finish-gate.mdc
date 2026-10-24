@@ -5,13 +5,13 @@ alwaysApply: true
 
 # Finish gate
 
-Ao concluir implementação, nesta ordem (`make help`):
+After implementation, in this order (`make help`):
 
-1. `make test` — nativos
-2. `make e2e` — simulador; revisar `$SIM_OUT`
-3. `make flash` — só com 1–2 verdes
-4. `make device` — teste manual no JC3248
+1. `make test` — native suite
+2. `make e2e` — simulator; review `$SIM_OUT`
+3. `make flash` — only when 1–2 are green
+4. `make device` — manual check on JC3248
 
-Atalhos: `make finish-host` (sem placa), `make finish` (+ flash).
+Shortcuts: `make finish-host` (no board), `make finish` (+ flash).
 
 Doc: `docs/guides/finish-gate.md`.

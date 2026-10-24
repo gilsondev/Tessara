@@ -1,45 +1,45 @@
-# Finish gate — fechar implementação
+# Finish gate
 
-Ordem fixa depois de qualquer feature/bugfix/UI. Fonte: **`Makefile`** na raiz deste repo.
+Fixed order after any feature, bugfix, or UI change. Source of truth: root **`Makefile`** (`make help`).
 
 ```bash
-cd ~/Developer/Projects/gilsondev/Tessara
+cd /path/to/Tessara
 make help
 ```
 
-## Tasks
+## Steps
 
-| Ordem | Make | O que faz |
-|------:|------|-----------|
-| 1 | `make test` | Testes automatizados (`.venv/bin/pio test -e native`). |
-| 2 | `make e2e` | E2E no simulador (`simulator/scripts/verify_all.sh`). Inspecione `$SIM_OUT` (default `/tmp/tessara-sim-out/`). |
-| 3 | `make flash` | Grava no JC3248 (`tools/flash.sh`). Só depois de 1 e 2 verdes. |
-| 4 | `make device` | Monitor USB para teste manual nas telas. Ctrl+C sai. |
+| Order | Make target | What it does |
+|------:|---|---|
+| 1 | `make test` | Automated suite (`.venv/bin/pio test -e native`) |
+| 2 | `make e2e` | Simulator E2E (`simulator/scripts/verify_all.sh`). Inspect `$SIM_OUT` (default `/tmp/tessara-sim-out/`) |
+| 3 | `make flash` | Program the JC3248 (`tools/flash.sh`). Only after 1 and 2 are green |
+| 4 | `make device` | USB monitor for manual on-device checks. Ctrl+C exits |
 
-## Atalhos
+## Shortcuts
 
 ```bash
-make finish        # e2e → flash
-make finish-host   # só e2e (sem placa)
+make finish        # e2e → flash  (e2e already includes native tests)
+make finish-host   # e2e without flash (CI / no board)
 make device
 ```
 
-`make e2e` já roda a suite native. Equivalente: `./tools/finish.sh` (`SKIP_FLASH=1` = finish-host).
+Equivalent: `./tools/finish.sh` (`SKIP_FLASH=1` = finish-host).
 
 ## Extras
 
-| Make | Uso |
-|------|-----|
-| `make sim-build` | Compila o SDL |
-| `make sim-run` | `./simulator/build/painel --scenario $SCENARIO --fixtures simulator/fixtures` |
-| `make sim` | build + run (default `SCENARIO=normal`) |
-| `make verify` | Alias de `make e2e` |
+| Make | Use |
+|---|---|
+| `make sim-build` | Build the SDL binary |
+| `make sim-run` | Run `./simulator/build/painel --scenario $SCENARIO …` |
+| `make sim` | Build + run (default `SCENARIO=normal`) |
+| `make verify` | Alias of `make e2e` |
 | `make device-snap` | SNAP → `$SIM_OUT/device-snap.png` |
-| `make monitor` | Alias de `make device` |
+| `make monitor` | Alias of `make device` |
 
-## Relacionados
+## Related
 
-- Cursor: `.cursor/rules/finish-gate.mdc`, `.cursor/rules/architecture.mdc`
-- Agent: `AGENTS.md`
-- Simulador: `docs/guides/simulator.md`
-- Arquitetura: `docs/guides/architecture.md`
+- Cursor rule: `.cursor/rules/finish-gate.mdc`
+- Agents: `AGENTS.md`
+- Simulator: [`simulator.md`](simulator.md)
+- Architecture: [`architecture.md`](architecture.md)
