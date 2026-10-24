@@ -20,7 +20,7 @@ Regra: se o código roda no device, o sim deve exercitar **esse** código (ou o 
 Doc completa: [`finish-gate.md`](finish-gate.md). Tasks no **`Makefile`**:
 
 ```bash
-cd todoist-panel
+cd ~/Developer/Projects/gilsondev/Tessara
 make help
 make finish        # test → e2e → flash
 make finish-host   # test → e2e (sem placa)
@@ -31,7 +31,6 @@ Ordem fixa: `make test` → `make e2e` (inspecionar `$SIM_OUT`) → `make flash`
 ## Comando de regressão (host)
 
 ```bash
-cd todoist-panel
 ./simulator/scripts/verify_all.sh
 ```
 

@@ -1,5 +1,7 @@
 # Architecture isolation lift — design
 
+> **Histórico.** Estado atual do contrato: `docs/guides/architecture.md`.
+
 **Data:** 2026-10-24  
 **Norte:** diagrama discovery — Widgets → Widget SDK + Ts UI Kit → Application Core → Hardware Interfaces (Ports) → Boards.
 

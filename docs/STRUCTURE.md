@@ -1,85 +1,69 @@
-# POC structure (Tessara-shaped)
+# Estrutura do repositório Tessara
 
-Incuba a forma de `Terrara/docs/specs/ARCHITECTURE.md` neste Labs. **Estratégia:** amadurecer aqui e, quando maduro, promover (cópia/extração) para o repositório Tessara — ver `docs/guides/promotion-to-tessara.md`. ADR-009 no Terrara continua válido até a promoção ser documentada lá.
+Alinhada a `Terrara/docs/specs/ARCHITECTURE.md`. Nome do produto: **Tessara**.
 
-Canonical product name: **Tessara**. This POC sometimes still says Tessara in strings.
-
-## Tree
+## Árvore
 
 ```text
-todoist-panel/                    # Labs POC root
-  firmware/                       # ESP32 application (PlatformIO src_dir)
+Tessara/
+  firmware/                       # app ESP32 (PlatformIO src_dir)
     main.cpp
     components/
-      hal/                        # Display/Touch/Board ports
+      hal/                        # Display / Input / Backlight / Power / Storage / …
       core_services/              # platform/, domain/, agent/, services/
-      ui_kit/                     # ui/kit · palette · theme · fonts
-      dashboard_shell/            # app/ + home/shell/settings/screensaver
-      web_configurator/           # PROGMEM headers (gerados de web/src)
-      widget_sdk/                 # TsWidget registry / mount
-      widget_runtime/             # weather via runtime; Wi‑Fi peel
-    boards/jc3248w535/            # board adapter (pins / Arduino_GFX)
+      ui_kit/                     # kit · Ts* · palette · theme · fonts
+      dashboard_shell/            # app/ + home / shell / settings / screensaver
+      web_configurator/           # headers PROGMEM (gerados de web/src)
+      widget_sdk/                 # TsWidget · WidgetContext · manifest
+      widget_runtime/             # registry · mount_exclusive · generation
+    boards/jc3248w535/            # adapter da placa
     widgets/
-      weather/                    # weather/ + ui/
-      aitokens/                   # aitokens/ + ui/
-      todoist/                    # POC only — out of Tessara MVP acceptance
-      clock/                      # registered stub
-      clock/                      # hora (hero) + detalhe; copy via clock_face
-      greeting/, date/            # hero-only (saudação / data curta)
-  agent/                          # Mac Tessara Agent (monorepo sibling)
-    src/agent/
-  boards/*.json                   # PlatformIO board definition (repo root)
-  simulator/                      # LVGL9+SDL2 painel — fixtures + verify_all.sh
-    src/                          # main, scenario, sim_home, sim_detail, sim_app
-    host/                         # daytime/power/settings/log adapters
-    fixtures/                     # JSON scenarios
-    scripts/verify_all.sh
-  web/                            # HTML editável → tools/embed_web.py → PROGMEM
-    src/
-  tests/test_native/
+      weather/
+      clock/                      # hero + detalhe
+      greeting/, date/            # hero-only
+      aitokens/
+      todoist/                    # widget opcional (não é aceite MVP)
+  agent/                          # Agente Tessara (Mac, USB)
+  boards/*.json                   # definição PlatformIO
+  simulator/                      # LVGL9 + SDL2 · fixtures · verify_all.sh
+  web/src/                        # portal → tools/embed_web.py
+  test/test_native/
   docs/
-    guides/simulator.md           # como rodar / verificar sem aparelho
-    guides/finish-gate.md         # make test / e2e / flash / device
-    guides/promotion-to-tessara.md  # incubação Labs → repo Tessara
-    guides/architecture-lift.md     # features → Widget SDK / widgets desacoplados
-  hardware/                       # CAD / stand — not firmware
-  Makefile                        # finish gate: test / e2e / flash / device / finish
-  tools/
-    flash.sh                      # build + upload no JC3248
-    device.sh                     # monitor USB / SNAP para teste manual
-    finish.sh                     # wrapper → make finish
-  AGENTS.md                       # finish gate para agentes
-  docs/guides/finish-gate.md      # doc das tasks Make
-  .cursor/rules/finish-gate.mdc   # regra alwaysApply
+    guides/                       # finish-gate, simulator, architecture
+    adr/                          # decisões deste repo
+    superpowers/                  # specs / plans / shots de features
+  Makefile                        # finish gate
+  tools/                          # flash, device, probe, embed_web, …
+  AGENTS.md
+  GLOSSARY.md
 ```
 
-## Include strategy
+## Includes
 
-Old prefixes (`"hal/…"`, `"ui/kit.h"`, `"weather/…"`) still work via `-I` into each package root (see `platformio.ini`). Physical folders follow Tessara component names.
+`-I` por pacote em `platformio.ini`. Widgets não incluem Arduino / Wi‑Fi / board (enforce: `test_widget_allowlist`).
 
-## What this validates
+## Estado das camadas
 
-| Idea | Status in POC |
+| Camada | Status |
 |---|---|
-| `firmware/` + `components/` + `widgets/` + `boards/` | Applied |
-| Sibling `agent/` Mac package | Applied |
-| `simulator/` early | **Live** — SDL+LVGL `painel`, fixtures, `scripts/verify_all.sh` (sem ESP32) |
-| `web/{src,assets}` extracted | **Live** — `web/src/*.html` + `tools/embed_web.py` → PROGMEM headers |
-| `widget_sdk` / `widget_runtime` | **v0 live** — mount/generation; weather via runtime; controller peels Wi‑Fi via `DeviceInfo`/`net_worker` |
-| Widget allowlist | **Enforced** — `test_widget_allowlist` scans `firmware/widgets/**` (no Arduino/Wi‑Fi/heap/boards) |
-| Dashboard layout / enable widgets | **Live** — NVS + portal toggles; home = `compose` + **rebuild na hora** (sem reboot) |
-| Widget packages as TsWidget | weather + todoist + aitokens + clock registered in `register_builtin` |
-| ESP-IDF primary | Not yet — still Arduino + Arduino_GFX (M0 spike ok) |
+| `firmware/components` + `widgets` + `boards` | Ativo |
+| `agent/` | Ativo (USB; AI Tokens) |
+| `simulator/` | Ativo — `painel`, fixtures, `make e2e` |
+| `web/` | Ativo — `web/src` → PROGMEM |
+| Widget SDK / runtime | Ativo — mount/generation/http cancel |
+| Allowlist de widgets | Enforce nos testes nativos |
+| Dashboard / toggles | NVS + portal; home recompõe na hora |
+| Toolchain placa | PlatformIO + Arduino + Arduino_GFX (ESP-IDF: evolução futura) |
 
-## Terrara mapping
+## Mapa ↔ specs Terrara
 
-| Tessara proposal | POC location |
+| Spec / ideia | Neste repo |
 |---|---|
 | `components/hal` | `firmware/components/hal` |
-| `components/board_support` | `firmware/boards/jc3248w535` |
-| `components/core_services` | `firmware/components/core_services` |
-| `components/ui_kit` | `firmware/components/ui_kit` |
-| `components/dashboard_shell` | `firmware/components/dashboard_shell` |
-| `components/web_configurator` | `firmware/components/web_configurator` |
-| `widgets/{clock,weather,…}` | `firmware/widgets/*` |
-| Mac agent | `agent/` (not in original sketch; added for USB MVP) |
+| board support | `firmware/boards/jc3248w535` |
+| core services | `firmware/components/core_services` |
+| UI Kit | `firmware/components/ui_kit` |
+| dashboard shell | `firmware/components/dashboard_shell` |
+| web configurator | `firmware/components/web_configurator` + `web/` |
+| widgets | `firmware/widgets/*` |
+| Mac agent | `agent/` |

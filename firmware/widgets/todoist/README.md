@@ -1,3 +1,3 @@
-# todoist widget (POC only)
+# Widget Todoist
 
-Out of Tessara MVP acceptance — validates subsystem pattern.
+Widget opcional — **fora do aceite MVP** (clock + weather). Serve de padrão de widget mutável (listas, sync, swipe).

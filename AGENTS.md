@@ -1,27 +1,31 @@
-# Tessara painel (Labs) — agent harness
+# Tessara — agent harness
 
-## Estratégia
+Este repositório é o trunk do firmware / simulador / agent / portal.
 
-1. **Incubar aqui** até maduro → promover (cópia) para o repo Tessara (`docs/guides/promotion-to-tessara.md`).
-2. **Features boas ficam**; o trabalho é **lift** para a arquitetura Tessara (`docs/guides/architecture-lift.md`): widgets desacoplados, independentes, configuráveis via SDK/runtime + settings namespaced.
-3. Specs: `~/Developer/Projects/gilsondev/Terrara/docs/specs/`. Todoist não é aceite MVP de produto; serve de padrão de widget.
+## Arquitetura
 
-Ao implementar: pacote em `widgets/` ou `components/`; não engordar o `controller` com lógica de widget; testável no host + sim.
+- Widgets em `firmware/widgets/` — pacote próprio, só Widget SDK + UI Kit.
+- Shell em `dashboard_shell` — slots, nav, tema; sem lógica de produto por widget.
+- Specs: `~/Developer/Projects/gilsondev/Terrara/docs/specs/` (ARCHITECTURE, WIDGET-SDK, SIMULATOR, …).
+- Glossário e ADRs deste repo: `GLOSSARY.md`, `docs/adr/`.
+- Contrato de widgets e lift histórico: `docs/guides/architecture.md`.
+
+Todoist não é aceite MVP de produto; serve de padrão de widget mutável.
 
 ## Finish gate (sempre)
 
-Ao finalizar qualquer implementação, nesta ordem (`make help`):
+Ao finalizar qualquer implementação (`make help`):
 
-1. **`make test`** — criar/atualizar e rodar testes automatizados (native).
-2. **`make e2e`** — E2E no simulador; inspecionar screenshots em `$SIM_OUT` (`/tmp/tessara-sim-out/`) contra o design.
+1. **`make test`** — testes nativos (PlatformIO `native`).
+2. **`make e2e`** — simulador; inspecionar `$SIM_OUT` (default `/tmp/tessara-sim-out/`).
 3. **`make flash`** — só com 1 e 2 verdes.
-4. **`make device`** — monitor USB para teste manual nas telas do aparelho.
+4. **`make device`** — monitor USB / teste manual no JC3248.
 
 ```bash
-make finish        # 1→2→3
-make finish-host   # sem placa
-make device        # ver/testar telas no JC3248
-make sim-run       # janela SDL (scenario normal)
+make finish        # e2e + flash
+make finish-host   # e2e sem placa
+make device
+make sim-run       # janela SDL
 ```
 
-Doc: `docs/guides/finish-gate.md`. Regras: `.cursor/rules/finish-gate.mdc`, `promotion-path.mdc`.
+Doc: `docs/guides/finish-gate.md`. Regra Cursor: `.cursor/rules/finish-gate.mdc`.
