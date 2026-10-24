@@ -9,6 +9,18 @@ Extras in-tree (Todoist, AI Tokens, screen rest, …) do not block MVP.
 
 > Documentation language: **English** is the default. Portuguese mirrors live under [`docs/pt/`](docs/pt/).
 
+## Screenshots
+
+Portrait **320×480** from the host simulator (`make e2e` / `make sim`) and one on-device snap.
+
+| Home | Weather | Clock |
+| :---: | :---: | :---: |
+| ![Home](docs/images/normal.png) | ![Weather detail](docs/images/detail-weather.png) | ![Clock detail](docs/images/detail-clock.png) |
+
+![First-use on device](docs/images/device-first-use.png)
+
+*First-use / captive portal on the JC3248 after flash (when Wi‑Fi is not configured yet).*
+
 ## Quick start (no hardware)
 
 ```bash
