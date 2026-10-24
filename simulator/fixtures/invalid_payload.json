@@ -1,0 +1,61 @@
+{
+  "name": "invalid_payload",
+  "wifi": {
+    "online": true,
+    "rssi": -55,
+    "ssid": "CasaFibra",
+    "ip": "192.168.15.42"
+  },
+  "battery_percent": 68,
+  "clock": {
+    "hour": 12,
+    "minute": 0,
+    "wday": 3,
+    "day": 22,
+    "month": 9,
+    "ok": true
+  },
+  "todoist": {
+    "total": 1,
+    "pending": false,
+    "lists": [
+      {
+        "name": "Hoje",
+        "query": "today | overdue",
+        "tasks": [
+          {
+            "id": "8101",
+            "content": "Payload inválido do clima",
+            "priority": 1,
+            "meta": "hoje"
+          }
+        ]
+      }
+    ]
+  },
+  "weather": {
+    "placed": true,
+    "ready": false,
+    "stale": false,
+    "failed": true,
+    "temp_c": 0,
+    "code": -1,
+    "place": "",
+    "hi_c": 0,
+    "lo_c": 0
+  },
+  "aitokens": {
+    "ready": false,
+    "stale": false
+  },
+  "agent": {
+    "ready": false,
+    "ok": false,
+    "pack_on_sd": false
+  },
+  "dashboard": [
+    "org.tessara.todoist",
+    "org.tessara.weather",
+    "org.tessara.aitokens"
+  ]
+}

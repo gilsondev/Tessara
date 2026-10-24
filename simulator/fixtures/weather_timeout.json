@@ -1,0 +1,66 @@
+{
+  "name": "weather_timeout",
+  "wifi": {
+    "online": true,
+    "rssi": -70,
+    "ssid": "CasaFibra",
+    "ip": "192.168.15.42"
+  },
+  "battery_percent": 75,
+  "clock": {
+    "hour": 16,
+    "minute": 10,
+    "wday": 4,
+    "day": 23,
+    "month": 9,
+    "ok": true
+  },
+  "todoist": {
+    "total": 2,
+    "pending": false,
+    "lists": [
+      {
+        "name": "Hoje",
+        "query": "today | overdue",
+        "tasks": [
+          {
+            "id": "8001",
+            "content": "Checar timeout do clima",
+            "priority": 2,
+            "meta": "hoje"
+          }
+        ]
+      }
+    ]
+  },
+  "weather": {
+    "placed": true,
+    "ready": false,
+    "stale": false,
+    "failed": true,
+    "temp_c": 0,
+    "code": 0,
+    "place": "São Paulo",
+    "hi_c": 0,
+    "lo_c": 0
+  },
+  "aitokens": {
+    "ready": true,
+    "stale": false,
+    "codex_5h": 80,
+    "codex_week": 70,
+    "claude_pct": 55,
+    "cursor_a": 5,
+    "cursor_b": 12
+  },
+  "agent": {
+    "ready": true,
+    "ok": true,
+    "pack_on_sd": false
+  },
+  "dashboard": [
+    "org.tessara.todoist",
+    "org.tessara.weather",
+    "org.tessara.aitokens"
+  ]
+}

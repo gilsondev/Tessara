@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tessera.aitokens-bridge</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/gilson/Developer/Labs/esp32-firmwares/todoist-panel/.venv/bin/python</string>
+    <string>/Users/gilson/Developer/Labs/esp32-firmwares/todoist-panel/tools/aitokens_bridge/bridge.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/gilson/Developer/Labs/esp32-firmwares/todoist-panel/tools/aitokens_bridge</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/gilson/.tessera/aitokens-bridge.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/gilson/.tessera/aitokens-bridge.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>/Users/gilson</string>
+  </dict>
+</dict>
+</plist>

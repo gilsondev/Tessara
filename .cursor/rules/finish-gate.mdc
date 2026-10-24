@@ -1,0 +1,31 @@
+---
+description: Gate obrigatório ao finalizar qualquer implementação no Tessara painel
+alwaysApply: true
+---
+
+# Finish gate (obrigatório)
+
+Ao **terminar** uma implementação, **não declare pronto** sem esta sequência (`make help` / `docs/guides/finish-gate.md`):
+
+## 1. `make test`
+
+- Criar/atualizar testes nativos do comportamento novo.
+- Roda `pio test -e native`. Falhou → corrigir; não seguir.
+
+## 2. `make e2e`
+
+- Harness = mesmo código de UI do firmware + fixtures.
+- Estender fixtures/`--screen` se tela/fluxo novo.
+- Screenshots em `$SIM_OUT` — **inspecionar** layout vs design pedido.
+- Sem fork visual paralelo no sim.
+
+## 3. `make flash`
+
+- Só com 1 e 2 verdes. Sem porta → reportar; não marcar validado no aparelho.
+
+## 4. `make device` (teste manual)
+
+- Depois do flash: monitor USB + checklist de telas no JC3248.
+- Captura opcional: `make device-snap`.
+
+Atalhos: `make finish` · `make finish-host` (sem flash) · `make device`.

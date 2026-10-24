@@ -1,0 +1,63 @@
+{
+  "name": "sem_local",
+  "wifi": {
+    "online": true,
+    "rssi": -60,
+    "ssid": "CasaFibra",
+    "ip": "192.168.15.42"
+  },
+  "battery_percent": 70,
+  "clock": {
+    "hour": 11,
+    "minute": 0,
+    "wday": 2,
+    "day": 21,
+    "month": 9,
+    "ok": true
+  },
+  "todoist": {
+    "total": 1,
+    "pending": false,
+    "lists": [
+      {
+        "name": "Hoje",
+        "query": "today | overdue",
+        "tasks": [
+          {
+            "id": "7101",
+            "content": "Definir cidade do clima",
+            "priority": 2,
+            "meta": "hoje"
+          }
+        ]
+      }
+    ]
+  },
+  "weather": {
+    "placed": false,
+    "ready": false,
+    "stale": false,
+    "failed": false,
+    "temp_c": 0,
+    "code": 0
+  },
+  "aitokens": {
+    "ready": true,
+    "stale": false,
+    "codex_5h": 90,
+    "codex_week": 80,
+    "claude_pct": 80,
+    "cursor_a": 1,
+    "cursor_b": 1
+  },
+  "agent": {
+    "ready": true,
+    "ok": true,
+    "pack_on_sd": true
+  },
+  "dashboard": [
+    "org.tessara.todoist",
+    "org.tessara.weather",
+    "org.tessara.aitokens"
+  ]
+}

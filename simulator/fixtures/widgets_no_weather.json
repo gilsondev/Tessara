@@ -1,0 +1,92 @@
+{
+  "name": "widgets_no_weather",
+  "wifi": {
+    "online": true,
+    "rssi": -50,
+    "ssid": "CasaFibra",
+    "ip": "192.168.15.42"
+  },
+  "battery_percent": 80,
+  "clock": {
+    "hour": 14,
+    "minute": 30,
+    "wday": 5,
+    "day": 24,
+    "month": 9,
+    "ok": true
+  },
+  "todoist": {
+    "total": 5,
+    "pending": false,
+    "lists": [
+      {
+        "name": "Hoje",
+        "query": "today | overdue",
+        "tasks": [
+          {
+            "id": "7301",
+            "content": "Standup Lab 10h",
+            "priority": 3,
+            "meta": "hoje 10:00"
+          },
+          {
+            "id": "7302",
+            "content": "Flash firmware no JC3248",
+            "priority": 4,
+            "meta": "hoje"
+          }
+        ]
+      },
+      {
+        "name": "Casa",
+        "query": "@Casa & !@Delegado",
+        "tasks": [
+          {
+            "id": "7303",
+            "content": "Comprar café",
+            "priority": 1,
+            "meta": "amanhã"
+          },
+          {
+            "id": "7304",
+            "content": "Trocar filtro do ar",
+            "priority": 2,
+            "meta": "26 out"
+          },
+          {
+            "id": "7305",
+            "content": "Pagar condomínio",
+            "priority": 3,
+            "meta": "repete · 1 nov"
+          }
+        ]
+      }
+    ]
+  },
+  "weather": {
+    "placed": true,
+    "ready": true,
+    "stale": false,
+    "failed": false,
+    "temp_c": 24,
+    "code": 0
+  },
+  "aitokens": {
+    "ready": true,
+    "stale": false,
+    "codex_5h": 100,
+    "codex_week": 88,
+    "claude_pct": 70,
+    "cursor_a": 3,
+    "cursor_b": 13
+  },
+  "agent": {
+    "ready": true,
+    "ok": true,
+    "pack_on_sd": true
+  },
+  "dashboard": [
+    "org.tessara.todoist",
+    "org.tessara.aitokens"
+  ]
+}

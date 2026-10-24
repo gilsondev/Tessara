@@ -1,0 +1,50 @@
+{
+  "name": "weather_loading",
+  "wifi": {
+    "online": true,
+    "rssi": -52,
+    "ssid": "CasaFibra",
+    "ip": "192.168.15.42"
+  },
+  "battery_percent": 60,
+  "clock": {
+    "hour": 8,
+    "minute": 0,
+    "wday": 4,
+    "day": 23,
+    "month": 9,
+    "ok": true
+  },
+  "todoist": {
+    "total": 0,
+    "pending": true
+  },
+  "weather": {
+    "placed": true,
+    "ready": false,
+    "stale": false,
+    "failed": false,
+    "temp_c": 0,
+    "code": 0,
+    "place": "São Paulo"
+  },
+  "aitokens": {
+    "ready": true,
+    "stale": false,
+    "codex_5h": 55,
+    "codex_week": 50,
+    "claude_pct": 50,
+    "cursor_a": 5,
+    "cursor_b": 5
+  },
+  "agent": {
+    "ready": true,
+    "ok": true,
+    "pack_on_sd": true
+  },
+  "dashboard": [
+    "org.tessara.todoist",
+    "org.tessara.weather",
+    "org.tessara.aitokens"
+  ]
+}

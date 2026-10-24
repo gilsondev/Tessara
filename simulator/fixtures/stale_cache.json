@@ -1,0 +1,66 @@
+{
+  "name": "stale_cache",
+  "wifi": {
+    "online": true,
+    "rssi": -62,
+    "ssid": "CasaFibra",
+    "ip": "192.168.15.42"
+  },
+  "battery_percent": 71,
+  "clock": {
+    "hour": 19,
+    "minute": 45,
+    "wday": 5,
+    "day": 24,
+    "month": 9,
+    "ok": true
+  },
+  "todoist": {
+    "total": 3,
+    "pending": false,
+    "lists": [
+      {
+        "name": "Hoje",
+        "query": "today | overdue",
+        "tasks": [
+          {
+            "id": "8201",
+            "content": "Cache de clima stale",
+            "priority": 2,
+            "meta": "hoje"
+          }
+        ]
+      }
+    ]
+  },
+  "weather": {
+    "placed": true,
+    "ready": true,
+    "stale": true,
+    "failed": false,
+    "temp_c": 21,
+    "code": 3,
+    "place": "São Paulo",
+    "hi_c": 24,
+    "lo_c": 16
+  },
+  "aitokens": {
+    "ready": true,
+    "stale": true,
+    "codex_5h": 35,
+    "codex_week": 40,
+    "claude_pct": 30,
+    "cursor_a": 8,
+    "cursor_b": 15
+  },
+  "agent": {
+    "ready": true,
+    "ok": true,
+    "pack_on_sd": false
+  },
+  "dashboard": [
+    "org.tessara.todoist",
+    "org.tessara.weather",
+    "org.tessara.aitokens"
+  ]
+}

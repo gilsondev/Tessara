@@ -1,0 +1,14 @@
+---
+description: Incubate Tessara shape here; lift features onto Widget SDK; promote later
+alwaysApply: true
+---
+
+# Incubação + lift → Tessara
+
+- Features existentes **permanecem**; refatorar para a arquitetura Tessara (WIDGET-SDK / ARCHITECTURE), não reescrever do zero.
+- Guia: `docs/guides/architecture-lift.md` + `docs/guides/promotion-to-tessara.md`.
+- Specs: `Terrara/docs/specs/`.
+- Meta: widgets **desacoplados** (só SDK + ui_kit), **independentes** (pacote próprio + registry), **configuráveis** (schema namespaced no web/painel).
+- Não colocar lógica nova de widget no `controller`/shell; completar `WidgetContext` e migrar weather → clock → aitokens → todoist (fases L1–L5).
+- Todoist/calendar fora do aceite MVP produto; ok como prova de padrão.
+- Promoção = cópia limpa quando lift + finish gate estiverem maduros; sem secrets/CAD/build artifacts.

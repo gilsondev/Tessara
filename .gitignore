@@ -1,0 +1,12 @@
+.pio/
+.venv/
+node_modules/
+include/secrets.h
+.DS_Store
+simulator/build/
+agent/dist/
+agent/.venv/
+tmp/
+*.ppm
+.idea/
+.vscode/

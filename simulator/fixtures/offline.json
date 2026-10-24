@@ -1,0 +1,78 @@
+{
+  "name": "offline",
+  "wifi": {
+    "online": false,
+    "rssi": 0,
+    "ssid": "",
+    "ip": ""
+  },
+  "battery_percent": 55,
+  "clock": {
+    "hour": 9,
+    "minute": 5,
+    "wday": 1,
+    "day": 20,
+    "month": 9,
+    "ok": true
+  },
+  "todoist": {
+    "total": 3,
+    "pending": false,
+    "lists": [
+      {
+        "name": "Hoje",
+        "query": "today | overdue",
+        "tasks": [
+          {
+            "id": "7001",
+            "content": "Revisar PRs do painel",
+            "priority": 4,
+            "meta": "atrasado"
+          },
+          {
+            "id": "7002",
+            "content": "Comprar café",
+            "priority": 1,
+            "meta": "hoje"
+          },
+          {
+            "id": "7003",
+            "content": "Atualizar Tessara docs",
+            "priority": 2,
+            "meta": "amanhã"
+          }
+        ]
+      }
+    ]
+  },
+  "weather": {
+    "placed": true,
+    "ready": true,
+    "stale": true,
+    "failed": false,
+    "temp_c": 22,
+    "code": 3,
+    "place": "São Paulo",
+    "hi_c": 25,
+    "lo_c": 17
+  },
+  "aitokens": {
+    "ready": true,
+    "stale": true,
+    "codex_5h": 40,
+    "codex_week": 40,
+    "claude_pct": 40,
+    "cursor_a": 10,
+    "cursor_b": 10
+  },
+  "agent": {
+    "ready": false,
+    "ok": false,
+    "pack_on_sd": false
+  },
+  "dashboard": [
+    "org.tessara.todoist",
+    "org.tessara.weather",
+    "org.tessara.aitokens"
+  ]
+}

@@ -1,0 +1,78 @@
+#pragma once
+
+#include <pgmspace.h>
+
+namespace web_portal {
+
+// Shown only while the panel is its own Wi-Fi, before the home network and the token exist.
+
+const char kSetupPage[] PROGMEM = R"PAGE(<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Primeiro uso</title>
+<style>
+:root{--red:#E44332;--ink:#202020;--muted:#6f6f6f;--wash:#F4F4F4}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.45 -apple-system,system-ui,sans-serif;color:var(--ink);background:#EFEFEF}
+main{width:min(480px,100%);margin:0 auto;padding:0 16px 32px}
+header{border-top:4px solid var(--red);padding:18px 0 8px}
+h1{margin:0;font-size:26px}p{margin:6px 0 0;color:var(--muted)}
+form{background:#fff;border-radius:18px;padding:18px;margin-top:14px}
+h2{margin:0 0 8px;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.nets{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.nets button{border:0;border-radius:999px;padding:8px 12px;background:var(--wash);font-size:15px}
+.nets button.on{background:var(--red);color:#fff}
+label{display:block;margin:12px 0 4px;font-size:13px;color:var(--muted)}
+input{width:100%;padding:12px;border:1px solid #E6E6E6;border-radius:10px;font-size:16px}
+button.go{width:100%;margin-top:16px;border:0;border-radius:10px;background:var(--red);color:#fff;padding:12px;font-size:16px}
+.done{display:none;background:#fff;border-radius:18px;padding:18px;margin-top:14px}
+.err{min-height:1.2em;color:var(--red);font-size:14px;margin:8px 0 0}
+ol{margin:4px 0 12px;padding-left:1.3em}
+li{margin:6px 0;font-size:15px;color:var(--ink)}
+</style></head><body>
+<main>
+<header><h1>Primeiro uso</h1>
+<p>Escolha a rede da casa. O token do Todoist pode ficar para depois.</p></header>
+<form id="form">
+<h2>Rede Wi-Fi</h2>
+<div class="nets" id="nets"></div>
+<label>Nome da rede</label><input id="ssid" autocomplete="off">
+<label>Senha</label><input id="pass" type="password" autocomplete="new-password" placeholder="em branco se a rede for aberta">
+<h2>Token do Todoist</h2>
+<ol>
+<li>Abra todoist.com e entre na sua conta.</li>
+<li>Toque na sua foto, no canto superior esquerdo.</li>
+<li>Abra Configurações.</li>
+<li>Abra Integrações e, no topo, Desenvolvedor.</li>
+<li>Toque em Copiar token da API e cole abaixo.</li>
+</ol>
+<label>Token</label><input id="token" type="password" autocomplete="off" placeholder="opcional agora">
+<p>Se ficar em branco, a tela inicial mostra de novo este caminho. Emitir um token novo só se o atual falhar: isso sai da conta nos outros aparelhos.</p>
+<p class="err" id="err"></p>
+<button class="go" type="submit">Começar</button>
+</form>
+<section class="done" id="done"><h2>Pronto</h2>
+<p id="after">Volte para a rede da casa. O painel entra nela sozinho.</p></section>
+</main>
+<script>
+const err=document.getElementById('err');
+function pick(name,btn){document.getElementById('ssid').value=name;
+document.querySelectorAll('#nets button').forEach(b=>b.classList.remove('on'));btn.classList.add('on')}
+async function nets(){try{const list=await (await fetch('/api/networks')).json();
+const box=document.getElementById('nets');box.innerHTML='';
+list.forEach(n=>{const b=document.createElement('button');b.type='button';b.textContent=n.ssid;
+b.onclick=()=>pick(n.ssid,b);box.appendChild(b)})}catch(e){}}
+document.getElementById('form').onsubmit=async ev=>{ev.preventDefault();err.textContent='';
+const token=document.getElementById('token').value.trim();
+const body={ssid:document.getElementById('ssid').value,pass:document.getElementById('pass').value,token};
+try{const r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+if(!r.ok){err.textContent=await r.text();return}
+document.getElementById('after').textContent=token
+?'Volte para a rede da casa. O painel entra nela sozinho e as tarefas aparecem na tela.'
+:'Volte para a rede da casa. Na tela inicial, o painel mostra como colar o token.';
+document.getElementById('form').style.display='none';document.getElementById('done').style.display='block'}
+catch(e){err.textContent='O painel não respondeu'}};
+nets();setTimeout(nets,1200);setTimeout(nets,2500);
+</script></body></html>)PAGE";
+
+}  // namespace web_portal

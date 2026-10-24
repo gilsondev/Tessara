@@ -1,0 +1,66 @@
+{
+  "name": "sem_bateria",
+  "wifi": {
+    "online": true,
+    "rssi": -55,
+    "ssid": "CasaFibra",
+    "ip": "192.168.15.42"
+  },
+  "battery_percent": -1,
+  "clock": {
+    "hour": 16,
+    "minute": 45,
+    "wday": 3,
+    "day": 22,
+    "month": 9,
+    "ok": true
+  },
+  "todoist": {
+    "total": 2,
+    "pending": false,
+    "lists": [
+      {
+        "name": "Hoje",
+        "query": "today | overdue",
+        "tasks": [
+          {
+            "id": "7201",
+            "content": "Carregar o painel",
+            "priority": 3,
+            "meta": "hoje"
+          },
+          {
+            "id": "7202",
+            "content": "Checar cabo USB",
+            "priority": 1
+          }
+        ]
+      }
+    ]
+  },
+  "weather": {
+    "placed": true,
+    "ready": true,
+    "stale": false,
+    "failed": false,
+    "temp_c": 27,
+    "code": 2,
+    "place": "São Paulo",
+    "hi_c": 30,
+    "lo_c": 20
+  },
+  "aitokens": {
+    "ready": false,
+    "stale": false
+  },
+  "agent": {
+    "ready": true,
+    "ok": true,
+    "pack_on_sd": true
+  },
+  "dashboard": [
+    "org.tessara.todoist",
+    "org.tessara.weather",
+    "org.tessara.aitokens"
+  ]
+}

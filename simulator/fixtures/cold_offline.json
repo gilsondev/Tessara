@@ -1,0 +1,48 @@
+{
+  "name": "cold_offline",
+  "wifi": {
+    "online": false,
+    "rssi": 0,
+    "ssid": "",
+    "ip": ""
+  },
+  "battery_percent": 62,
+  "clock": {
+    "hour": 0,
+    "minute": 0,
+    "wday": 0,
+    "day": 1,
+    "month": 0,
+    "ok": false
+  },
+  "todoist": {
+    "total": 0,
+    "pending": true,
+    "lists": []
+  },
+  "weather": {
+    "placed": true,
+    "ready": false,
+    "stale": false,
+    "failed": false,
+    "temp_c": 0,
+    "code": 0,
+    "place": "São Paulo",
+    "hi_c": 0,
+    "lo_c": 0
+  },
+  "aitokens": {
+    "ready": false,
+    "stale": false
+  },
+  "agent": {
+    "ready": false,
+    "ok": false,
+    "pack_on_sd": false
+  },
+  "dashboard": [
+    "org.tessara.todoist",
+    "org.tessara.weather",
+    "org.tessara.aitokens"
+  ]
+}
