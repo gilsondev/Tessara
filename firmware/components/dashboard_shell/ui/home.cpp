@@ -4,6 +4,7 @@
 #include "clock_summary.h"
 #include "domain/dashboard_layout.h"
 #include "platform/daytime.h"
+#include "platform/face_prefs.h"
 #include "platform/power.h"
 #include "platform/settings.h"
 #include "tessara/runtime.h"
@@ -31,7 +32,7 @@ lv_obj_t *screen = nullptr;
 lv_obj_t *wordmark = nullptr;
 lv_obj_t *link_icon = nullptr;
 lv_obj_t *gear = nullptr;
-lv_obj_t *clock_label = nullptr;
+kit::TabularTime clock_face_ui = {};
 lv_obj_t *date_label = nullptr;
 lv_obj_t *battery_widget = nullptr;
 lv_obj_t *stage = nullptr;
@@ -56,6 +57,11 @@ lv_obj_t *aitokens_line_cursor = nullptr;
 bool linked = false;
 int link_rssi = 0;
 lv_event_cb_t open_widget_cb = nullptr;
+bool hero_show_clock = true;
+bool hero_show_date = true;
+bool hero_show_greeting = true;
+uint8_t hero_layout_gen = 0;
+lv_timer_t *clock_timer = nullptr;
 
 constexpr int kAiWarnPct = 50;
 constexpr int kAiCriticalPct = 20;
@@ -123,19 +129,48 @@ void paint_card(lv_obj_t *box) {
     lv_obj_set_style_border_color(box, theme::border(), 0);
 }
 
+void cache_hero_flags(const dashboard::Layout &layout) {
+    hero_show_clock = dashboard::is_enabled(layout, dashboard::id_clock());
+    hero_show_date = dashboard::is_enabled(layout, dashboard::id_date());
+    hero_show_greeting = dashboard::is_enabled(layout, dashboard::id_greeting());
+    hero_layout_gen++;
+}
+
 void paint_clock(lv_timer_t *) {
-    int hour = 0, minute = 0, wday = 0, day = 0, month = 0;
-    const bool ok = daytime::local(hour, minute, wday, day, month);
-    clock_face::Summary face = clock_face::from_parts(hour, minute, wday, day, month, ok);
-    dashboard::Layout layout = settings::load_dashboard();
-    const char *time = dashboard::is_enabled(layout, dashboard::id_clock()) ? face.time : "";
-    const char *date = dashboard::is_enabled(layout, dashboard::id_date()) ? face.date_short : "";
-    const char *hello = dashboard::is_enabled(layout, dashboard::id_greeting()) ? face.greeting : "";
-    // Unsynced clock still shows placeholder when the clock widget is enabled.
-    if (dashboard::is_enabled(layout, dashboard::id_clock()) && !face.synced) time = face.time;
-    home::set_clock(time, date, hello);
     static uint8_t beat = 0;
     if (beat++ % 20 == 0) home::set_battery(power::battery_percent());
+
+    int hour = 0, minute = 0, second = 0, wday = 0, day = 0, month = 0, year = 0;
+    const bool ok = daytime::local(hour, minute, second, wday, day, month, year);
+    clock_face::Options opts = face_prefs::options();
+    const bool want_seconds = opts.time == clock_face::TimeFormat::Hms;
+
+    // HH:MM only needs a paint on minute (or day/sync/format) change — skip the other 59 ticks.
+    // HH:MM:SS paints each second, but never reloads NVS / dashboard here.
+    static int last_h = -1, last_m = -1, last_s = -1, last_day = -1;
+    static bool last_ok = false;
+    static uint8_t last_fmt = 0xff;
+    static uint8_t last_layout_gen = 0xff;
+    const uint8_t fmt = static_cast<uint8_t>(opts.time);
+    if (last_layout_gen == hero_layout_gen && ok == last_ok && hour == last_h && minute == last_m &&
+        day == last_day && fmt == last_fmt && (!want_seconds || second == last_s)) {
+        return;
+    }
+    last_h = hour;
+    last_m = minute;
+    last_s = second;
+    last_day = day;
+    last_ok = ok;
+    last_fmt = fmt;
+    last_layout_gen = hero_layout_gen;
+
+    opts.second = second;
+    clock_face::Summary face = clock_face::from_parts(hour, minute, wday, day, month, year, ok, opts);
+    const char *time = hero_show_clock ? face.time : "";
+    const char *date = hero_show_date ? face.date_short : "";
+    const char *hello = hero_show_greeting ? face.greeting : "";
+    if (hero_show_clock && !face.synced) time = face.time;
+    home::set_clock(time, date, hello);
 }
 
 void add_todoist_tile(lv_event_cb_t on_open) {
@@ -248,6 +283,7 @@ void add_generic_tile(const char *title, const char *widget_id) {
 }
 
 void mount_enabled_tiles(const dashboard::Layout &layout) {
+    cache_hero_flags(layout);
     // Compose = enabled ∩ runtime registry (new widgets appear without editing this list).
     const char *registered[tessara::kMaxWidgetTypes];
     int reg_n = 0;
@@ -392,15 +428,16 @@ void home::begin(lv_event_cb_t on_open_widget, lv_event_cb_t on_settings) {
     lv_obj_set_style_text_font(date_label, &theme::small_font(), 0);
     lv_obj_set_style_text_color(date_label, theme::text_secondary(), 0);
 
-    clock_label = lv_label_create(hero);
-    lv_label_set_text(clock_label, "--:--");
-    lv_obj_set_style_text_font(clock_label, &theme::display_font(), 0);
-    lv_obj_set_style_text_color(clock_label, theme::text_primary(), 0);
-    lv_obj_add_flag(clock_label, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(clock_label, 8);
-    if (open_widget_cb) {
-        lv_obj_add_event_cb(clock_label, open_widget_cb, LV_EVENT_CLICKED,
-                            const_cast<char *>(dashboard::id_clock()));
+    // Tabular slots: proportional Montserrat digits must not shift the hero each second.
+    clock_face_ui = kit::tabular_time(hero, &theme::display_font(), theme::text_primary());
+    kit::tabular_time_set(clock_face_ui, "--:--");
+    if (clock_face_ui.root) {
+        lv_obj_add_flag(clock_face_ui.root, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_ext_click_area(clock_face_ui.root, 8);
+        if (open_widget_cb) {
+            lv_obj_add_event_cb(clock_face_ui.root, open_widget_cb, LV_EVENT_CLICKED,
+                                const_cast<char *>(dashboard::id_clock()));
+        }
     }
 
     grid = TsBare(stage);
@@ -413,7 +450,7 @@ void home::begin(lv_event_cb_t on_open_widget, lv_event_cb_t on_settings) {
     mount_enabled_tiles(settings::load_dashboard());
 
     arrange();
-    lv_timer_create(paint_clock, 1000, nullptr);
+    if (!clock_timer) clock_timer = lv_timer_create(paint_clock, 1000, nullptr);
     paint_clock(nullptr);
 }
 
@@ -612,7 +649,7 @@ void home::apply_theme() {
         if (glyph) lv_obj_set_style_text_color(glyph, theme::on_primary(), 0);
     }
     if (hello_label) lv_obj_set_style_text_color(hello_label, theme::text_secondary(), 0);
-    if (clock_label) lv_obj_set_style_text_color(clock_label, theme::text_primary(), 0);
+    kit::tabular_time_recolor(clock_face_ui, theme::text_primary());
     if (date_label) lv_obj_set_style_text_color(date_label, theme::text_secondary(), 0);
     if (link_icon) TsSetWifi(link_icon, linked, link_rssi);
     if (task_icon) lv_obj_set_style_text_color(task_icon, theme::widget_todoist(), 0);
@@ -638,7 +675,7 @@ void home::apply_theme() {
 }
 
 void home::set_clock(const char *time, const char *date, const char *hello) {
-    set_if_changed(clock_label, time);
+    if (time) kit::tabular_time_set(clock_face_ui, time);
     set_if_changed(date_label, date);
     set_if_changed(hello_label, hello ? hello : "");
 }

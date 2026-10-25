@@ -35,6 +35,10 @@ struct Snapshot {
     bool aitokens_stale;
     uint32_t aitokens_age_s;  // idade da última cotas no publish
     device_resources::Sample resources;
+    // Clock / date widget prefs (copied on publish — web task must not hit NVS).
+    char clock_timezone[24];
+    char clock_time_format[12];
+    char date_format[16];
 };
 
 enum class Kind : uint8_t {

@@ -110,6 +110,8 @@ void build() {
         lv_image_set_src(code, &qr_image);
         lv_obj_set_style_margin_top(code, 6, 0);
     }
+    // Always show the URL under the QR — phones that cannot scan still need a typed address.
+    wrapped(root, url_text, &theme::small_font(), theme::primary());
 }
 
 void build_token() {

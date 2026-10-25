@@ -31,7 +31,7 @@ bool connect() {
     if (!ssid[0]) return false;
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
-    WiFi.setHostname("tessera");
+    WiFi.setHostname("tessara");
     WiFi.begin(ssid, pass);
     uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < kConnectTimeoutMs) delay(20);

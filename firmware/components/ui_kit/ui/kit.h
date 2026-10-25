@@ -45,4 +45,17 @@ void declare_opaque(lv_obj_t *obj);
 // Renders `obj` into `buf` over the theme background. Pixel (0, 0) sits at (buf_area.x1, buf_area.y1).
 void draw_into(lv_obj_t *obj, lv_draw_buf_t *buf, const lv_area_t &buf_area, const lv_area_t &clip);
 
+// Fixed-advance clock text (Montserrat digits vary — "1" vs "0" must not nudge neighbors).
+// Up to 8 cells for "HH:MM:SS". `root` is the clickable/flex host.
+struct TabularTime {
+    lv_obj_t *root = nullptr;
+    lv_obj_t *cells[8] = {};
+    int32_t digit_w = 0;
+    int32_t colon_w = 0;
+    char shown[12] = {};
+};
+TabularTime tabular_time(lv_obj_t *parent, const lv_font_t *font, lv_color_t color);
+void tabular_time_set(TabularTime &clock, const char *text);
+void tabular_time_recolor(TabularTime &clock, lv_color_t color);
+
 }  // namespace kit

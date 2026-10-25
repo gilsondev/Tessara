@@ -71,7 +71,7 @@ input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10
 .nav.on span{color:rgba(255,255,255,.86)}
 .back{display:none;border:0;background:transparent;color:var(--red);font-size:15px;padding:0 0 4px;cursor:pointer}
 .page{display:none;gap:14px}
-body[data-page="hub"] #page-hub,body[data-page="device"] #page-device,body[data-page="resources"] #page-resources,body[data-page="agent"] #page-agent,body[data-page="aitokens"] #page-aitokens,body[data-page="todoist"] #page-todoist,body[data-page="clima"] #page-clima{display:grid}
+body[data-page="hub"] #page-hub,body[data-page="device"] #page-device,body[data-page="resources"] #page-resources,body[data-page="agent"] #page-agent,body[data-page="aitokens"] #page-aitokens,body[data-page="todoist"] #page-todoist,body[data-page="clima"] #page-clima,body[data-page="relogio"] #page-relogio,body[data-page="data"] #page-data{display:grid}
 .meter{height:8px;background:var(--wash);border-radius:999px;overflow:hidden;margin-top:8px}
 .meter>i{display:block;height:100%;background:var(--red);border-radius:inherit;width:0}
 .res-grid{display:grid;gap:14px;margin-top:12px}
@@ -139,6 +139,8 @@ h1{font-size:30px}
 <button class="nav" type="button" data-go="resources"><b>Memória</b><span>DRAM, PSRAM, flash e SD</span></button>
 <button class="nav" type="button" data-go="agent"><b>Agente Tessara</b><span>USB · status e instalação</span></button>
 <p class="kicker">Widgets</p>
+<button class="nav" type="button" data-go="relogio"><b>Relógio</b><span>Fuso e formato da hora</span></button>
+<button class="nav" type="button" data-go="data"><b>Data</b><span>Formato da data</span></button>
 <button class="nav" type="button" data-go="todoist"><b>Todoist</b><span>Listas, token e intervalo</span></button>
 <button class="nav" type="button" data-go="clima"><b>Clima</b><span>Cidade deste widget</span></button>
 <button class="nav" type="button" data-go="aitokens"><b>AI Tokens</b><span>Fontes na home</span></button>
@@ -146,18 +148,29 @@ h1{font-size:30px}
 <div class="pane">
 <button class="back" id="back" type="button">← Configurações</button>
 <div class="page" id="page-hub">
-<section class="group"><h2>Dispositivo</h2><p class="note">Vale para o aparelho todo.</p>
-<button class="jump" type="button" data-go="device"><b>Geral</b><span>Orientação, brilho, som, aparência e Wi-Fi</span></button>
-<button class="jump" type="button" data-go="resources"><b>Memória e armazenamento</b><span>DRAM, PSRAM, firmware e volume</span></button>
-<button class="jump" type="button" data-go="agent"><b>Agente Tessara</b><span>USB · status e instalação</span></button></section>
-<section class="group"><h2>Widgets</h2>
 <section class="card"><h2>Na home</h2>
-<p class="note" id="widgets-note">Escolha o que aparece no painel. A home atualiza na hora.</p>
+<p class="note" id="widgets-note">Escolha o que aparece no painel. Ajustes de cada widget ficam no menu ao lado (ou ← nas páginas).</p>
 <ol class="board" id="widgets"></ol></section>
-<p class="note">Cada widget tem a própria página de ajustes.</p>
-<button class="jump" type="button" data-go="todoist"><b>Todoist</b><span>Listas, token e intervalo</span></button>
-<button class="jump" type="button" data-go="clima"><b>Clima</b><span>Cidade e previsão na home</span></button>
-<button class="jump" type="button" data-go="aitokens"><b>AI Tokens</b><span>Resumo das cotas</span></button></section>
+</div>
+<div class="page" id="page-relogio">
+<section class="card"><h2>Relógio</h2>
+<p class="note">Vale para a hora na home e na tela de detalhe do relógio.</p>
+<div class="fields">
+<div class="field"><h3>Fuso horário</h3>
+<div class="chips" data-k="timezone" data-scope="widget" data-widget="org.tessara.clock" data-o='[["sao_paulo","Brasília"],["utc","UTC"],["new_york","Nova York"],["los_angeles","Los Angeles"],["london","Londres"],["lisbon","Lisboa"],["buenos_aires","Buenos Aires"],["mexico_city","México"]]'></div></div>
+<div class="field"><h3>Formato da hora</h3>
+<div class="chips" data-k="time_format" data-scope="widget" data-widget="org.tessara.clock" data-o='[["hm","HH:MM"],["hms","HH:MM:SS"]]'></div></div>
+</div>
+</section>
+</div>
+<div class="page" id="page-data">
+<section class="card"><h2>Data</h2>
+<p class="note">Formato da data na home (e na linha de data do detalhe do relógio).</p>
+<div class="fields">
+<div class="field"><h3>Formato</h3>
+<div class="chips" data-k="date_format" data-scope="widget" data-widget="org.tessara.date" data-o='[["short_pt","Sáb, 24 de out"],["dmy","DD/MM/YYYY"],["ymd","YYYY-MM-DD"],["mdy","MM/DD/YYYY"],["long_pt","Sábado, 24 de outubro"]]'></div></div>
+</div>
+</section>
 </div>
 <div class="page" id="page-agent">
 <section class="card">
@@ -356,25 +369,30 @@ return d}
 function drawResources(){const box=document.getElementById('res-grid');if(!box)return;box.innerHTML='';
 const r=s.resources||{};
 const heapFree=+r.heap_free||0,heapTotal=+r.heap_total||0;
-box.appendChild(resRow('DRAM interna',fmtBytes(heapFree)+' livres de '+fmtBytes(heapTotal),
-'Maior bloco '+fmtBytes(r.heap_largest)+' · mínimo histórico '+fmtBytes(r.heap_min),pctUsed(heapFree,heapTotal)));
+const hp=pctUsed(heapFree,heapTotal);
+box.appendChild(resRow('DRAM interna',fmtBytes(heapFree)+' livres de '+fmtBytes(heapTotal)+' · '+hp+'% usados',
+'Maior bloco '+fmtBytes(r.heap_largest)+' · mínimo histórico '+fmtBytes(r.heap_min),hp));
 const psFree=+r.psram_free||0,psTotal=+r.psram_total||0;
-if(psTotal)box.appendChild(resRow('PSRAM',fmtBytes(psFree)+' livres de '+fmtBytes(psTotal),
-'Maior bloco '+fmtBytes(r.psram_largest),pctUsed(psFree,psTotal)));
+if(psTotal){const pp=pctUsed(psFree,psTotal);box.appendChild(resRow('PSRAM',fmtBytes(psFree)+' livres de '+fmtBytes(psTotal)+' · '+pp+'% usados',
+'Maior bloco '+fmtBytes(r.psram_largest),pp));}
 else box.appendChild(resRow('PSRAM','Indisponível',''));
 const sketch=+r.flash_sketch||0,sketchFree=+r.flash_sketch_free||0,sketchCap=sketch+sketchFree;
-box.appendChild(resRow('Firmware (flash)',fmtBytes(sketch)+' da imagem · '+fmtBytes(sketchFree)+' livres (OTA)',
+box.appendChild(resRow('Firmware (flash)',fmtBytes(sketch)+' da imagem · '+fmtBytes(sketchFree)+' livres · '+pctUsed(sketchFree,sketchCap)+'% usados',
 '',sketchCap?pctUsed(sketchFree,sketchCap):0));
 if(r.storage_ready&&+r.storage_total){
 const kind=r.storage_kind||'Volume';
-box.appendChild(resRow(kind,fmtBytes(r.storage_free)+' livres de '+fmtBytes(r.storage_total),
-'',pctUsed(r.storage_free,r.storage_total)));
+const sp=pctUsed(r.storage_free,r.storage_total);
+box.appendChild(resRow(kind,fmtBytes(r.storage_free)+' livres de '+fmtBytes(r.storage_total)+' · '+sp+'% usados',
+'',sp));
 }else box.appendChild(resRow('Armazenamento','Nenhum volume montado',''));
 box.appendChild(resRow('Ligado há',uptimeLabel(r.uptime_s),''))}
 function chipValue(c,k){if(c.dataset.scope==='widget'){const w=(s.widget_settings&&s.widget_settings[c.dataset.widget])||{};
-if(w[k]!=null)return +w[k];}return +((s.settings&&s.settings[k])||0)}
+if(w[k]!=null)return w[k];}if(s.settings&&s.settings[k]!=null)return s.settings[k];return 0}
+function chipBest(opts,cur){let best=0;const strMode=opts.every(o=>typeof o[0]==='string'&&Number.isNaN(Number(o[0])));
+if(strMode){opts.forEach((o,i)=>{if(String(cur)===o[0])best=i});return best}
+cur=+cur||0;opts.forEach((o,i)=>{if(Math.abs(+o[0]-cur)<Math.abs(+opts[best][0]-cur))best=i});return best}
 function draw(){document.querySelectorAll('.chips').forEach(c=>{const k=c.dataset.k;c.innerHTML='';
-let opts=JSON.parse(c.dataset.o),best=0,cur=chipValue(c,k);opts.forEach((o,i)=>{if(Math.abs(+o[0]-cur)<Math.abs(+opts[best][0]-cur))best=i});
+let opts=JSON.parse(c.dataset.o),cur=chipValue(c,k),best=chipBest(opts,cur);
 opts.forEach((o,i)=>{const b=document.createElement('button');b.textContent=o[1];if(i==best)b.className='on';
 b.onclick=()=>{
 if(c.dataset.scope==='widget'){if(!s.widget_settings)s.widget_settings={};if(!s.widget_settings[c.dataset.widget])s.widget_settings[c.dataset.widget]={};

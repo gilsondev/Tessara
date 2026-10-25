@@ -70,6 +70,8 @@ void test_home_compose_new_registry_type_appears_without_layout_change(void);
 void test_clock_summary_synced_afternoon(void);
 void test_clock_summary_unsynced(void);
 void test_clock_summary_greeting_bands(void);
+void test_clock_summary_hms_and_dmy(void);
+void test_clock_summary_parse_ids(void);
 void test_web_src_settings_and_setup_exist_with_markers(void);
 void test_web_headers_match_src_after_embed(void);
 void test_format_bytes_scales(void);
@@ -153,6 +155,8 @@ int main(int argc, char **argv) {
     RUN_TEST(test_clock_summary_synced_afternoon);
     RUN_TEST(test_clock_summary_unsynced);
     RUN_TEST(test_clock_summary_greeting_bands);
+    RUN_TEST(test_clock_summary_hms_and_dmy);
+    RUN_TEST(test_clock_summary_parse_ids);
     RUN_TEST(test_web_src_settings_and_setup_exist_with_markers);
     RUN_TEST(test_web_headers_match_src_after_embed);
     RUN_TEST(test_format_bytes_scales);

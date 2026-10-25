@@ -116,7 +116,14 @@ void test_runtime_remount_same_type_reuses_slot(void) {
 
 void test_context_exposes_services_and_namespaced_settings(void) {
     tessara::MemoryHost host;
-    host.time.snap = {14, 30, 2, 24, 9, true};
+    host.time.snap = {};
+    host.time.snap.hour = 14;
+    host.time.snap.minute = 30;
+    host.time.snap.wday = 2;
+    host.time.snap.day = 24;
+    host.time.snap.month = 9;
+    host.time.snap.year = 2025;
+    host.time.snap.synced = true;
     host.settings.set("org.tessara.fake/place", "Campinas");
     tessara::HostServices bag = host.bag();
 

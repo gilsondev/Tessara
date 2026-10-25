@@ -394,3 +394,81 @@ void kit::draw_into(lv_obj_t *obj, lv_draw_buf_t *buf, const lv_area_t &buf_area
     disp->layer_head = head;
     lv_refr_set_disp_refreshing(refreshing);
 }
+
+namespace {
+
+int32_t glyph_width(const lv_font_t *font, const char *ch) {
+    lv_point_t sz = {};
+    lv_text_get_size(&sz, ch, font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    return sz.x > 0 ? sz.x : 0;
+}
+
+}  // namespace
+
+kit::TabularTime kit::tabular_time(lv_obj_t *parent, const lv_font_t *font, lv_color_t color) {
+    TabularTime clock = {};
+    if (!parent || !font) return clock;
+
+    int32_t digit_w = 0;
+    for (char d = '0'; d <= '9'; ++d) {
+        char one[2] = {d, '\0'};
+        int32_t w = glyph_width(font, one);
+        if (w > digit_w) digit_w = w;
+    }
+    // Placeholder "-" shares the digit slot (unsynced "--:--").
+    {
+        int32_t w = glyph_width(font, "-");
+        if (w > digit_w) digit_w = w;
+    }
+    int32_t colon_w = glyph_width(font, ":");
+    if (colon_w < 1) colon_w = digit_w / 3;
+    clock.digit_w = digit_w;
+    clock.colon_w = colon_w;
+
+    clock.root = bare(parent);
+    lv_obj_set_height(clock.root, LV_SIZE_CONTENT);
+    lv_obj_set_width(clock.root, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(clock.root, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(clock.root, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(clock.root, 0, 0);
+
+    for (int i = 0; i < 8; ++i) {
+        lv_obj_t *cell = lv_label_create(clock.root);
+        lv_label_set_text(cell, "");
+        lv_obj_set_style_text_font(cell, font, 0);
+        lv_obj_set_style_text_color(cell, color, 0);
+        lv_obj_set_style_text_align(cell, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_width(cell, digit_w);
+        lv_obj_add_flag(cell, LV_OBJ_FLAG_HIDDEN);
+        clock.cells[i] = cell;
+    }
+    return clock;
+}
+
+void kit::tabular_time_set(TabularTime &clock, const char *text) {
+    if (!clock.root || !text) return;
+    if (std::strcmp(clock.shown, text) == 0) return;
+    std::snprintf(clock.shown, sizeof(clock.shown), "%s", text);
+
+    const int n = static_cast<int>(std::strlen(text));
+    for (int i = 0; i < 8; ++i) {
+        lv_obj_t *cell = clock.cells[i];
+        if (!cell) continue;
+        if (i >= n) {
+            lv_obj_add_flag(cell, LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        char ch = text[i];
+        char one[2] = {ch, '\0'};
+        if (std::strcmp(lv_label_get_text(cell), one) != 0) lv_label_set_text(cell, one);
+        const bool colon = ch == ':';
+        lv_obj_set_width(cell, colon ? clock.colon_w : clock.digit_w);
+        lv_obj_remove_flag(cell, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void kit::tabular_time_recolor(TabularTime &clock, lv_color_t color) {
+    for (int i = 0; i < 8; ++i) {
+        if (clock.cells[i]) lv_obj_set_style_text_color(clock.cells[i], color, 0);
+    }
+}

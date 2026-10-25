@@ -4,7 +4,13 @@
 namespace daytime {
 
 void start();
-// Local time in America/Sao_Paulo (UTC−3, no daylight saving). wday is 0 = Sunday.
+// Apply a Tessara timezone id (e.g. "sao_paulo", "utc"). Idempotent; restarts NTP mapping.
+bool set_timezone(const char *tz_id);
+const char *timezone_id();
+const char *timezone_label(const char *tz_id);
+
+// Local civil time in the configured zone. wday is 0 = Sunday; month is 0-based.
 bool local(int &hour, int &minute, int &wday, int &day, int &month);
+bool local(int &hour, int &minute, int &second, int &wday, int &day, int &month, int &year);
 
 }  // namespace daytime

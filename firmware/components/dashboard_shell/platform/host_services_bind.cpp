@@ -22,13 +22,15 @@ class DaytimeBridge final : public tessara::ITime {
 public:
     tessara::TimeSnapshot now() const override {
         tessara::TimeSnapshot snap = g_time.snap;
-        int hour = 0, minute = 0, wday = 0, day = 1, month = 0;
-        if (daytime::local(hour, minute, wday, day, month)) {
+        int hour = 0, minute = 0, second = 0, wday = 0, day = 1, month = 0, year = 0;
+        if (daytime::local(hour, minute, second, wday, day, month, year)) {
             snap.hour = hour;
             snap.minute = minute;
+            snap.second = second;
             snap.wday = wday;
             snap.day = day;
             snap.month = month;
+            snap.year = year;
             snap.synced = true;
         } else {
             snap.synced = false;

@@ -24,5 +24,5 @@ void test_percent_used(void) {
 void test_format_pair(void) {
     char buf[48];
     device_resources::format_pair(1024, 2048, buf, sizeof(buf));
-    TEST_ASSERT_TRUE(std::strstr(buf, "/") != nullptr);
+    TEST_ASSERT_TRUE(std::strstr(buf, "livres de") != nullptr);
 }

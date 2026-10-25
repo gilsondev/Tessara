@@ -9,9 +9,11 @@ namespace tessara {
 struct TimeSnapshot {
     int hour = 0;
     int minute = 0;
+    int second = 0;
     int wday = 0;  // 0 = Sunday
     int day = 1;
     int month = 0;  // 0-based, like tm_mon
+    int year = 0;   // full year, e.g. 2026
     bool synced = false;
 };
 

@@ -8,6 +8,8 @@
 
 #include <Arduino.h>
 #include <esp_heap_caps.h>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include <esp_system.h>
 #endif
 
@@ -45,7 +47,7 @@ void device_resources::format_pair(uint64_t free_b, uint64_t total_b, char *dest
     char a[24], b[24];
     format_bytes(free_b, a, sizeof(a));
     format_bytes(total_b, b, sizeof(b));
-    std::snprintf(dest, cap, "%s / %s", a, b);
+    std::snprintf(dest, cap, "%s livres de %s", a, b);
 }
 
 int device_resources::percent_used(uint64_t free_b, uint64_t total_b) {
@@ -61,14 +63,30 @@ device_resources::Sample device_resources::sample() {
     out.heap_free_b = static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     out.heap_total_b = static_cast<uint32_t>(heap_caps_get_total_size(MALLOC_CAP_INTERNAL));
     out.heap_largest_b = static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-    out.heap_min_b = static_cast<uint32_t>(esp_get_minimum_free_heap_size());
+    out.heap_min_b = static_cast<uint32_t>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
 
     out.psram_free_b = static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     out.psram_total_b = static_cast<uint32_t>(heap_caps_get_total_size(MALLOC_CAP_SPIRAM));
     out.psram_largest_b = static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
 
     out.flash_sketch_b = ESP.getSketchSize();
-    out.flash_sketch_free_b = ESP.getFreeSketchSpace();
+    // Dual-OTA: FreeSketchSpace is the other slot. Factory-only tables return 0 even when
+    // the running partition still has room — fall back to partition size − sketch.
+    const uint32_t ota_free = ESP.getFreeSketchSpace();
+    uint32_t part_size = 0;
+    if (const esp_partition_t *running = esp_ota_get_running_partition()) {
+        part_size = running->size;
+    } else if (const esp_partition_t *factory =
+                   esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, nullptr)) {
+        part_size = factory->size;
+    }
+    if (ota_free > 0) {
+        out.flash_sketch_free_b = ota_free;
+    } else if (part_size > out.flash_sketch_b) {
+        out.flash_sketch_free_b = part_size - out.flash_sketch_b;
+    } else {
+        out.flash_sketch_free_b = 0;
+    }
 
     sd_host::ensure();
     out.storage_ready = sd_host::ready();

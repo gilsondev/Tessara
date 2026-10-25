@@ -59,8 +59,8 @@ struct Slot {
     bool used;
 };
 
-char hostname[32] = "tessera";
-char host_local[40] = "tessera.local";
+char hostname[32] = "tessara";
+char host_local[40] = "tessara.local";
 WiFiServer server(80);
 Slot slots[kSlots];
 TaskHandle_t task = nullptr;
@@ -99,6 +99,11 @@ Reply state() {
     aitokens_w["show_aitokens_codex"] = snapshot.settings.show_aitokens_codex;
     aitokens_w["show_aitokens_claude"] = snapshot.settings.show_aitokens_claude;
     aitokens_w["show_aitokens_cursor"] = snapshot.settings.show_aitokens_cursor;
+    JsonObject clock_w = wset[dashboard::id_clock()].to<JsonObject>();
+    clock_w["timezone"] = snapshot.clock_timezone[0] ? snapshot.clock_timezone : "sao_paulo";
+    clock_w["time_format"] = snapshot.clock_time_format[0] ? snapshot.clock_time_format : "hm";
+    JsonObject date_w = wset[dashboard::id_date()].to<JsonObject>();
+    date_w["date_format"] = snapshot.date_format[0] ? snapshot.date_format : "short_pt";
     JsonObject info = doc["info"].to<JsonObject>();
     info["host"] = snapshot.info.host;
     info["ip"] = snapshot.info.ip;
@@ -403,7 +408,7 @@ bool send_install_command(WiFiClient &client) {
             snprintf(panel, sizeof(panel), "http://%s", snapshot.info.host);
         }
     } else {
-        snprintf(panel, sizeof(panel), "http://tessera.local");
+        snprintf(panel, sizeof(panel), "http://tessara.local");
     }
     xSemaphoreGive(guard);
 
@@ -698,6 +703,7 @@ void run(void *) {
     bool listening = false;
     int mode = 0;
     bool mdns_on = false;
+    bool sta_was_up = false;
     for (;;) {
         if (wifi_phase == 1) {
             WiFi.disconnect(false, false);
@@ -718,11 +724,33 @@ void run(void *) {
             WiFi.scanDelete();
             WiFi.softAPdisconnect(true);
             WiFi.mode(WIFI_STA);
+            if (mdns_on) {
+                MDNS.end();
+                mdns_on = false;
+            }
             serve_want = 2;
             wifi_phase = 0;
+            sta_was_up = false;
         }
         collect_scan();
         if (wifi_phase == 4 && !scanning) raise_ap();
+        const bool sta_up = WiFi.status() == WL_CONNECTED;
+        if (sta_was_up && !sta_up) {
+            // Drop stale mDNS / HTTP so a reconnect re-advertises .local.
+            if (mdns_on) {
+                MDNS.end();
+                mdns_on = false;
+            }
+            if (listening && mode == 2) {
+                for (Slot &slot : slots) {
+                    if (slot.used) release(slot);
+                }
+                server.end();
+                listening = false;
+                mode = 0;
+            }
+        }
+        sta_was_up = sta_up;
         int want = serve_want;
         if (listening && mode != want) {
             for (Slot &slot : slots) {
@@ -737,11 +765,15 @@ void run(void *) {
             listening = true;
             mode = 1;
         }
-        if (!listening && want == 2 && WiFi.status() == WL_CONNECTED) {
-            if (!mdns_on && MDNS.begin(hostname)) {
-                MDNS.addService("http", "tcp", 80);
-                logger::printf("web http://%s (%s)\n", host_local, WiFi.localIP().toString().c_str());
-                mdns_on = true;
+        if (!listening && want == 2 && sta_up) {
+            if (!mdns_on) {
+                if (MDNS.begin(hostname)) {
+                    MDNS.addService("http", "tcp", 80);
+                    logger::printf("web http://%s (%s)\n", host_local, WiFi.localIP().toString().c_str());
+                    mdns_on = true;
+                } else {
+                    logger::printf("mdns falhou — use http://%s/\n", WiFi.localIP().toString().c_str());
+                }
             }
             server.begin();
             listening = true;

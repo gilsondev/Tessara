@@ -12,6 +12,7 @@
 #include "platform/console.h"
 #include "platform/daytime.h"
 #include "platform/device_resources.h"
+#include "platform/face_prefs.h"
 #include "platform/display_host.h"
 #include "platform/input_host.h"
 #include "platform/log.h"
@@ -46,7 +47,7 @@ constexpr uint32_t kForgetClosedMs = 60000;
 constexpr uint32_t kCloseSettleMs = 3000;
 constexpr int kMaxCloses = 16;
 constexpr int kMaxPending = pending_closes::kMax;
-constexpr char kHostName[] = "tessera";
+constexpr char kHostName[] = "tessara";
 
 bool resolve_dark(const DeviceSettings &settings) {
     int hour = 0, minute = 0, wday = 0, day = 0, month = 0;
@@ -78,6 +79,23 @@ public:
         // Prefer namespaced Todoist sync when present; seed device value into wset otherwise.
         device_.sync_minutes = widget_settings::todoist_sync_minutes(device_.sync_minutes);
         widget_settings::set_todoist_sync_minutes(device_.sync_minutes);
+        char tz[24] = {};
+        if (!widget_settings::get(dashboard::id_clock(), "timezone", tz, sizeof(tz)) || !tz[0]) {
+            text::copy(tz, sizeof(tz), "sao_paulo");
+            widget_settings::set(dashboard::id_clock(), "timezone", tz);
+        }
+        daytime::set_timezone(tz);
+        char time_fmt[12] = {};
+        if (!widget_settings::get(dashboard::id_clock(), "time_format", time_fmt, sizeof(time_fmt)) ||
+            !time_fmt[0]) {
+            widget_settings::set(dashboard::id_clock(), "time_format", "hm");
+        }
+        char date_fmt[16] = {};
+        if (!widget_settings::get(dashboard::id_date(), "date_format", date_fmt, sizeof(date_fmt)) ||
+            !date_fmt[0]) {
+            widget_settings::set(dashboard::id_date(), "date_format", "short_pt");
+        }
+        face_prefs::reload();
         palette::set_mode(resolve_dark(device_) ? palette::Mode::Dark : palette::Mode::Light);
         display_host::begin(*board.display, board.backlight, board.descriptor, rotation_for(device_.portrait));
         display_host::set_brightness(device_.brightness);
@@ -559,6 +577,21 @@ private:
             publish();
             return;
         }
+        if (std::strcmp(id, dashboard::id_clock()) == 0) {
+            widget_settings::set(id, key, value);
+            if (std::strcmp(key, "timezone") == 0) {
+                daytime::set_timezone(value);
+            }
+            face_prefs::reload();
+            publish();
+            return;
+        }
+        if (std::strcmp(id, dashboard::id_date()) == 0) {
+            widget_settings::set(id, key, value);
+            face_prefs::reload();
+            publish();
+            return;
+        }
         widget_settings::set(id, key, value);
         publish();
     }
@@ -572,7 +605,8 @@ private:
         need_token_ = false;
         ui::hide_loader();
         ui::show_setup("Primeiro uso", "Conecte o celular na rede", web_portal::setup_ap(),
-                       "A página abre sozinha. Se não abrir, aponte a câmera.", web_portal::setup_url());
+                       "A página abre sozinha. Se não abrir, escaneie o QR ou digite o endereço abaixo.",
+                       web_portal::setup_url());
         display_host::refresh_now();
         web_portal::start_setup();
     }
@@ -613,6 +647,21 @@ private:
         snapshot.aitokens_age_s =
             aitokens_.ready && aitokens_.received_ms ? (millis() - aitokens_.received_ms) / 1000u : 0;
         snapshot.resources = device_resources::sample();
+        if (!widget_settings::get(dashboard::id_clock(), "timezone", snapshot.clock_timezone,
+                                 sizeof(snapshot.clock_timezone)) ||
+            !snapshot.clock_timezone[0]) {
+            text::copy(snapshot.clock_timezone, sizeof(snapshot.clock_timezone), "sao_paulo");
+        }
+        if (!widget_settings::get(dashboard::id_clock(), "time_format", snapshot.clock_time_format,
+                                 sizeof(snapshot.clock_time_format)) ||
+            !snapshot.clock_time_format[0]) {
+            text::copy(snapshot.clock_time_format, sizeof(snapshot.clock_time_format), "hm");
+        }
+        if (!widget_settings::get(dashboard::id_date(), "date_format", snapshot.date_format,
+                                 sizeof(snapshot.date_format)) ||
+            !snapshot.date_format[0]) {
+            text::copy(snapshot.date_format, sizeof(snapshot.date_format), "short_pt");
+        }
         web_portal::publish(snapshot);
         ui::set_agent(agent_ui, agent_pack_ready());
         paint_summary();

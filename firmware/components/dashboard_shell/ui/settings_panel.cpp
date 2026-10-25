@@ -507,66 +507,39 @@ void resource_meter(lv_obj_t *card, const char *title, const char *value, const 
 }
 
 void fill_resources() {
+    // Device: title + "X livres de Y" + bar only. Extra detail stays on the web portal.
     device_resources::Sample r = device_resources::sample();
     lv_obj_t *card = make_card();
-    card_title(card, "Memória");
 
-    char heap_pair[40], heap_block[32], heap_min[32], heap_extra[72];
-    device_resources::format_pair(r.heap_free_b, r.heap_total_b, heap_pair, sizeof(heap_pair));
-    device_resources::format_bytes(r.heap_largest_b, heap_block, sizeof(heap_block));
-    device_resources::format_bytes(r.heap_min_b, heap_min, sizeof(heap_min));
-    snprintf(heap_extra, sizeof(heap_extra), "Maior bloco %s · mínimo histórico %s", heap_block, heap_min);
-    resource_meter(card, "DRAM interna", heap_pair, heap_extra,
+    char pair[48];
+    device_resources::format_pair(r.heap_free_b, r.heap_total_b, pair, sizeof(pair));
+    resource_meter(card, "DRAM", pair, nullptr,
                    device_resources::percent_used(r.heap_free_b, r.heap_total_b));
 
-    char psram_pair[40], psram_block[32], psram_extra[48];
     if (r.psram_total_b == 0) {
         resource_meter(card, "PSRAM", "indisponível", nullptr, -1);
     } else {
-        device_resources::format_pair(r.psram_free_b, r.psram_total_b, psram_pair, sizeof(psram_pair));
-        device_resources::format_bytes(r.psram_largest_b, psram_block, sizeof(psram_block));
-        snprintf(psram_extra, sizeof(psram_extra), "Maior bloco %s", psram_block);
-        resource_meter(card, "PSRAM", psram_pair, psram_extra,
+        device_resources::format_pair(r.psram_free_b, r.psram_total_b, pair, sizeof(pair));
+        resource_meter(card, "PSRAM", pair, nullptr,
                        device_resources::percent_used(r.psram_free_b, r.psram_total_b));
     }
 
-    lv_obj_t *flash = make_card();
-    card_title(flash, "Firmware (flash)");
-    char sketch[40], sketch_free[32], flash_line[80];
-    device_resources::format_bytes(r.flash_sketch_b, sketch, sizeof(sketch));
-    device_resources::format_bytes(r.flash_sketch_free_b, sketch_free, sizeof(sketch_free));
-    snprintf(flash_line, sizeof(flash_line), "%s da imagem · %s livres (OTA)", sketch, sketch_free);
-    uint64_t sketch_cap = static_cast<uint64_t>(r.flash_sketch_b) + r.flash_sketch_free_b;
-    int flash_pct = sketch_cap ? device_resources::percent_used(r.flash_sketch_free_b, sketch_cap) : -1;
-    resource_meter(flash, "Imagem", flash_line, nullptr, flash_pct);
-
-    lv_obj_t *store = make_card();
-    card_title(store, "Armazenamento");
-    if (!r.storage_ready || r.storage_total_b == 0) {
-        resource_meter(store, "Volume", "nenhum montado", nullptr, -1);
+    const uint64_t flash_cap = static_cast<uint64_t>(r.flash_sketch_b) + r.flash_sketch_free_b;
+    if (flash_cap == 0) {
+        resource_meter(card, "Flash", "indisponível", nullptr, -1);
     } else {
-        char pair[40];
-        device_resources::format_pair(r.storage_free_b, r.storage_total_b, pair, sizeof(pair));
-        resource_meter(store, r.storage_kind[0] ? r.storage_kind : "Volume", pair, nullptr,
-                       device_resources::percent_used(r.storage_free_b, r.storage_total_b));
+        device_resources::format_pair(r.flash_sketch_free_b, flash_cap, pair, sizeof(pair));
+        resource_meter(card, "Flash", pair, nullptr,
+                       device_resources::percent_used(r.flash_sketch_free_b, flash_cap));
     }
 
-    lv_obj_t *up = make_card();
-    card_title(up, "Sistema");
-    char uptime[48];
-    uint32_t s = r.uptime_s;
-    if (s < 60) snprintf(uptime, sizeof(uptime), "%u s", static_cast<unsigned>(s));
-    else if (s < 3600) snprintf(uptime, sizeof(uptime), "%u min", static_cast<unsigned>(s / 60u));
-    else snprintf(uptime, sizeof(uptime), "%u h %u min", static_cast<unsigned>(s / 3600u),
-                  static_cast<unsigned>((s % 3600u) / 60u));
-    resource_meter(up, "Ligado há", uptime, nullptr, -1);
-
-    lv_obj_t *note = lv_label_create(content);
-    lv_label_set_text(note, "Valores ao vivo. Maior bloco interno importa para TLS/Wi‑Fi. Arraste para rolar.");
-    lv_obj_set_width(note, lv_pct(100));
-    lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_font(note, &theme::small_font(), 0);
-    lv_obj_set_style_text_color(note, theme::text_secondary(), 0);
+    if (!r.storage_ready || r.storage_total_b == 0) {
+        resource_meter(card, "Armazenamento", "nenhum montado", nullptr, -1);
+    } else {
+        device_resources::format_pair(r.storage_free_b, r.storage_total_b, pair, sizeof(pair));
+        resource_meter(card, r.storage_kind[0] ? r.storage_kind : "Armazenamento", pair, nullptr,
+                       device_resources::percent_used(r.storage_free_b, r.storage_total_b));
+    }
 }
 
 void connection_card() {
@@ -601,8 +574,12 @@ void connection_card() {
 
     lv_obj_t *detail = lv_label_create(text);
     if (online && info.ip[0]) {
-        char line[48];
-        snprintf(line, sizeof(line), "%s · %s", info.ip, wifi_strength_label(wifi_strength(true, info.rssi)));
+        char line[72];
+        if (info.host[0]) {
+            snprintf(line, sizeof(line), "%s · %s", info.ip, info.host);
+        } else {
+            snprintf(line, sizeof(line), "%s · %s", info.ip, wifi_strength_label(wifi_strength(true, info.rssi)));
+        }
         lv_label_set_text(detail, line);
     } else {
         lv_label_set_text(detail, "Aguardando a rede");

@@ -49,7 +49,7 @@ inline const char *wifi_strength_label(WifiStrength level) {
 
 // What the settings screens show about the connection.
 struct DeviceInfo {
-    char host[40];  // "tessera.local"
+    char host[40];  // "tessara.local"
     char ip[16];
     char ssid[64];
     bool online;
