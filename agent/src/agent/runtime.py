@@ -34,15 +34,22 @@ def open_serial():
                 baudrate=BAUD,
                 timeout=0.2,
                 write_timeout=1.0,
+                # dsrdtr=False avoids the macOS CDC reset pulse on open.
                 dsrdtr=False,
                 rtscts=False,
             )
             try:
-                ser.dtr = False
                 ser.rts = False
             except Exception:
                 pass
             time.sleep(0.5)  # settle after open (CDC enumerate)
+            # ESP32 USB CDC suppresses device→host TX while DTR is low, so panel
+            # commands (MEDIA\tPLAYPAUSE, CALENDAR?, …) never arrive. Assert DTR
+            # after settle — open already happened without the reset pulse.
+            try:
+                ser.dtr = True
+            except Exception:
+                pass
             return ser, port
         except (OSError, serial.SerialException):
             continue
@@ -97,6 +104,8 @@ def main() -> int:
                         write_lines(ser, [aitokens.build_line()])
                         last_push = time.time()
                     elif text.startswith("MEDIA"):
+                        if "\t" in text and not text.endswith("?"):
+                            print(f"tessara-agent: media ← {text}", flush=True)
                         replies = media.handle_line(text)
                         if replies:
                             write_lines(ser, replies)
@@ -106,6 +115,8 @@ def main() -> int:
                         if replies:
                             write_lines(ser, replies)
                             last_cal = time.time()
+                        elif text.startswith("CALENDAR?"):
+                            print("tessara-agent: calendar ← ?", flush=True)
             now = time.time()
             if maybe_self_update(last_check=last_update_check):
                 return 0

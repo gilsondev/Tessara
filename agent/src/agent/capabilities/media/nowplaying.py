@@ -62,7 +62,7 @@ def read() -> Optional[NowPlaying]:
             ["osascript", "-e", script],
             capture_output=True,
             text=True,
-            timeout=4,
+            timeout=1.5,
             check=False,
         )
         if out.returncode != 0:

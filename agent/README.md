@@ -8,6 +8,8 @@ Recursos via USB: **AI Tokens** (cotas), **Calendar** (Google, OAuth no Mac) e *
 
 O agente empurra `MEDIA\tv1\t…` (~8 s) e responde a `MEDIA?` / `MEDIA\tPLAYPAUSE|NEXT|PREV`. Fase 1 lê **Music** e **Spotify** (Automation do macOS pode pedir permissão na 1ª vez). Sem sessão → `stopped` / “Nada tocando” no cartão **Mac**.
 
+USB: após abrir a porta o agente liga **DTR** (sem pulso de reset no open). Sem DTR o CDC do ESP32 não envia comandos do painel → Mac (play/pause, `CALENDAR?`, etc.).
+
 ### Cursor (cotas no painel)
 
 O firmware **não** chama a API da Cursor. O agente no Mac resolve a sessão nesta ordem e empurra `AITOKENS`:

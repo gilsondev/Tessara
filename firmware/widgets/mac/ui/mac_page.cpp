@@ -13,6 +13,8 @@ lv_obj_t *screen = nullptr;
 lv_obj_t *title_label = nullptr;
 lv_obj_t *status_label = nullptr;
 lv_obj_t *body = nullptr;
+lv_obj_t *meta = nullptr;
+lv_obj_t *controls = nullptr;
 lv_obj_t *track_label = nullptr;
 lv_obj_t *artist_label = nullptr;
 lv_obj_t *app_label = nullptr;
@@ -44,34 +46,38 @@ void fire_cmd(const char *cmd) {
     if (cmd_cb && cmd) cmd_cb(cmd);
 }
 
-void on_prev(lv_event_t *) { fire_cmd("PREV"); }
-void on_play(lv_event_t *) { fire_cmd("PLAYPAUSE"); }
-void on_next(lv_event_t *) { fire_cmd("NEXT"); }
+void on_prev(lv_event_t *) {
+    set_status("‹ anterior");
+    fire_cmd("PREV");
+}
+void on_play(lv_event_t *) {
+    set_status("play/pause…");
+    fire_cmd("PLAYPAUSE");
+}
+void on_next(lv_event_t *) {
+    set_status("próxima ›");
+    fire_cmd("NEXT");
+}
 
 lv_obj_t *make_ctrl(lv_obj_t *row, const char *symbol, lv_event_cb_t cb) {
-    lv_obj_t *btn = lv_button_create(row);
-    lv_obj_set_size(btn, 64, 48);
-    lv_obj_set_style_radius(btn, 12, 0);
-    lv_obj_set_style_bg_color(btn, theme::surface(), 0);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(btn, 1, 0);
-    lv_obj_set_style_border_color(btn, theme::border(), 0);
-    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t *lab = lv_label_create(btn);
-    lv_label_set_text(lab, symbol);
-    lv_obj_set_style_text_font(lab, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(lab, theme::text_primary(), 0);
-    lv_obj_center(lab);
+    lv_obj_t *btn = kit::icon_button(row, symbol, cb, palette::widget_mac());
+    lv_obj_set_size(btn, 64, 52);
+    lv_obj_set_ext_click_area(btn, 16);
+    // Ensure the glyph never steals the tap from the button.
+    lv_obj_t *lab = lv_obj_get_child(btn, 0);
+    if (lab) {
+        lv_obj_clear_flag(lab, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(lab, LV_OBJ_FLAG_EVENT_BUBBLE);
+    }
     return btn;
 }
 
 void style_controls() {
     auto paint_btn = [](lv_obj_t *btn) {
         if (!btn) return;
-        lv_obj_set_style_bg_color(btn, theme::surface(), 0);
-        lv_obj_set_style_border_color(btn, theme::border(), 0);
+        lv_obj_set_style_bg_color(btn, lv_color_hex(palette::widget_mac()), 0);
         lv_obj_t *lab = lv_obj_get_child(btn, 0);
-        if (lab) lv_obj_set_style_text_color(lab, theme::text_primary(), 0);
+        if (lab) lv_obj_set_style_text_color(lab, lv_color_white(), 0);
     };
     paint_btn(btn_prev);
     paint_btn(btn_play);
@@ -96,11 +102,20 @@ void build_into(lv_obj_t *parent) {
     lv_obj_set_width(body, lv_pct(100));
     lv_obj_set_flex_grow(body, 1);
     lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(body, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(body, 20, 0);
-    lv_obj_set_style_pad_row(body, 8, 0);
+    lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_hor(body, 20, 0);
+    lv_obj_set_style_pad_top(body, 24, 0);
+    lv_obj_set_style_pad_bottom(body, 12, 0);
+    lv_obj_set_style_pad_row(body, 0, 0);
 
-    track_label = lv_label_create(body);
+    meta = kit::bare(body);
+    lv_obj_set_width(meta, lv_pct(100));
+    lv_obj_set_flex_grow(meta, 1);
+    lv_obj_set_flex_flow(meta, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(meta, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(meta, 8, 0);
+
+    track_label = lv_label_create(meta);
     lv_label_set_text(track_label, "Nada tocando");
     lv_label_set_long_mode(track_label, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(track_label, lv_pct(100));
@@ -108,7 +123,7 @@ void build_into(lv_obj_t *parent) {
     lv_obj_set_style_text_font(track_label, &theme::title_font(), 0);
     lv_obj_set_style_text_color(track_label, theme::text_primary(), 0);
 
-    artist_label = lv_label_create(body);
+    artist_label = lv_label_create(meta);
     lv_label_set_text(artist_label, "");
     lv_label_set_long_mode(artist_label, LV_LABEL_LONG_DOT);
     lv_obj_set_width(artist_label, lv_pct(100));
@@ -116,22 +131,28 @@ void build_into(lv_obj_t *parent) {
     lv_obj_set_style_text_font(artist_label, &theme::label_font(), 0);
     lv_obj_set_style_text_color(artist_label, theme::text_secondary(), 0);
 
-    app_label = lv_label_create(body);
+    app_label = lv_label_create(meta);
     lv_label_set_text(app_label, "");
     lv_obj_set_style_text_font(app_label, &theme::small_font(), 0);
     lv_obj_set_style_text_color(app_label, theme::text_secondary(), 0);
 
-    lv_obj_t *row = kit::bare(body);
-    lv_obj_set_width(row, lv_pct(100));
-    lv_obj_set_height(row, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(row, 16, 0);
-    lv_obj_set_style_pad_top(row, 16, 0);
+    // Pin controls to the bottom of the page so title wrap never covers them.
+    controls = kit::bare(body);
+    lv_obj_set_width(controls, lv_pct(100));
+    lv_obj_set_height(controls, LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(controls, 0);
+    lv_obj_set_flex_flow(controls, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(controls, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(controls, 20, 0);
+    lv_obj_set_style_pad_top(controls, 12, 0);
+    lv_obj_set_style_pad_bottom(controls, 8, 0);
+    lv_obj_add_flag(controls, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(controls, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_move_foreground(controls);
 
-    btn_prev = make_ctrl(row, LV_SYMBOL_PREV, on_prev);
-    btn_play = make_ctrl(row, LV_SYMBOL_PLAY, on_play);
-    btn_next = make_ctrl(row, LV_SYMBOL_NEXT, on_next);
+    btn_prev = make_ctrl(controls, LV_SYMBOL_PREV, on_prev);
+    btn_play = make_ctrl(controls, LV_SYMBOL_PLAY, on_play);
+    btn_next = make_ctrl(controls, LV_SYMBOL_NEXT, on_next);
 }
 
 }  // namespace
@@ -148,7 +169,7 @@ void mac_page::unmount() {
     screen = nullptr;
     title_label = nullptr;
     status_label = nullptr;
-    body = nullptr;
+    body = meta = controls = nullptr;
     track_label = artist_label = app_label = nullptr;
     btn_prev = btn_play = btn_next = nullptr;
     standalone_screen = false;
@@ -160,7 +181,8 @@ void mac_page::mount(lv_obj_t *parent) {
     screen = parent;
     standalone_screen = false;
     build_into(parent);
-    fire_cmd("?");
+    if (!cmd_cb) set_status("sem handler");
+    else fire_cmd("?");
 }
 
 void mac_page::show() {

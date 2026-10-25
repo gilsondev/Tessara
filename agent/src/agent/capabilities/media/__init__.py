@@ -45,15 +45,20 @@ def build_line() -> str:
 def handle_line(text: str) -> list[str]:
     if not text:
         return []
-    if text.startswith("MEDIA?"):
+    raw = text.strip()
+    if raw == "MEDIA?" or raw.startswith("MEDIA?"):
         return [build_line()]
-    if text == "MEDIA\tPLAYPAUSE":
+    parts = raw.split("\t")
+    if not parts or parts[0] != "MEDIA" or len(parts) < 2:
+        return []
+    cmd = parts[1].strip().upper()
+    if cmd == "PLAYPAUSE":
         controls.playpause()
         return [build_line()]
-    if text == "MEDIA\tNEXT":
+    if cmd == "NEXT":
         controls.next_track()
         return [build_line()]
-    if text == "MEDIA\tPREV":
+    if cmd in ("PREV", "PREVIOUS"):
         controls.prev_track()
         return [build_line()]
     return []

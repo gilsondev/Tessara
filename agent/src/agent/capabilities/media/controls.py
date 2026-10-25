@@ -12,11 +12,16 @@ def _tell(app: str, verb: str) -> bool:
         r = subprocess.run(
             ["osascript", "-e", f'tell application "{app}" to {verb}'],
             capture_output=True,
-            timeout=3,
+            timeout=2,
             check=False,
         )
-        return r.returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
+        ok = r.returncode == 0
+        if not ok:
+            err = (r.stderr or b"").decode("utf-8", "replace")[:160]
+            print(f"tessara-agent: media tell {app!r} {verb!r} fail: {err}", flush=True)
+        return ok
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"tessara-agent: media tell {app!r} {verb!r} err: {exc}", flush=True)
         return False
 
 
