@@ -43,9 +43,14 @@ void settings_dismissed() {
 
 void on_settings(lv_event_t *) {
     if (events) events->on_open_settings();
-    settings_panel::open(settings_changed, settings_dismissed, []() {
-        if (events) events->on_aitokens_refresh();
-    });
+    settings_panel::open(
+        settings_changed, settings_dismissed,
+        []() {
+            if (events) events->on_aitokens_refresh();
+        },
+        [](const char *widget_id, const char *key, const char *value) {
+            if (events) events->on_widget_pref(widget_id, key, value);
+        });
 }
 
 void on_open_widget(lv_event_t *e) {
@@ -172,6 +177,10 @@ void ui::apply_theme() {
 void ui::set_device(const DeviceSettings &settings, const DeviceInfo &info) {
     settings_panel::show_values(settings, info);
     home::set_link(info.online, info.rssi);
+}
+
+void ui::set_face(const char *timezone, const char *time_format, const char *date_format) {
+    settings_panel::show_face(timezone, time_format, date_format);
 }
 
 void ui::show_loader(const char *title, const char *detail) { loader::show(title, detail); }

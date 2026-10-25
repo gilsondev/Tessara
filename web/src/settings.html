@@ -64,7 +64,7 @@ input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10
 .nav.on span{color:rgba(255,255,255,.86)}
 .back{display:none;border:0;background:transparent;color:var(--red);font-size:15px;padding:0 0 4px;cursor:pointer}
 .page{display:none;gap:14px}
-body[data-page="hub"] #page-hub,body[data-page="device"] #page-device,body[data-page="resources"] #page-resources,body[data-page="agent"] #page-agent,body[data-page="aitokens"] #page-aitokens,body[data-page="todoist"] #page-todoist,body[data-page="clima"] #page-clima,body[data-page="relogio"] #page-relogio,body[data-page="data"] #page-data{display:grid}
+body[data-page="hub"] #page-hub,body[data-page="device"] #page-device,body[data-page="resources"] #page-resources,body[data-page="agent"] #page-agent,body[data-page="aitokens"] #page-aitokens,body[data-page="todoist"] #page-todoist,body[data-page="clima"] #page-clima,body[data-page="datetime"] #page-datetime{display:grid}
 .meter{height:8px;background:var(--wash);border-radius:999px;overflow:hidden;margin-top:8px}
 .meter>i{display:block;height:100%;background:var(--red);border-radius:inherit;width:0}
 .res-grid{display:grid;gap:14px;margin-top:12px}
@@ -130,10 +130,9 @@ h1{font-size:30px}
 <p class="kicker">Dispositivo</p>
 <button class="nav" type="button" data-go="device"><b>Geral</b><span>Tela, som e Wi-Fi</span></button>
 <button class="nav" type="button" data-go="resources"><b>Memória</b><span>DRAM, PSRAM, flash e SD</span></button>
+<button class="nav" type="button" data-go="datetime"><b>Data e hora</b><span>Fuso, hora e data</span></button>
 <button class="nav" type="button" data-go="agent"><b>Agente Tessara</b><span>USB · status e instalação</span></button>
 <p class="kicker">Widgets</p>
-<button class="nav" type="button" data-go="relogio"><b>Relógio</b><span>Fuso e formato da hora</span></button>
-<button class="nav" type="button" data-go="data"><b>Data</b><span>Formato da data</span></button>
 <button class="nav" type="button" data-go="todoist"><b>Todoist</b><span>Listas, token e intervalo</span></button>
 <button class="nav" type="button" data-go="clima"><b>Clima</b><span>Cidade deste widget</span></button>
 <button class="nav" type="button" data-go="aitokens"><b>AI Tokens</b><span>Fontes na home</span></button>
@@ -145,23 +144,16 @@ h1{font-size:30px}
 <p class="note" id="widgets-note">Escolha o que aparece no painel. Ajustes de cada widget ficam no menu ao lado (ou ← nas páginas).</p>
 <ol class="board" id="widgets"></ol></section>
 </div>
-<div class="page" id="page-relogio">
-<section class="card"><h2>Relógio</h2>
-<p class="note">Vale para a hora na home e na tela de detalhe do relógio.</p>
+<div class="page" id="page-datetime">
+<section class="card"><h2>Data e hora</h2>
+<p class="note">Vale para a home e para o detalhe do relógio.</p>
 <div class="fields">
-<div class="field"><h3>Fuso horário</h3>
+<div class="field"><h3>Fuso</h3>
 <div class="chips" data-k="timezone" data-scope="widget" data-widget="org.tessara.clock" data-o='[["sao_paulo","Brasília"],["utc","UTC"],["new_york","Nova York"],["los_angeles","Los Angeles"],["london","Londres"],["lisbon","Lisboa"],["buenos_aires","Buenos Aires"],["mexico_city","México"]]'></div></div>
-<div class="field"><h3>Formato da hora</h3>
+<div class="field"><h3>Hora</h3>
 <div class="chips" data-k="time_format" data-scope="widget" data-widget="org.tessara.clock" data-o='[["hm","HH:MM"],["hms","HH:MM:SS"]]'></div></div>
-</div>
-</section>
-</div>
-<div class="page" id="page-data">
-<section class="card"><h2>Data</h2>
-<p class="note">Formato da data na home (e na linha de data do detalhe do relógio).</p>
-<div class="fields">
-<div class="field"><h3>Formato</h3>
-<div class="chips" data-k="date_format" data-scope="widget" data-widget="org.tessara.date" data-o='[["short_pt","Sáb, 24 de out"],["dmy","DD/MM/YYYY"],["ymd","YYYY-MM-DD"],["mdy","MM/DD/YYYY"],["long_pt","Sábado, 24 de outubro"]]'></div></div>
+<div class="field"><h3>Data</h3>
+<div class="chips" data-k="date_format" data-scope="widget" data-widget="org.tessara.date" data-o='[["short_pt","Curto"],["dmy","DD/MM"],["ymd","ISO"],["mdy","US"],["long_pt","Longo"]]'></div></div>
 </div>
 </section>
 </div>

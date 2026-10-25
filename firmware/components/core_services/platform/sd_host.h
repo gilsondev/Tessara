@@ -19,7 +19,7 @@ void poll();
 // Free / total bytes on the volume, or 0 if not mounted.
 uint64_t free_bytes();
 uint64_t total_bytes();
-// "SD", "FFat", or "" when nothing is mounted.
+// "Cartão SD", "Flash", or "" when nothing is mounted.
 const char *backend_name();
 // SPIRAM buffer helpers (widgets must not include esp_heap / Arduino).
 uint8_t *alloc_spiram(size_t bytes);

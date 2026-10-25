@@ -15,6 +15,8 @@ public:
     virtual void on_view_shown(int view) = 0;
     virtual void on_refresh_requested() = 0;
     virtual void on_settings_changed(const DeviceSettings &settings) = 0;
+    // Namespaced widget pref from the on-device settings panel (clock/date face).
+    virtual void on_widget_pref(const char *widget_id, const char *key, const char *value) = 0;
     // The check mark was tapped; the exit animation starts now.
     virtual void on_task_checked() = 0;
     // The row finished its exit animation; the task is still in task_store.
@@ -56,6 +58,7 @@ void drop_row(int view, int row);
 void set_status(const char *text);
 // Values shown on the settings page.
 void set_device(const DeviceSettings &settings, const DeviceInfo &info);
+void set_face(const char *timezone, const char *time_format, const char *date_format);
 void show_loader(const char *title, const char *detail);
 void set_loader_progress(int percent);
 void hide_loader();

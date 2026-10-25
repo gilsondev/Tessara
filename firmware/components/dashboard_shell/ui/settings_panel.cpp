@@ -1,6 +1,8 @@
 #include "ui/settings_panel.h"
 
+#include "domain/dashboard_layout.h"
 #include "platform/device_resources.h"
+#include "services/text.h"
 #include "ui/kit.h"
 #include "ui/palette.h"
 #include "ui/theme.h"
@@ -29,11 +31,17 @@ enum class Field : uint8_t {
     AiClaude,
     AiCursor,
 };
-enum class Page : uint8_t { Hub, General, Resources, Todoist, Weather, AiTokens, Agent };
+enum class FaceField : uint8_t { Timezone, TimeFormat, DateFormat };
+enum class Page : uint8_t { Hub, General, Resources, DateTime, Todoist, Weather, AiTokens, Agent };
 
 struct Choice {
     Field field;
     int value;
+};
+
+struct FaceChoice {
+    FaceField field;
+    const char *value;
 };
 
 constexpr Choice kOrientation[] = {{Field::Orientation, 1}, {Field::Orientation, 0}};
@@ -49,6 +57,21 @@ constexpr const char *kAppearanceText[] = {"Claro", "Escuro", "Auto"};
 constexpr const char *kRestText[] = {"2 min", "5 min", "10 min", "20 min", "30 min", "Nunca"};
 constexpr const char *kClockText[] = {"1 min", "2 min", "5 min", "10 min", "Até tocar"};
 
+constexpr FaceChoice kTimezone[] = {
+    {FaceField::Timezone, "sao_paulo"},     {FaceField::Timezone, "utc"},
+    {FaceField::Timezone, "new_york"},      {FaceField::Timezone, "los_angeles"},
+    {FaceField::Timezone, "london"},        {FaceField::Timezone, "lisbon"},
+    {FaceField::Timezone, "buenos_aires"},  {FaceField::Timezone, "mexico_city"},
+};
+constexpr const char *kTimezoneText[] = {"Brasília", "UTC", "NY", "LA", "Londres", "Lisboa", "BA", "México"};
+constexpr FaceChoice kTimeFormat[] = {{FaceField::TimeFormat, "hm"}, {FaceField::TimeFormat, "hms"}};
+constexpr const char *kTimeFormatText[] = {"HH:MM", "HH:MM:SS"};
+constexpr FaceChoice kDateFormat[] = {
+    {FaceField::DateFormat, "short_pt"}, {FaceField::DateFormat, "dmy"}, {FaceField::DateFormat, "ymd"},
+    {FaceField::DateFormat, "mdy"},      {FaceField::DateFormat, "long_pt"},
+};
+constexpr const char *kDateFormatText[] = {"Curto", "DD/MM", "ISO", "US", "Longo"};
+
 lv_obj_t *root = nullptr;
 lv_obj_t *body = nullptr;
 lv_obj_t *content = nullptr;
@@ -58,7 +81,11 @@ lv_image_dsc_t qr_image;
 settings_panel::ChangeFn on_change = nullptr;
 settings_panel::DismissFn on_dismiss = nullptr;
 settings_panel::RequestAiTokensFn on_request_aitokens = nullptr;
+settings_panel::WidgetPrefFn on_widget_pref = nullptr;
 Page page = Page::Hub;
+char face_timezone[24] = "sao_paulo";
+char face_time_format[12] = "hm";
+char face_date_format[16] = "short_pt";
 
 void release_qr_pixels() {
     if (!qr_pixels) return;
@@ -155,6 +182,41 @@ int current(Field field) {
 }
 
 void fill();
+
+const char *face_current(FaceField field) {
+    switch (field) {
+        case FaceField::Timezone: return face_timezone;
+        case FaceField::TimeFormat: return face_time_format;
+        case FaceField::DateFormat: return face_date_format;
+    }
+    return "";
+}
+
+void on_face_choice(lv_event_t *event) {
+    const FaceChoice *choice = static_cast<const FaceChoice *>(lv_event_get_user_data(event));
+    if (!choice || !choice->value) return;
+    const char *widget_id = dashboard::id_clock();
+    const char *key = "timezone";
+    switch (choice->field) {
+        case FaceField::Timezone:
+            text::copy(face_timezone, sizeof(face_timezone), choice->value);
+            widget_id = dashboard::id_clock();
+            key = "timezone";
+            break;
+        case FaceField::TimeFormat:
+            text::copy(face_time_format, sizeof(face_time_format), choice->value);
+            widget_id = dashboard::id_clock();
+            key = "time_format";
+            break;
+        case FaceField::DateFormat:
+            text::copy(face_date_format, sizeof(face_date_format), choice->value);
+            widget_id = dashboard::id_date();
+            key = "date_format";
+            break;
+    }
+    lv_async_call([](void *) { fill(); }, nullptr);
+    if (on_widget_pref) on_widget_pref(widget_id, key, choice->value);
+}
 
 void on_choice(lv_event_t *event) {
     const Choice *choice = static_cast<const Choice *>(lv_event_get_user_data(event));
@@ -323,6 +385,27 @@ void choices(const char *title, const Choice (&options)[N], const char *const (&
     fill_chips(section(title), options, texts, tone);
 }
 
+template <size_t N>
+void fill_face_chips(lv_obj_t *row, const FaceChoice (&options)[N], const char *const (&texts)[N]) {
+    const char *selected = face_current(options[0].field);
+    int best = 0;
+    for (size_t i = 0; i < N; ++i) {
+        if (std::strcmp(options[i].value, selected) == 0) {
+            best = static_cast<int>(i);
+            break;
+        }
+    }
+    for (size_t i = 0; i < N; ++i) {
+        tessara::ui::TsChip(row, texts[i], static_cast<int>(i) == best, on_face_choice,
+                            const_cast<FaceChoice *>(&options[i]));
+    }
+}
+
+template <size_t N>
+void face_choices(const char *title, const FaceChoice (&options)[N], const char *const (&texts)[N]) {
+    fill_face_chips(section(title), options, texts);
+}
+
 void fill_aitokens_status() {
     lv_obj_t *updated = lv_label_create(content);
     char line[64];
@@ -425,19 +508,24 @@ void range_field(lv_obj_t *card, const char *label, Field field, const int *vals
 
     lv_obj_t *slider = lv_slider_create(wrap);
     lv_obj_set_width(slider, lv_pct(100));
-    lv_obj_set_height(slider, 22);
+    // Thin track + modest knob (LVGL knob ≈ track height + 2×pad).
+    lv_obj_set_height(slider, 6);
     lv_slider_set_range(slider, 0, count - 1);
     lv_slider_set_value(slider, idx, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(slider, theme::hairline(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(slider, 999, LV_PART_MAIN);
+    lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     lv_obj_set_style_bg_color(slider, theme::primary(), LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(slider, 999, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(slider, theme::primary(), LV_PART_KNOB);
     lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(slider, 6, LV_PART_KNOB);
-    lv_obj_set_ext_click_area(slider, 10);
+    lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(slider, 5, LV_PART_KNOB);  // ~16 px dial on a 6 px track
+    lv_obj_set_style_border_width(slider, 2, LV_PART_KNOB);
+    lv_obj_set_style_border_color(slider, theme::surface(), LV_PART_KNOB);
+    lv_obj_set_style_border_opa(slider, LV_OPA_COVER, LV_PART_KNOB);
+    lv_obj_set_ext_click_area(slider, 14);
     lv_obj_add_flag(slider, LV_OBJ_FLAG_SCROLL_CHAIN);
     lv_obj_add_event_cb(slider, on_range, LV_EVENT_VALUE_CHANGED, storage);
 }
@@ -640,6 +728,7 @@ void fill() {
         const char *heading = "Configurações";
         if (page == Page::General) heading = "Geral";
         else if (page == Page::Resources) heading = "Memória";
+        else if (page == Page::DateTime) heading = "Data e hora";
         else if (page == Page::Todoist) heading = "Todoist";
         else if (page == Page::Weather) heading = "Clima";
         else if (page == Page::AiTokens) heading = "AI Tokens";
@@ -672,6 +761,7 @@ void fill() {
     if (page == Page::Hub) {
         link_row(LV_SYMBOL_SETTINGS, palette::primary(), "Geral", Page::General);
         link_row(LV_SYMBOL_SD_CARD, palette::primary(), "Memória e armazenamento", Page::Resources);
+        link_row(LV_SYMBOL_GPS, palette::primary(), "Data e hora", Page::DateTime);
         link_row(LV_SYMBOL_USB, palette::primary(), "Agente Tessara", Page::Agent);
         link_row(LV_SYMBOL_LIST, palette::widget_todoist(), "Todoist", Page::Todoist);
         link_row(LV_SYMBOL_TINT, palette::widget_weather(), "Clima", Page::Weather);
@@ -685,6 +775,12 @@ void fill() {
         choices("Brilho", kBrightness, kBrightnessText);
         rest_block();
         choices("Aparência", kAppearance, kAppearanceText);
+        return;
+    }
+    if (page == Page::DateTime) {
+        face_choices("Fuso", kTimezone, kTimezoneText);
+        face_choices("Hora", kTimeFormat, kTimeFormatText);
+        face_choices("Data", kDateFormat, kDateFormatText);
         return;
     }
     if (page == Page::Resources) {
@@ -756,10 +852,12 @@ void build() {
 }
 }  // namespace
 
-void settings_panel::open(ChangeFn callback, DismissFn dismiss, RequestAiTokensFn request_aitokens) {
+void settings_panel::open(ChangeFn callback, DismissFn dismiss, RequestAiTokensFn request_aitokens,
+                          WidgetPrefFn widget_pref) {
     on_change = callback;
     on_dismiss = dismiss;
     on_request_aitokens = request_aitokens;
+    on_widget_pref = widget_pref;
     if (!root) build();
 }
 
@@ -767,6 +865,13 @@ void settings_panel::show_values(const DeviceSettings &settings, const DeviceInf
     values = settings;
     info = device;
     fill();
+}
+
+void settings_panel::show_face(const char *timezone, const char *time_format, const char *date_format) {
+    if (timezone && timezone[0]) text::copy(face_timezone, sizeof(face_timezone), timezone);
+    if (time_format && time_format[0]) text::copy(face_time_format, sizeof(face_time_format), time_format);
+    if (date_format && date_format[0]) text::copy(face_date_format, sizeof(face_date_format), date_format);
+    if (root && page == Page::DateTime) fill();
 }
 
 void settings_panel::show_aitokens(const aitokens::View &view) {

@@ -84,6 +84,7 @@ add_executable(painel
   src/sim_app.cpp
   src/sim_fonts.cpp
   host/daytime_host.cpp
+  host/face_prefs_host.cpp
   host/power_host.cpp
   host/settings_host.cpp
   host/log_host.cpp

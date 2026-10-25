@@ -237,6 +237,16 @@ public:
 
     void on_settings_closed() override { nav_.screen = beneath_; }
 
+    void on_widget_pref(const char *widget_id, const char *key, const char *value) override {
+        if (!widget_id || !key || !value) return;
+        web_portal::Request request = {};
+        request.kind = web_portal::Kind::WidgetSettings;
+        text::copy(request.widget_id, sizeof(request.widget_id), widget_id);
+        text::copy(request.setting_key, sizeof(request.setting_key), key);
+        text::copy(request.setting_value, sizeof(request.setting_value), value);
+        on_widget_settings(request);
+    }
+
     void paint_weather() { ui::set_weather(weather::view(millis())); }
 
     void paint_aitokens() { ui::set_aitokens(aitokens_); }
@@ -662,6 +672,7 @@ private:
             !snapshot.date_format[0]) {
             text::copy(snapshot.date_format, sizeof(snapshot.date_format), "short_pt");
         }
+        ui::set_face(snapshot.clock_timezone, snapshot.clock_time_format, snapshot.date_format);
         web_portal::publish(snapshot);
         ui::set_agent(agent_ui, agent_pack_ready());
         paint_summary();

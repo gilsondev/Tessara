@@ -73,15 +73,24 @@ void close_stream_quiet() {
     stream_wrote = 0;
 }
 
+void unmount_flash() {
+    if (!flash_ready) return;
+    close_stream_quiet();
+    FFat.end();
+    flash_ready = false;
+    if (backend == Backend::Flash) backend = Backend::None;
+}
+
 void unmount_sd() {
     close_stream_quiet();
     if (backend == Backend::Sd) {
         SD_MMC.end();
-        backend = flash_ready ? Backend::Flash : Backend::None;
+        backend = Backend::None;
     }
 }
 
 bool mount_flash() {
+    if (backend == Backend::Sd) return false;  // SD ativo — não remonta FFat em paralelo
     if (flash_ready) {
         if (backend == Backend::None) backend = Backend::Flash;
         return true;
@@ -92,7 +101,7 @@ bool mount_flash() {
         return false;
     }
     flash_ready = true;
-    if (backend != Backend::Sd) backend = Backend::Flash;
+    backend = Backend::Flash;
     logger::printf("storage ok via=flash size=%u KB free=%u KB\n",
                    static_cast<unsigned>(FFat.totalBytes() / 1024),
                    static_cast<unsigned>(FFat.freeBytes() / 1024));
@@ -105,16 +114,19 @@ bool mount_sd_once(int freq_khz) {
         if (!SD_MMC.setPins(kClk, kCmd, kD0)) return false;
         sd_pins_set = true;
     }
-    // Se já estávamos no flash, não fecha FFat — só aponta o backend para SD.
     if (backend == Backend::Sd) {
         SD_MMC.end();
-        backend = flash_ready ? Backend::Flash : Backend::None;
+        backend = Backend::None;
     }
+    // Arduino SD_MMC.totalBytes()/usedBytes() always query FatFS drive "0:".
+    // If FFat is also mounted it steals drive 0 and we report the 2 MB flash
+    // partition as if it were the microSD — unmount FFat before SD.
+    unmount_flash();
     if (!SD_MMC.begin("/sd", true, false, freq_khz)) return false;
     backend = Backend::Sd;
     if (!sd_probe_ok()) {
         SD_MMC.end();
-        backend = flash_ready ? Backend::Flash : Backend::None;
+        backend = Backend::None;
         return false;
     }
     return true;
@@ -216,14 +228,13 @@ bool sd_host::close_write(size_t expect) {
 bool sd_host::begin() {
     Serial.println("storage: begin");
     Serial.flush();
-    // Flash primeiro = storage sempre disponível; SD sobe se o cartão responder.
-    mount_flash();
+    // Prefer microSD. FFat is only a fallback — never keep both mounted
+    // (SD_MMC size APIs hit FatFS drive "0:" and would report the flash volume).
     if (try_sd()) {
         log_sd_ok();
         return true;
     }
-    if (flash_ready) {
-        backend = Backend::Flash;
+    if (mount_flash()) {
         logger::printf("storage: sd ausente — usando flash\n");
         arm_poll();  // se o cartão aparecer depois, migra para SD
         return true;
@@ -251,6 +262,7 @@ bool sd_host::ensure() {
 bool sd_host::remount() {
     close_stream_quiet();
     unmount_sd();
+    unmount_flash();
     sd_pins_set = false;
     delay(50);
     if (try_sd()) {
@@ -258,7 +270,6 @@ bool sd_host::remount() {
         return true;
     }
     if (mount_flash()) {
-        backend = Backend::Flash;
         logger::printf("storage: remount caiu em flash\n");
         return true;
     }
@@ -296,7 +307,9 @@ bool sd_host::ready() {
 uint64_t sd_host::free_bytes() {
     if (!ready()) return 0;
     if (backend == Backend::Sd) {
-        uint64_t total = SD_MMC.totalBytes();
+        // Prefer card capacity − used; totalBytes() is the FAT volume (usually ≈ card).
+        uint64_t total = SD_MMC.cardSize();
+        if (!total) total = SD_MMC.totalBytes();
         uint64_t used = SD_MMC.usedBytes();
         return total > used ? total - used : 0;
     }
@@ -305,13 +318,17 @@ uint64_t sd_host::free_bytes() {
 
 uint64_t sd_host::total_bytes() {
     if (!ready()) return 0;
-    if (backend == Backend::Sd) return SD_MMC.totalBytes();
+    if (backend == Backend::Sd) {
+        uint64_t card = SD_MMC.cardSize();
+        if (card) return card;
+        return SD_MMC.totalBytes();
+    }
     return FFat.totalBytes();
 }
 
 const char *sd_host::backend_name() {
-    if (backend == Backend::Sd) return "SD";
-    if (backend == Backend::Flash) return "FFat";
+    if (backend == Backend::Sd) return "Cartão SD";
+    if (backend == Backend::Flash) return "Flash";
     return "";
 }
 

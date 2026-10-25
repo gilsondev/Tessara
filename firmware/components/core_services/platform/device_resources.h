@@ -19,7 +19,7 @@ struct Sample {
     // Free room in the running app partition (factory or OTA slot). Not "whole chip".
     uint32_t flash_sketch_free_b = 0;
     bool storage_ready = false;
-    char storage_kind[12] = {};  // "SD", "FFat", or empty
+    char storage_kind[16] = {};  // "Cartão SD", "Flash", or empty
     uint64_t storage_free_b = 0;
     uint64_t storage_total_b = 0;
     uint32_t uptime_s = 0;
