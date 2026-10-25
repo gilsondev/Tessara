@@ -4,6 +4,17 @@ Pacote Mac do monorepo Tessara (irmão do firmware em `../src`).
 
 Primeiro recurso: **AI Tokens** (cotas Codex / Claude / Cursor) via USB. Depois: mais capabilities no mesmo processo.
 
+### Cursor (cotas no painel)
+
+O firmware **não** chama a API da Cursor. O agente no Mac resolve a sessão nesta ordem e empurra `AITOKENS`:
+
+1. IDE — `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`
+2. Keychain — `cursor-access-token` / `cursor-refresh-token` (conta `cursor-user`)
+3. `~/.cursor/auth.json` (após `agent login` ou `AGENT_CLI_CREDENTIAL_STORE=file`)
+4. Env — `CURSOR_API_KEY=crsr_…` (exchange) ou `CURSOR_TOKEN` (Bearer)
+
+JWT curto é renovado em `POST /oauth/token`. Se todas as fontes falharem (`shouldLogout` / 401), abra o Cursor e entre de novo (ou `agent login`).
+
 ## Layout
 
 ```

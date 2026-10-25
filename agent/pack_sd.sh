@@ -21,7 +21,7 @@ cat > "$OUT/install.command" <<'EOF'
 #!/bin/bash
 # Tessara Agent — bootstrap no Mac (duplo clique ou: bash install.command [http://painel])
 set -euo pipefail
-PANEL="${1:-http://tessera.local}"
+PANEL="${1:-http://tessara.local}"
 HERE="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
 INSTALL_ROOT="$HOME/.tessera/agent"
 LABEL=com.tessera.agent
