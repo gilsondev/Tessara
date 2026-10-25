@@ -2,6 +2,7 @@
 
 #include "agent/state.h"
 #include "aitokens/snapshot.h"
+#include "calendar/snapshot.h"
 #include "domain/dashboard_layout.h"
 #include "domain/device_settings.h"
 #include "weather/cache.h"
@@ -47,6 +48,7 @@ void aitokens_refresh_done();
 void set_summary(int total, bool pending);
 void set_weather(const weather::View &view);
 void set_aitokens(const aitokens::View &view);
+void set_calendar(const calendar::View &view);
 void set_agent(const agent::View &view, bool pack_on_sd = false);
 void apply_theme();
 // Rebuilds tabs from task_store's views and shows `active`.

@@ -2,7 +2,7 @@
 
 Pacote Mac do monorepo Tessara (irmão do firmware em `../src`).
 
-Primeiro recurso: **AI Tokens** (cotas Codex / Claude / Cursor) via USB. Depois: mais capabilities no mesmo processo.
+Recursos via USB: **AI Tokens** (cotas) e **Calendar** (Google, OAuth no Mac). Ver `capabilities/calendar/README.md`.
 
 ### Cursor (cotas no painel)
 
@@ -23,7 +23,8 @@ agent/
     __main__.py              # python -m agent
     runtime.py               # loop USB + handshake AGENT
     protocol.py
-    capabilities/aitokens/   # 1º recurso
+    capabilities/aitokens/
+    capabilities/calendar/   # Google Calendar (readonly)
   scripts/statusline_claude.sh
   pack_sd.sh                 # gera instalador p/ cartão SD do painel
   requirements.txt

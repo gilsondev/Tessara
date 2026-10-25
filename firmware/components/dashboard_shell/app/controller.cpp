@@ -2,6 +2,8 @@
 
 #include "agent/state.h"
 #include "aitokens/snapshot.h"
+#include "calendar/catalog.h"
+#include "calendar/snapshot.h"
 #include "app/nav.h"
 #include "domain/list_prefs.h"
 #include "domain/pending_closes.h"
@@ -122,6 +124,21 @@ public:
         if (saved.set) weather::set_place(saved.name, saved.latitude, saved.longitude);
         paint_weather();
         paint_aitokens();
+        {
+            char sel[512] = {};
+            if (widget_settings::get(dashboard::id_calendar(), "selection", sel, sizeof(sel)) && sel[0]) {
+                calendar::apply_selection(calendar_catalog_, sel);
+            }
+        }
+        {
+            dashboard::Layout dash = settings::load_dashboard();
+            if (dashboard::is_enabled(dash, dashboard::id_calendar())) {
+                dashboard::set_enabled(dash, dashboard::id_calendar(), true);  // snap under AI Tokens
+                settings::save_dashboard(dash);
+            }
+        }
+        paint_calendar();
+        ask_calendar_refresh();
         ui::show_loader("Iniciando", "Preparando o painel");
         display_host::refresh_now();
         Serial.printf("tela %s\n", device_.portrait ? "em pe" : "deitada");
@@ -163,6 +180,15 @@ public:
         display_host::tick();
         chime::pump();
         if (aitokens::refresh_age(aitokens_, millis())) paint_aitokens();
+        if (calendar::refresh_age(calendar_, millis())) paint_calendar();
+        // USB drops often — re-ask while the agent is up but agenda never arrived.
+        if (agent_.ok && !calendar_.ready && millis() - calendar_ask_at_ > 5000u) {
+            calendar_ask_at_ = millis();
+            ask_calendar_refresh();
+        } else if (agent_.ok && calendar_.ready && millis() - calendar_ask_at_ > 45000u) {
+            calendar_ask_at_ = millis();
+            ask_calendar_refresh();
+        }
         // Auto appearance: re-check when the clock crosses the evening/morning window
         // (or after the portal reports a new OS preference).
         if (device_.appearance == Appearance::Auto && millis() - theme_check_at_ > 30000u) {
@@ -407,8 +433,75 @@ public:
 
     void on_agent(const char *line) override {
         if (!agent::apply_line(agent_, line, millis())) return;
+        if (agent_.ok) {
+            // Bridge is up even before the first CALENDAR events line lands.
+            if (!calendar_.bridge_ok) {
+                calendar_.bridge_ok = true;
+                paint_calendar();
+            }
+            ask_calendar_refresh();
+            calendar_ask_at_ = millis();
+        }
         settings_panel_show_agent();
         publish();
+    }
+
+    void sync_calendar_link_from_catalog() {
+        bool any_sel = false;
+        for (int i = 0; i < calendar_catalog_.count; ++i) {
+            if (calendar_catalog_.items[i].selected) {
+                any_sel = true;
+                break;
+            }
+        }
+        const bool linked = any_sel || calendar_catalog_.count > 0;
+        if (calendar_.linked == linked && (calendar_.bridge_ok || !agent_.ok)) return;
+        calendar_.linked = linked;
+        if (agent_.ok) calendar_.bridge_ok = true;
+        paint_calendar();
+    }
+
+    void on_calendar(const char *line) override {
+        if (!line || !line[0]) return;
+        bool changed = false;
+        if (calendar::apply_auth_line(calendar_catalog_, line)) changed = true;
+        else if (calendar::apply_catalog_line(calendar_catalog_, line)) {
+            char sel[512] = {};
+            if (widget_settings::get(dashboard::id_calendar(), "selection", sel, sizeof(sel)) && sel[0]) {
+                calendar::apply_selection(calendar_catalog_, sel);
+            }
+            sync_calendar_link_from_catalog();
+            changed = true;
+        } else if (calendar::apply_line(calendar_, line, millis())) {
+            changed = true;
+            paint_calendar();
+        }
+        if (changed) publish();
+    }
+
+    void paint_calendar() { ui::set_calendar(calendar_); }
+
+    void ask_calendar_refresh() { Serial.println("CALENDAR?"); }
+
+    void ask_calendar_auth() { Serial.println("CALENDAR_AUTH?"); }
+
+    void push_calendar_selection() {
+        char sel[512] = {};
+        calendar::format_selection(calendar_catalog_, sel, sizeof(sel));
+        widget_settings::set(dashboard::id_calendar(), "selection", sel);
+        // USB: CALENDAR_SEL\tid1\tid2… (may span long Google ids)
+        char line[768] = "CALENDAR_SEL";
+        for (int i = 0; i < calendar_catalog_.count; ++i) {
+            if (!calendar_catalog_.items[i].selected || !calendar_catalog_.items[i].id[0]) continue;
+            size_t used = strlen(line);
+            size_t id_len = strlen(calendar_catalog_.items[i].id);
+            if (used + 1 + id_len + 1 >= sizeof(line)) break;
+            line[used] = '\t';
+            memcpy(line + used + 1, calendar_catalog_.items[i].id, id_len);
+            line[used + 1 + id_len] = '\0';
+        }
+        Serial.println(line);
+        ask_calendar_refresh();
     }
 
     bool agent_pack_ready() const {
@@ -632,7 +725,9 @@ private:
         text::copy(info.host, sizeof(info.host), web_portal::host());
         net_worker::describe(info);
         ui::set_device(device_, info);
-        web_portal::Snapshot snapshot = {};
+        // Static: Snapshot is large; stack allocation here was rebooting the board.
+        static web_portal::Snapshot snapshot;
+        snapshot = {};
         snapshot.settings = device_;
         snapshot.info = info;
         list_prefs::Choice choices[kMaxViews];
@@ -656,6 +751,25 @@ private:
         snapshot.aitokens_stale = aitokens_.stale;
         snapshot.aitokens_age_s =
             aitokens_.ready && aitokens_.received_ms ? (millis() - aitokens_.received_ms) / 1000u : 0;
+        snapshot.calendar_ready = calendar_.ready;
+        snapshot.calendar_stale = calendar_.stale;
+        snapshot.calendar_linked = calendar_.linked || calendar_catalog_.count > 0;
+        snapshot.calendar_auth_pending = calendar_catalog_.auth_pending;
+        snapshot.calendar_age_s =
+            calendar_.ready && calendar_.received_ms ? (millis() - calendar_.received_ms) / 1000u : 0;
+        text::copy(snapshot.calendar_status, sizeof(snapshot.calendar_status), calendar_catalog_.status);
+        calendar::format_selection(calendar_catalog_, snapshot.calendar_selection,
+                                   sizeof(snapshot.calendar_selection));
+        static web_portal::CalendarCatalog catalog_view;
+        catalog_view = {};
+        for (int i = 0; i < calendar_catalog_.count && catalog_view.count < web_portal::kMaxCalendarRows; ++i) {
+            auto &dst = catalog_view.rows[catalog_view.count++];
+            text::copy(dst.account, sizeof(dst.account), calendar_catalog_.items[i].account);
+            text::copy(dst.id, sizeof(dst.id), calendar_catalog_.items[i].id);
+            text::copy(dst.name, sizeof(dst.name), calendar_catalog_.items[i].name);
+            dst.color_rgb = calendar_catalog_.items[i].color_rgb;
+            dst.selected = calendar_catalog_.items[i].selected;
+        }
         snapshot.resources = device_resources::sample();
         if (!widget_settings::get(dashboard::id_clock(), "timezone", snapshot.clock_timezone,
                                  sizeof(snapshot.clock_timezone)) ||
@@ -674,6 +788,7 @@ private:
         }
         ui::set_face(snapshot.clock_timezone, snapshot.clock_time_format, snapshot.date_format);
         web_portal::publish(snapshot);
+        web_portal::publish_calendar_catalog(catalog_view);
         ui::set_agent(agent_ui, agent_pack_ready());
         paint_summary();
         paint_weather();
@@ -696,11 +811,23 @@ private:
                 paint_summary();
                 paint_weather();
                 paint_aitokens();
+                paint_calendar();
                 publish();
                 break;
             case web_portal::Kind::WidgetSettings:
                 on_widget_settings(request);
                 break;
+            case web_portal::Kind::CalendarAdd:
+                ask_calendar_auth();
+                publish();
+                break;
+            case web_portal::Kind::CalendarSelection: {
+                widget_settings::set(dashboard::id_calendar(), "selection", request.calendar_selection);
+                calendar::apply_selection(calendar_catalog_, request.calendar_selection);
+                push_calendar_selection();
+                publish();
+                break;
+            }
         }
         memset(&request, 0, sizeof(request));
     }
@@ -1188,6 +1315,9 @@ private:
     char under_rest_widget_[48] = {};
     screen_rest::State rest_{};
     aitokens::View aitokens_{};
+    calendar::View calendar_{};
+    calendar::Catalog calendar_catalog_{};
+    uint32_t calendar_ask_at_ = 0;
     agent::View agent_{};
     todoist::Gate gate_{};
     uint32_t inflight_gen_ = 1;

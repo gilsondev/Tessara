@@ -8,6 +8,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <cstdio>
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <WiFi.h>
@@ -67,6 +68,7 @@ TaskHandle_t task = nullptr;
 QueueHandle_t requests = nullptr;
 SemaphoreHandle_t guard = nullptr;
 web_portal::Snapshot snapshot = {};
+web_portal::CalendarCatalog calendar_catalog = {};
 
 Reply text_reply(int code, const char *body) { return Reply{code, "text/plain; charset=utf-8", body}; }
 
@@ -145,10 +147,31 @@ Reply state() {
     aitokens["ready"] = snapshot.aitokens_ready;
     aitokens["stale"] = snapshot.aitokens_stale;
     aitokens["age_s"] = snapshot.aitokens_age_s;
+    JsonObject calendar = doc["calendar"].to<JsonObject>();
+    calendar["ready"] = snapshot.calendar_ready;
+    calendar["stale"] = snapshot.calendar_stale;
+    calendar["linked"] = snapshot.calendar_linked;
+    calendar["auth_pending"] = snapshot.calendar_auth_pending;
+    calendar["age_s"] = snapshot.calendar_age_s;
+    calendar["status"] = snapshot.calendar_status;
+    calendar["selection"] = snapshot.calendar_selection;
+    JsonArray cal_rows = calendar["calendars"].to<JsonArray>();
+    for (int i = 0; i < calendar_catalog.count; ++i) {
+        JsonObject row = cal_rows.add<JsonObject>();
+        row["account"] = calendar_catalog.rows[i].account;
+        row["id"] = calendar_catalog.rows[i].id;
+        row["name"] = calendar_catalog.rows[i].name;
+        char color[8];
+        std::snprintf(color, sizeof(color), "%06X", calendar_catalog.rows[i].color_rgb & 0xFFFFFFu);
+        row["color"] = color;
+        row["selected"] = calendar_catalog.rows[i].selected;
+    }
     JsonArray widgets = doc["widgets"].to<JsonArray>();
-    const char *catalog[] = {dashboard::id_greeting(), dashboard::id_date(),   dashboard::id_clock(),
-                             dashboard::id_todoist(),  dashboard::id_weather(), dashboard::id_aitokens()};
-    const char *titles[] = {"Saudação", "Data", "Relógio", "Tarefas", "Clima", "AI Tokens"};
+    const char *catalog[] = {dashboard::id_greeting(), dashboard::id_date(),    dashboard::id_clock(),
+                             dashboard::id_todoist(),  dashboard::id_weather(), dashboard::id_aitokens(),
+                             dashboard::id_calendar()};
+    const char *titles[] = {"Saudação", "Data", "Relógio", "Tarefas", "Clima", "AI Tokens", "Calendário"};
+    static_assert(sizeof(catalog) / sizeof(catalog[0]) == sizeof(titles) / sizeof(titles[0]), "catalog/titles");
     for (size_t i = 0; i < sizeof(catalog) / sizeof(catalog[0]); ++i) {
         JsonObject item = widgets.add<JsonObject>();
         item["id"] = catalog[i];
@@ -349,6 +372,18 @@ Reply route(const String &method, const String &path, const char *body) {
     if (path == "/api/weather") return weather(doc);
     if (path == "/api/dashboard") return dashboard_edit(doc);
     if (path == "/api/widget_settings") return widget_settings_edit(doc);
+    if (path == "/api/calendar/add_account") {
+        web_portal::Request request = {};
+        request.kind = web_portal::Kind::CalendarAdd;
+        return accept(request);
+    }
+    if (path == "/api/calendar/selection") {
+        web_portal::Request request = {};
+        request.kind = web_portal::Kind::CalendarSelection;
+        const char *sel = doc["selection"] | "";
+        text::copy(request.calendar_selection, sizeof(request.calendar_selection), sel);
+        return accept(request);
+    }
     return text_reply(404, "nada aqui");
 }
 
@@ -439,13 +474,14 @@ bool send_install_command(WiFiClient &client) {
     body += "  echo \"baixando agent.tgz de $PANEL …\"\n";
     body += "  curl -fsSL \"$PANEL/agent/agent.tgz\" -o /tmp/tessera-agent.tgz\n";
     body += "  TGZ=/tmp/tessera-agent.tgz\nfi\n";
-    body += "rm -rf \"$INSTALL_ROOT\"/*\n";
+    body += "find \"$INSTALL_ROOT\" -mindepth 1 -maxdepth 1 ! -name '.venv' -exec rm -rf {} +\n";
     body += "tar -C \"$INSTALL_ROOT\" -xzf \"$TGZ\"\n";
     body += "chmod +x \"$INSTALL_ROOT/scripts/statusline_claude.sh\" 2>/dev/null || true\n";
     body += "PY=\"$INSTALL_ROOT/.venv/bin/python\"\n";
     body += "if [ ! -x \"$PY\" ]; then\n";
-    body += "  python3 -m venv \"$INSTALL_ROOT/.venv\"\n";
-    body += "  \"$INSTALL_ROOT/.venv/bin/pip\" install -q -r \"$INSTALL_ROOT/requirements.txt\"\nfi\n";
+    body += "  python3 -m venv \"$INSTALL_ROOT/.venv\"\nfi\n";
+    body += "echo \"deps…\"\n";
+    body += "\"$INSTALL_ROOT/.venv/bin/pip\" install -q -r \"$INSTALL_ROOT/requirements.txt\"\n";
     body += "STATUSLINE=\"$INSTALL_ROOT/scripts/statusline_claude.sh\"\n";
     body += "CLAUDE_SETTINGS=\"$HOME/.claude/settings.json\"\n";
     body += "if [ -x \"$STATUSLINE\" ]; then\n";
@@ -703,6 +739,7 @@ void run(void *) {
     bool listening = false;
     int mode = 0;
     bool mdns_on = false;
+    uint32_t mdns_refresh_at = 0;
     bool sta_was_up = false;
     for (;;) {
         if (wifi_phase == 1) {
@@ -771,6 +808,7 @@ void run(void *) {
                     MDNS.addService("http", "tcp", 80);
                     logger::printf("web http://%s (%s)\n", host_local, WiFi.localIP().toString().c_str());
                     mdns_on = true;
+                    mdns_refresh_at = millis();
                 } else {
                     logger::printf("mdns falhou — use http://%s/\n", WiFi.localIP().toString().c_str());
                 }
@@ -778,6 +816,16 @@ void run(void *) {
             server.begin();
             listening = true;
             mode = 2;
+        }
+        // Re-advertise .local periodically — macOS/Tailscale DNS often drops the record.
+        if (mdns_on && sta_up && millis() - mdns_refresh_at > 60000u) {
+            mdns_refresh_at = millis();
+            MDNS.end();
+            if (MDNS.begin(hostname)) {
+                MDNS.addService("http", "tcp", 80);
+            } else {
+                mdns_on = false;
+            }
         }
         bool active = false;
         if (listening) {
@@ -834,6 +882,13 @@ void web_portal::publish(const Snapshot &next) {
     if (!guard) return;
     xSemaphoreTake(guard, portMAX_DELAY);
     snapshot = next;
+    xSemaphoreGive(guard);
+}
+
+void web_portal::publish_calendar_catalog(const CalendarCatalog &next) {
+    if (!guard) return;
+    xSemaphoreTake(guard, portMAX_DELAY);
+    calendar_catalog = next;
     xSemaphoreGive(guard);
 }
 

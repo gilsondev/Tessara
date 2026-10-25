@@ -45,7 +45,7 @@ SDL_VIDEODRIVER=dummy "$PAINEL" \
 test -s "$OUT/rotation-landscape.bmp"
 
 echo "==> detail screens (normal)"
-for screen in todoist weather aitokens clock settings; do
+for screen in todoist weather aitokens calendar clock settings; do
   echo "--- detail/$screen"
   SDL_VIDEODRIVER=dummy "$PAINEL" \
     --fixtures "$SIM/fixtures" \

@@ -7,7 +7,7 @@
 // Host glue: fixtures → real home / settings_panel / todoist_panel / weather_page / aitokens_page / clock_page.
 namespace sim_app {
 
-enum class Screen { Home, Todoist, Weather, Aitokens, Clock, Settings };
+enum class Screen { Home, Todoist, Weather, Aitokens, Calendar, Clock, Settings };
 
 struct State {
     Scenario scenario;

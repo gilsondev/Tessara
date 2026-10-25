@@ -12,6 +12,7 @@
 #include "ui/aitokens_logos.h"
 #include "ui/kit.h"
 #include "ui/ts_kit.h"
+#include "ui/calendar_icons.h"
 #include "ui/weather_icons.h"
 #include "weather/codes.h"
 #include "ui/palette.h"
@@ -54,6 +55,10 @@ lv_obj_t *aitokens_empty = nullptr;
 lv_obj_t *aitokens_line_codex = nullptr;
 lv_obj_t *aitokens_line_claude = nullptr;
 lv_obj_t *aitokens_line_cursor = nullptr;
+lv_obj_t *calendar_tile = nullptr;
+lv_obj_t *calendar_icon = nullptr;
+lv_obj_t *calendar_glyph = nullptr;
+lv_obj_t *calendar_detail = nullptr;
 bool linked = false;
 int link_rssi = 0;
 lv_event_cb_t open_widget_cb = nullptr;
@@ -82,6 +87,10 @@ void clear_tile_ptrs() {
     aitokens_line_codex = nullptr;
     aitokens_line_claude = nullptr;
     aitokens_line_cursor = nullptr;
+    calendar_tile = nullptr;
+    calendar_icon = nullptr;
+    calendar_glyph = nullptr;
+    calendar_detail = nullptr;
 }
 
 void set_if_changed(lv_obj_t *label, const char *text) {
@@ -276,6 +285,57 @@ void add_aitokens_tile(lv_event_cb_t on_open) {
     make_fonte_row(aitokens_tile, aitokens_logos::cursor(), "Cursor", &aitokens_line_cursor);
 }
 
+void add_calendar_tile(lv_event_cb_t on_open) {
+    // Full-width on stage (same band as AI Tokens) — not in the Tarefas/Clima row.
+    calendar_tile = TsBare(stage);
+    lv_obj_set_width(calendar_tile, lv_pct(100));
+    lv_obj_set_height(calendar_tile, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(calendar_tile, theme::surface(), 0);
+    lv_obj_set_style_bg_opa(calendar_tile, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(calendar_tile, 16, 0);
+    lv_obj_set_style_border_width(calendar_tile, 1, 0);
+    lv_obj_set_style_border_color(calendar_tile, theme::border(), 0);
+    lv_obj_set_style_pad_all(calendar_tile, 10, 0);
+    lv_obj_set_flex_flow(calendar_tile, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(calendar_tile, 2, 0);
+    if (on_open) {
+        lv_obj_add_flag(calendar_tile, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(calendar_tile, on_open, LV_EVENT_CLICKED,
+                            const_cast<char *>(dashboard::id_calendar()));
+    }
+
+    lv_obj_t *head = TsBare(calendar_tile);
+    lv_obj_set_width(head, lv_pct(100));
+    lv_obj_set_height(head, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(head, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(head, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(head, 8, 0);
+
+    constexpr int kGlyph = 24;
+    lv_obj_t *slot = TsBare(head);
+    lv_obj_set_size(slot, kGlyph, kGlyph);
+    calendar_glyph = lv_image_create(slot);
+    lv_image_set_src(calendar_glyph, calendar_icons::month());
+    lv_obj_set_style_image_recolor(calendar_glyph, theme::widget_calendar(), 0);
+    lv_obj_set_style_image_recolor_opa(calendar_glyph, LV_OPA_COVER, 0);
+    lv_obj_set_size(calendar_glyph, kGlyph, kGlyph);
+    lv_obj_center(calendar_glyph);
+    calendar_icon = nullptr;
+
+    lv_obj_t *title = lv_label_create(head);
+    lv_label_set_text(title, "Calendário");
+    lv_obj_set_style_text_font(title, &theme::label_font(), 0);
+    lv_obj_set_style_text_color(title, theme::text_primary(), 0);
+    lv_obj_set_flex_grow(title, 1);
+
+    calendar_detail = lv_label_create(calendar_tile);
+    lv_label_set_text(calendar_detail, "ligar agenda");
+    lv_label_set_long_mode(calendar_detail, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(calendar_detail, lv_pct(100));
+    lv_obj_set_style_text_font(calendar_detail, &theme::small_font(), 0);
+    lv_obj_set_style_text_color(calendar_detail, theme::text_secondary(), 0);
+}
+
 void add_generic_tile(const char *title, const char *widget_id) {
     lv_obj_t *unused = nullptr;
     tile(grid, LV_SYMBOL_DIRECTORY, theme::text_secondary(), title ? title : "Widget", &unused, open_widget_cb,
@@ -298,6 +358,7 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
         registered[reg_n++] = dashboard::id_todoist();
         registered[reg_n++] = dashboard::id_weather();
         registered[reg_n++] = dashboard::id_aitokens();
+        registered[reg_n++] = dashboard::id_calendar();
         registered[reg_n++] = dashboard::id_clock();
     }
     char slots[dashboard::kMaxSlots][dashboard::kIdLen];
@@ -316,6 +377,7 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
             if (strcmp(id, dashboard::id_todoist()) == 0) kind = tessara::HomeTile::Todoist;
             else if (strcmp(id, dashboard::id_weather()) == 0) kind = tessara::HomeTile::Weather;
             else if (strcmp(id, dashboard::id_aitokens()) == 0) kind = tessara::HomeTile::AiTokens;
+            else if (strcmp(id, dashboard::id_calendar()) == 0) kind = tessara::HomeTile::Calendar;
             else kind = tessara::HomeTile::Generic;
         }
         switch (kind) {
@@ -327,6 +389,9 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
                 break;
             case tessara::HomeTile::AiTokens:
                 add_aitokens_tile(open_widget_cb);
+                break;
+            case tessara::HomeTile::Calendar:
+                add_calendar_tile(open_widget_cb);
                 break;
             case tessara::HomeTile::Generic: {
                 const char *title = rt.type_title(rt.find_registered(id));
@@ -343,9 +408,14 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
 
 void home::rebuild(const dashboard::Layout &layout) {
     if (!stage || !grid) return;
+    // AI Tokens + Calendar live on `stage` (full width), not inside `grid`.
     if (aitokens_tile) {
         lv_obj_delete(aitokens_tile);
         aitokens_tile = nullptr;
+    }
+    if (calendar_tile) {
+        lv_obj_delete(calendar_tile);
+        calendar_tile = nullptr;
     }
     lv_obj_clean(grid);
     clear_tile_ptrs();
@@ -473,6 +543,41 @@ void home::set_summary(int total, bool pending) {
     char text[16];
     todoist::format_home_count(summary, text, sizeof(text));
     set_if_changed(task_count, text);
+}
+
+void home::set_calendar(const calendar::View &view) {
+    if (!calendar_detail) return;
+    char text[64];
+    if (!view.bridge_ok && !view.ready) {
+        snprintf(text, sizeof(text), "sem conexão");
+    } else if (!view.linked) {
+        snprintf(text, sizeof(text), "ligar agenda");
+    } else if (!view.ready) {
+        snprintf(text, sizeof(text), "carregando…");
+    } else if (view.event_count <= 0) {
+        snprintf(text, sizeof(text), "livre%s", view.stale ? " · desatualizado" : "");
+    } else {
+        const calendar::Event &e = view.events[0];
+        char time_text[8];
+        if (e.all_day) snprintf(time_text, sizeof(time_text), "dia");
+        else snprintf(time_text, sizeof(time_text), "%02d:%02d", e.start_min / 60, e.start_min % 60);
+        if (view.event_count == 1) {
+            snprintf(text, sizeof(text), "%s · %s%s", time_text, e.title, view.stale ? " · desatualizado" : "");
+        } else {
+            snprintf(text, sizeof(text), "%s · %s · +%d%s", time_text, e.title, view.event_count - 1,
+                     view.stale ? " · desatualizado" : "");
+        }
+    }
+    set_if_changed(calendar_detail, text);
+    if (calendar_glyph) {
+        const lv_image_dsc_t *src = (!view.bridge_ok && !view.ready) ? calendar_icons::warn()
+                                  : (view.linked && view.ready && view.event_count <= 0) ? calendar_icons::busy()
+                                                                                          : calendar_icons::month();
+        lv_image_set_src(calendar_glyph, src);
+        lv_color_t tone = (!view.bridge_ok && !view.ready) ? theme::error() : theme::widget_calendar();
+        lv_obj_set_style_image_recolor(calendar_glyph, tone, 0);
+        lv_obj_set_style_image_recolor_opa(calendar_glyph, LV_OPA_COVER, 0);
+    }
 }
 
 void home::set_weather(const weather::View &view) {
@@ -656,9 +761,15 @@ void home::apply_theme() {
     if (task_count) lv_obj_set_style_text_color(task_count, theme::text_primary(), 0);
     if (weather_icon) lv_obj_set_style_text_color(weather_icon, theme::widget_weather(), 0);
     if (weather_detail) lv_obj_set_style_text_color(weather_detail, theme::text_secondary(), 0);
+    if (calendar_glyph) {
+        lv_obj_set_style_image_recolor(calendar_glyph, theme::widget_calendar(), 0);
+        lv_obj_set_style_image_recolor_opa(calendar_glyph, LV_OPA_COVER, 0);
+    }
+    if (calendar_detail) lv_obj_set_style_text_color(calendar_detail, theme::text_secondary(), 0);
     if (aitokens_icon) lv_obj_set_style_text_color(aitokens_icon, theme::widget_aitokens(), 0);
     paint_card(tasks_tile);
     paint_card(weather_tile);
+    paint_card(calendar_tile);
     // Só o fundo do card AI Tokens — borda/cores de alerta vêm de set_aitokens.
     if (aitokens_tile) lv_obj_set_style_bg_color(aitokens_tile, theme::surface(), 0);
     auto recolor_name = [](lv_obj_t *card) {
@@ -667,6 +778,7 @@ void home::apply_theme() {
     };
     recolor_name(tasks_tile);
     recolor_name(weather_tile);
+    recolor_name(calendar_tile);
     if (aitokens_tile) {
         lv_obj_t *head = lv_obj_get_child(aitokens_tile, 0);
         lv_obj_t *title = head ? lv_obj_get_child(head, 1) : nullptr;

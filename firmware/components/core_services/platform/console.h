@@ -19,9 +19,10 @@ public:
     // Drops only the token, after copying the current credentials. The home then explains how to paste it.
     virtual void on_drop_token() = 0;
     virtual void on_sd_status() = 0;
-    // Agent / AI Tokens USB pushes (full line).
+    // Agent / AI Tokens / Calendar USB pushes (full line).
     virtual void on_aitokens(const char *line) = 0;
     virtual void on_agent(const char *line) = 0;
+    virtual void on_calendar(const char *line) = 0;
     // Screen rest test: "", "wake", "saver", "fade", "off".
     virtual void on_rest(const char *arg) = 0;
 };

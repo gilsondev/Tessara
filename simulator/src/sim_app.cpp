@@ -125,6 +125,7 @@ void sim_app::paint_fixture(State &app) {
     home::set_summary(s.todoist_total, s.todoist_pending);
     home::set_weather(sim_detail::weather_view(s));
     home::set_aitokens(sim_detail::aitokens_view(s));
+    home::set_calendar(sim_detail::calendar_view(s));
 }
 
 void sim_app::init(State &app, const Scenario &scenario) {
@@ -174,6 +175,8 @@ void sim_app::show(State &app, Screen screen) {
         sim_detail::open_weather(app.scenario, go_home);
     } else if (screen == Screen::Aitokens) {
         sim_detail::open_aitokens(app.scenario, go_home);
+    } else if (screen == Screen::Calendar) {
+        sim_detail::open_calendar(app.scenario, go_home);
     } else if (screen == Screen::Clock) {
         sim_detail::open_clock(app.scenario, go_home);
     }
@@ -205,6 +208,8 @@ sim_app::Screen sim_app::parse_screen(const char *name) {
     if (!std::strcmp(name, "todoist") || !std::strcmp(name, "tarefas")) return Screen::Todoist;
     if (!std::strcmp(name, "weather") || !std::strcmp(name, "clima")) return Screen::Weather;
     if (!std::strcmp(name, "aitokens") || !std::strcmp(name, "ai")) return Screen::Aitokens;
+    if (!std::strcmp(name, "calendar") || !std::strcmp(name, "calendario") || !std::strcmp(name, "agenda"))
+        return Screen::Calendar;
     if (!std::strcmp(name, "clock") || !std::strcmp(name, "relogio")) return Screen::Clock;
     if (!std::strcmp(name, "settings") || !std::strcmp(name, "ajustes") || !std::strcmp(name, "config"))
         return Screen::Settings;
@@ -219,6 +224,8 @@ const char *sim_app::screen_name(Screen s) {
             return "weather";
         case Screen::Aitokens:
             return "aitokens";
+        case Screen::Calendar:
+            return "calendar";
         case Screen::Clock:
             return "clock";
         case Screen::Settings:

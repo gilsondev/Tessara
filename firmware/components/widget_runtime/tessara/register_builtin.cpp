@@ -1,6 +1,7 @@
 #include "tessara/runtime.h"
 
 #include "aitokens_widget.h"
+#include "calendar_widget.h"
 #include "clock_widget.h"
 #include "date_widget.h"
 #include "greeting_widget.h"
@@ -16,6 +17,7 @@ void register_builtin_widgets() {
     rt.register_type(todoist_widget_id(), create_todoist_widget);
     rt.register_type(weather_widget_id(), create_weather_widget);
     rt.register_type(aitokens_widget_id(), create_aitokens_widget);
+    rt.register_type(calendar_widget_id(), create_calendar_widget);
     rt.register_type(clock_widget_id(), create_clock_widget);
 }
 

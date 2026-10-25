@@ -71,7 +71,7 @@ input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10
 .nav.on span{color:rgba(255,255,255,.86)}
 .back{display:none;border:0;background:transparent;color:var(--red);font-size:15px;padding:0 0 4px;cursor:pointer}
 .page{display:none;gap:14px}
-body[data-page="hub"] #page-hub,body[data-page="device"] #page-device,body[data-page="resources"] #page-resources,body[data-page="agent"] #page-agent,body[data-page="aitokens"] #page-aitokens,body[data-page="todoist"] #page-todoist,body[data-page="clima"] #page-clima,body[data-page="datetime"] #page-datetime{display:grid}
+body[data-page="hub"] #page-hub,body[data-page="device"] #page-device,body[data-page="resources"] #page-resources,body[data-page="agent"] #page-agent,body[data-page="aitokens"] #page-aitokens,body[data-page="todoist"] #page-todoist,body[data-page="clima"] #page-clima,body[data-page="datetime"] #page-datetime,body[data-page="agenda"] #page-agenda{display:grid}
 .meter{height:8px;background:var(--wash);border-radius:999px;overflow:hidden;margin-top:8px}
 .meter>i{display:block;height:100%;background:var(--red);border-radius:inherit;width:0}
 .res-grid{display:grid;gap:14px;margin-top:12px}
@@ -125,6 +125,14 @@ h1{font-size:30px}
 .ai-toggles{display:grid;gap:0;margin-top:8px}
 .ai-toggles .toggle{border-top:1px solid var(--line)}
 .ai-toggles .toggle:first-child{border-top:0}
+.agenda-acct{margin:0 0 16px;padding:12px 14px;border-radius:14px;background:var(--wash)}
+.agenda-acct:last-child{margin-bottom:0}
+.agenda-acct h3{margin:0 0 4px;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.02em;word-break:break-all}
+.agenda-acct .agenda-cals{display:grid;gap:0}
+.agenda-acct .toggle{border-top:1px solid var(--line);padding:10px 0}
+.agenda-acct .toggle:first-child{border-top:0;padding-top:8px}
+.agenda-acct .toggle span{font-weight:600;display:flex;align-items:center;gap:0;min-width:0}
+.agenda-acct .toggle span b{font-weight:650;overflow:hidden;text-overflow:ellipsis}
 </style></head><body>
 <div class="app">
 <header>
@@ -143,6 +151,7 @@ h1{font-size:30px}
 <button class="nav" type="button" data-go="todoist"><b>Todoist</b><span>Listas, token e intervalo</span></button>
 <button class="nav" type="button" data-go="clima"><b>Clima</b><span>Cidade deste widget</span></button>
 <button class="nav" type="button" data-go="aitokens"><b>AI Tokens</b><span>Fontes na home</span></button>
+<button class="nav" type="button" data-go="agenda"><b>Agenda</b><span>Google Calendar</span></button>
 </aside>
 <div class="pane">
 <button class="back" id="back" type="button">← Configurações</button>
@@ -204,6 +213,18 @@ h1{font-size:30px}
 <label class="toggle"><span>Cursor na home</span><input type="checkbox" data-ai="show_aitokens_cursor"></label>
 </div>
 <p class="note" style="margin-top:14px">Barras detalhadas ficam no widget. Pedir cotas: no aparelho, Configurações → AI Tokens.</p>
+</section>
+</div>
+<div class="page" id="page-agenda">
+<section class="card"><h2>Agenda</h2>
+<p class="note" id="agenda-note">Contas Google via Agente Tessara (USB). Somente leitura.</p>
+<p class="note" id="agenda-status">…</p>
+<p class="note" style="margin:8px 0 14px">Cada conta Google aparece num bloco. Marque só as agendas que o painel deve mostrar.</p>
+<div class="actions" style="gap:8px;flex-wrap:wrap;margin-bottom:12px">
+<button class="act" type="button" onclick="addCalendarAccount()">Adicionar conta</button>
+<button class="act" type="button" onclick="post('/api/refresh',{},'Pedindo atualização')">Atualizar</button>
+</div>
+<div id="agenda-list"></div>
 </section>
 </div>
 <div class="page" id="page-resources">
@@ -347,6 +368,34 @@ else if(+ai.age_s<60)note.textContent='Última atualização: há '+ai.age_s+' s
 else note.textContent='Última atualização: há '+Math.floor(+ai.age_s/60)+' min'}
 document.querySelectorAll('[data-ai]').forEach(inp=>{const k=inp.dataset.ai;inp.checked=!!s.settings[k];
 inp.onchange=()=>{s.settings[k]=!!inp.checked;post('/api/settings',s.settings,inp.checked?'Fonte na home':'Fonte oculta',false)}})}
+function drawAgenda(){const cal=s.calendar||{};const st=document.getElementById('agenda-status');
+if(st){let t=[];
+if(cal.auth_pending)t.push('Autorize no browser do Mac');
+else if(cal.status)t.push(cal.status);
+if(cal.linked)t.push(cal.ready?(cal.stale?'eventos desatualizados':'eventos ok'):'aguardando eventos');
+else t.push('nenhuma conta ligada');
+if(+cal.age_s>0)t.push('há '+(+cal.age_s<60?cal.age_s+' s':Math.floor(+cal.age_s/60)+' min'));
+st.textContent=t.join(' · ')}
+const box=document.getElementById('agenda-list');if(!box)return;box.innerHTML='';
+const rows=(cal.calendars||[]).filter(r=>r&&r.id&&String(r.account||'').includes('@'));
+if(!rows.length){box.innerHTML='<p class="note">Nenhum calendário ainda. Adicione uma conta.</p>';return}
+const by={};const order=[];
+rows.forEach(r=>{const a=r.account;if(!by[a]){by[a]=[];order.push(a)}by[a].push(r)});
+order.forEach(acc=>{const sec=document.createElement('div');sec.className='agenda-acct';
+const h=document.createElement('h3');h.textContent=acc;sec.appendChild(h);
+const list=document.createElement('div');list.className='agenda-cals';
+by[acc].forEach(r=>{const lab=document.createElement('label');lab.className='toggle';
+const sw=document.createElement('span');
+const dot=document.createElement('i');dot.style.cssText='display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;flex:none;background:#'+(r.color||'1A73E8');
+const title=document.createElement('b');title.textContent=r.name||r.id;
+sw.appendChild(dot);sw.appendChild(title);
+const inp=document.createElement('input');inp.type='checkbox';inp.checked=!!r.selected;inp.dataset.calId=r.id;
+inp.onchange=()=>saveAgendaSelection();
+lab.appendChild(sw);lab.appendChild(inp);list.appendChild(lab)});
+sec.appendChild(list);box.appendChild(sec)})}
+function saveAgendaSelection(){const ids=[...document.querySelectorAll('#agenda-list input[data-cal-id]:checked')].map(i=>i.dataset.calId);
+post('/api/calendar/selection',{selection:ids.join(',')},'Calendários salvos')}
+function addCalendarAccount(){post('/api/calendar/add_account',{},'Abrindo autorização no Mac…')}
 function fmtBytes(n){n=+n||0;if(n>=1073741824)return(n/1073741824).toFixed(1).replace('.',',')+' GB';
 if(n>=1048576)return(n/1048576).toFixed(1).replace('.',',')+' MB';
 if(n>=1024)return(n/1024).toFixed(1).replace('.',',')+' KB';return n+' B'}
@@ -397,7 +446,7 @@ const sound=document.getElementById('sound-tog');
 if(sound){sound.checked=!!s.settings.sound;sound.onchange=()=>{s.settings.sound=!!sound.checked;post('/api/settings',s.settings,sound.checked?'Som ligado':'Som desligado',false)}}
 bindRange('rest_range','rest_label',restOpts,'rest_minutes',restLabel);
 bindRange('clock_range','clock_label',clockOpts,'clock_minutes',clockLabel);
-drawAi()}
+drawAi();drawAgenda()}
 if(window.matchMedia){try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>pushOsTheme(false))}catch(e){try{matchMedia('(prefers-color-scheme: dark)').addListener(()=>pushOsTheme(false))}catch(e2){}}}
 async function load(){try{s=await (await fetch('/api/state')).json()}catch(e){document.getElementById('who').textContent='painel não respondeu, tentando de novo…';setTimeout(load,2000);return}
 const online=!!s.info.online;

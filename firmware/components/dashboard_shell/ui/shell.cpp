@@ -14,9 +14,11 @@
 #include "ui/weather_icons.h"
 #include "ui/weather_page.h"
 #include "aitokens_widget.h"
+#include "calendar_widget.h"
 #include "clock_widget.h"
 #include "todoist_widget.h"
 #include "weather_widget.h"
+#include "ui/calendar_page.h"
 
 #include <cstring>
 #include <lvgl.h>
@@ -93,6 +95,7 @@ void ui::begin(UiEvents &handler) {
 
     weather_page::begin(on_back);
     aitokens_page::begin(on_back, on_aitokens_refresh);
+    calendar_page::begin(on_back);
     clock_page::begin(on_back);
     detail_host::begin();
     tessara::bind_host_services();
@@ -163,12 +166,20 @@ void ui::set_aitokens(const aitokens::View &view) {
     settings_panel::show_aitokens(view);
 }
 
+void ui::set_calendar(const calendar::View &view) {
+    home::set_calendar(view);
+    int slot = tessara::runtime().find_type(tessara::calendar_widget_id());
+    if (slot >= 0) tessara::calendar_widget_paint(tessara::runtime().widget(slot), view);
+    else calendar_page::paint(view);
+}
+
 void ui::set_agent(const agent::View &view, bool pack_on_sd) { settings_panel::show_agent(view, pack_on_sd); }
 
 void ui::apply_theme() {
     weather_icons::apply_theme();
     home::apply_theme();
     weather_page::apply_theme();
+    calendar_page::apply_theme();
     aitokens_page::apply_theme();
     clock_page::apply_theme();
     todoist_panel::apply_theme();

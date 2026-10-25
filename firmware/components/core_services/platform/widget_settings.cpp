@@ -13,6 +13,7 @@ constexpr char kAitokensNs[] = "w_aitoken";
 constexpr char kWeatherNs[] = "w_weather";
 constexpr char kClockNs[] = "w_clock";
 constexpr char kDateNs[] = "w_date";
+constexpr char kCalendarNs[] = "w_cal";
 constexpr char kMiscNs[] = "w_misc";
 
 hal::StoragePort *store() { return hal::board().storage; }
@@ -22,6 +23,7 @@ const char *ns_for(const char *instance_id) {
     if (std::strstr(instance_id, "todoist")) return kTodoistNs;
     if (std::strstr(instance_id, "aitokens")) return kAitokensNs;
     if (std::strstr(instance_id, "weather")) return kWeatherNs;
+    if (std::strstr(instance_id, "calendar")) return kCalendarNs;
     if (std::strstr(instance_id, "date")) return kDateNs;
     if (std::strstr(instance_id, "clock")) return kClockNs;
     return kMiscNs;
@@ -37,6 +39,7 @@ const char *nvs_key(const char *key) {
     if (!std::strcmp(key, "timezone")) return "tz";
     if (!std::strcmp(key, "time_format")) return "time_fmt";
     if (!std::strcmp(key, "date_format")) return "date_fmt";
+    if (!std::strcmp(key, "selection") || !std::strcmp(key, "cal_sel")) return "cal_sel";
     // Truncate unknown keys to fit NVS.
     return key;
 }

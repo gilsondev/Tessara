@@ -10,7 +10,14 @@
 namespace tessara {
 
 // How the home grid should render this type (package decides; shell only switches on the enum).
-enum class HomeTile : uint8_t { None = 0, Generic = 1, Todoist = 2, Weather = 3, AiTokens = 4 };
+enum class HomeTile : uint8_t {
+    None = 0,
+    Generic = 1,
+    Todoist = 2,
+    Weather = 3,
+    AiTokens = 4,
+    Calendar = 5,
+};
 
 struct WidgetManifest {
     const char *id;     // e.g. "org.tessara.weather"

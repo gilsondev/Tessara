@@ -35,6 +35,7 @@ int compose(const Layout &enabled, const char *const *registered, int registered
 const char *id_todoist();
 const char *id_weather();
 const char *id_aitokens();
+const char *id_calendar();
 const char *id_clock();
 const char *id_greeting();
 const char *id_date();

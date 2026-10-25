@@ -37,6 +37,7 @@ void remove_at(dashboard::Layout &layout, int index) {
 const char *dashboard::id_todoist() { return "org.tessara.todoist"; }
 const char *dashboard::id_weather() { return "org.tessara.weather"; }
 const char *dashboard::id_aitokens() { return "org.tessara.aitokens"; }
+const char *dashboard::id_calendar() { return "org.tessara.calendar"; }
 const char *dashboard::id_clock() { return "org.tessara.clock"; }
 const char *dashboard::id_greeting() { return "org.tessara.greeting"; }
 const char *dashboard::id_date() { return "org.tessara.date"; }
@@ -45,7 +46,8 @@ const char *dashboard::id_hello() { return "org.tessara.hello"; }
 
 bool dashboard::known_type(const char *type_id) {
     return eq(type_id, id_todoist()) || eq(type_id, id_weather()) || eq(type_id, id_aitokens()) ||
-           eq(type_id, id_clock()) || eq(type_id, id_greeting()) || eq(type_id, id_date());
+           eq(type_id, id_calendar()) || eq(type_id, id_clock()) || eq(type_id, id_greeting()) ||
+           eq(type_id, id_date());
 }
 
 dashboard::Layout dashboard::defaults() {
@@ -112,9 +114,34 @@ void dashboard::set_enabled(Layout &layout, const char *type_id, bool on) {
     if (!known_type(type_id)) return;
     int idx = find_index(layout, type_id);
     if (on) {
-        if (idx >= 0) return;
+        if (idx >= 0) {
+            // Keep Calendar directly under AI Tokens when both are on.
+            if (eq(type_id, id_calendar())) {
+                int ai = find_index(layout, id_aitokens());
+                if (ai >= 0 && idx != ai + 1) {
+                    remove_at(layout, idx);
+                    if (idx < ai) --ai;
+                    int insert = ai + 1;
+                    if (insert > layout.count) insert = layout.count;
+                    for (int i = layout.count; i > insert; --i) {
+                        copy_id(layout.ids[i], kIdLen, layout.ids[i - 1]);
+                    }
+                    copy_id(layout.ids[insert], kIdLen, id_calendar());
+                    ++layout.count;
+                }
+            }
+            return;
+        }
         if (layout.count >= kMaxSlots) return;
-        copy_id(layout.ids[layout.count], kIdLen, type_id);
+        int insert = layout.count;
+        if (eq(type_id, id_calendar())) {
+            int ai = find_index(layout, id_aitokens());
+            if (ai >= 0) insert = ai + 1;
+        }
+        for (int i = layout.count; i > insert; --i) {
+            copy_id(layout.ids[i], kIdLen, layout.ids[i - 1]);
+        }
+        copy_id(layout.ids[insert], kIdLen, type_id);
         ++layout.count;
     } else if (idx >= 0) {
         remove_at(layout, idx);

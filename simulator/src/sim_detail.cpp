@@ -3,6 +3,7 @@
 #include "domain/model.h"
 #include "domain/task_store.h"
 #include "ui/aitokens_page.h"
+#include "ui/calendar_page.h"
 #include "ui/clock_page.h"
 #include "ui/todoist_panel.h"
 #include "ui/weather_page.h"
@@ -17,6 +18,7 @@ namespace {
 bool g_todoist_begun = false;
 bool g_weather_begun = false;
 bool g_aitokens_begun = false;
+bool g_calendar_begun = false;
 bool g_clock_begun = false;
 
 void seed_list(int view, const std::vector<ScenarioTask> &tasks) {
@@ -195,6 +197,40 @@ void sim_detail::open_aitokens(const Scenario &scenario, lv_event_cb_t on_back) 
     }
     aitokens_page::show();
     aitokens_page::paint(aitokens_view(scenario));
+}
+
+calendar::View sim_detail::calendar_view(const Scenario &scenario) {
+    calendar::View v = {};
+    v.bridge_ok = scenario.wifi_online || scenario.agent_ok;
+    v.linked = true;
+    v.ready = true;
+    v.stale = false;
+    v.received_ms = 1;
+    auto put = [&](int start, int end, bool all_day, const char *title, const char *loc, uint32_t rgb) {
+        if (v.event_count >= calendar::kMaxEvents) return;
+        calendar::Event &e = v.events[v.event_count++];
+        e.start_min = start;
+        e.end_min = end;
+        e.all_day = all_day;
+        e.duration_min = all_day ? 0 : (end > start ? end - start : 0);
+        e.color_rgb = rgb;
+        std::snprintf(e.title, sizeof(e.title), "%s", title);
+        if (loc) std::snprintf(e.location, sizeof(e.location), "%s", loc);
+    };
+    put(9 * 60, 10 * 60, false, "Reunião de alinhamento", "Jusbrasil", 0x1A73E8);
+    put(11 * 60, 12 * 60, false, "Sync produto", nullptr, 0x0F9D58);
+    put(14 * 60, 15 * 60, false, "Planejamento", "Meet", 0xA142F4);
+    (void)scenario;
+    return v;
+}
+
+void sim_detail::open_calendar(const Scenario &scenario, lv_event_cb_t on_back) {
+    if (!g_calendar_begun) {
+        calendar_page::begin(on_back);
+        g_calendar_begun = true;
+    }
+    calendar_page::show();
+    calendar_page::paint(calendar_view(scenario));
 }
 
 void sim_detail::open_clock(const Scenario &scenario, lv_event_cb_t on_back) {

@@ -34,6 +34,14 @@ struct Snapshot {
     bool aitokens_ready;
     bool aitokens_stale;
     uint32_t aitokens_age_s;  // idade da última cotas no publish
+    // Calendar (agent bridge) — small flags only; catalog is publish_calendar_catalog().
+    bool calendar_ready;
+    bool calendar_stale;
+    bool calendar_linked;
+    bool calendar_auth_pending;
+    uint32_t calendar_age_s;
+    char calendar_status[48];
+    char calendar_selection[512];
     device_resources::Sample resources;
     // Clock / date widget prefs (copied on publish — web task must not hit NVS).
     char clock_timezone[24];
@@ -51,6 +59,8 @@ enum class Kind : uint8_t {
     WeatherPlace,
     Dashboard,
     WidgetSettings,
+    CalendarAdd,
+    CalendarSelection,
 };
 
 const char *setup_ap();
@@ -78,10 +88,29 @@ struct Request {
     char widget_id[48];
     char setting_key[32];
     char setting_value[64];
+    // Kind::CalendarSelection — comma-separated calendar ids
+    char calendar_selection[512];
+};
+
+// Catalog lives outside Snapshot so publish() stays stack-safe on the UI task.
+struct CalRow {
+    char account[48];
+    char id[96];
+    char name[40];
+    uint32_t color_rgb;
+    bool selected;
+};
+
+constexpr int kMaxCalendarRows = 16;
+
+struct CalendarCatalog {
+    CalRow rows[kMaxCalendarRows];
+    int count;
 };
 
 bool begin(const char *host);
 void publish(const Snapshot &snapshot);
+void publish_calendar_catalog(const CalendarCatalog &catalog);
 bool take(Request &request);
 const char *host();
 

@@ -12,7 +12,6 @@ constexpr int kReapRows = 6;
 lv_obj_t *retired[kMaxRetired];
 int retired_count = 0;
 
-int32_t closing_height = 0;
 int32_t closing_width = 1;
 
 void add_row(lv_obj_t *page, const TaskItem &item, lv_event_cb_t on_mark) {
@@ -95,13 +94,10 @@ void row_anim(void *obj, int32_t value) {
     lv_obj_set_style_translate_x(row, value, 0);
     int32_t traveled = value < 0 ? -value : value;
     if (traveled > closing_width) traveled = closing_width;
-    lv_obj_set_style_opa(row, static_cast<lv_opa_t>(LV_OPA_COVER - (traveled * (LV_OPA_COVER - 40)) / closing_width), 0);
-    if (closing_height <= 0) return;
-    int32_t height = closing_height - (closing_height * traveled) / closing_width;
-    lv_obj_set_height(row, height > 0 ? height : 0);
-    int32_t pad = theme::kRowPad - (theme::kRowPad * traveled) / closing_width;
-    lv_obj_set_style_pad_ver(row, pad > 0 ? pad : 0, 0);
-    if (traveled * 3 > closing_width) lv_obj_set_style_border_width(row, 0, 0);
+    // Slide + fade only — collapsing height mid-flight reflowed the list and looked jittery.
+    lv_obj_set_style_opa(row, static_cast<lv_opa_t>(LV_OPA_COVER - (traveled * (LV_OPA_COVER - 20)) / closing_width),
+                         0);
+    if (traveled * 2 > closing_width) lv_obj_set_style_border_width(row, 0, 0);
 }
 }  // namespace
 
@@ -221,7 +217,6 @@ void task_page::animate_completion(lv_obj_t *mark, lv_anim_completed_cb_t done, 
     lv_obj_set_style_border_color(mark, theme::red(), 0);
     lv_obj_remove_flag(mark, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_t *row = lv_obj_get_parent(mark);
-    closing_height = lv_obj_get_height(row);
     closing_width = lv_obj_get_width(row);
     if (closing_width < 1) closing_width = 1;
     lv_anim_t anim;
@@ -229,9 +224,9 @@ void task_page::animate_completion(lv_obj_t *mark, lv_anim_completed_cb_t done, 
     lv_anim_set_var(&anim, row);
     lv_anim_set_exec_cb(&anim, row_anim);
     lv_anim_set_values(&anim, 0, -closing_width);
-    lv_anim_set_duration(&anim, 240);
-    lv_anim_set_delay(&anim, 60);
-    lv_anim_set_path_cb(&anim, lv_anim_path_ease_in_out);
+    lv_anim_set_duration(&anim, 180);
+    lv_anim_set_delay(&anim, 0);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_in);
     lv_anim_set_user_data(&anim, user_data);
     lv_anim_set_completed_cb(&anim, done);
     lv_anim_start(&anim);

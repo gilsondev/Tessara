@@ -39,15 +39,17 @@ else
   TGZ=/tmp/tessera-agent.tgz
 fi
 
-rm -rf "$INSTALL_ROOT"/*
+# Atualiza código sem apagar o .venv (pip reaplicado abaixo).
+find "$INSTALL_ROOT" -mindepth 1 -maxdepth 1 ! -name '.venv' -exec rm -rf {} +
 tar -C "$INSTALL_ROOT" -xzf "$TGZ"
 chmod +x "$INSTALL_ROOT/scripts/statusline_claude.sh" 2>/dev/null || true
 
 PY="$INSTALL_ROOT/.venv/bin/python"
 if [ ! -x "$PY" ]; then
   python3 -m venv "$INSTALL_ROOT/.venv"
-  "$INSTALL_ROOT/.venv/bin/pip" install -q -r "$INSTALL_ROOT/requirements.txt"
 fi
+echo "deps…"
+"$INSTALL_ROOT/.venv/bin/pip" install -q -r "$INSTALL_ROOT/requirements.txt"
 
 STATUSLINE="$INSTALL_ROOT/scripts/statusline_claude.sh"
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"

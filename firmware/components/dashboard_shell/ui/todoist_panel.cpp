@@ -129,14 +129,15 @@ void announce() {
     }
 }
 
-void select_tab(int view, bool animate) {
+void select_tab(int view, bool scroll_anim) {
     if (!tabs) return;
     uint32_t count = lv_obj_get_child_count(tabs);
     for (uint32_t i = 0; i < count; ++i) {
-        kit::set_chip_selected(lv_obj_get_child(tabs, i), static_cast<int>(i) == view, true);
+        // No bold swap — font change resizes chips and makes the tab strip jump.
+        kit::set_chip_selected(lv_obj_get_child(tabs, i), static_cast<int>(i) == view, false);
     }
     lv_obj_t *chip = lv_obj_get_child(tabs, view);
-    if (chip) lv_obj_scroll_to_view(chip, animate ? LV_ANIM_ON : LV_ANIM_OFF);
+    if (chip) lv_obj_scroll_to_view(chip, scroll_anim ? LV_ANIM_ON : LV_ANIM_OFF);
 }
 
 void deliver_done(void *);
@@ -302,6 +303,7 @@ void cancelled(lv_anim_t *) {
     sliding = false;
 }
 
+// Horizontal slide between lists (swipe settle or chip tap) — one page width.
 void go_to(int view) {
     if (sliding || view < 0 || view >= task_store::view_count()) return;
     if (view == active) {
@@ -310,11 +312,14 @@ void go_to(int view) {
     }
     sliding = true;
     pending_view = view;
+    select_tab(view, false);  // chip reacts immediately; scroll settles on land
     build_strip(view);
     play_shift(view > active ? -page_width() : 0, landed);
 }
 
-void on_tab(lv_event_t *event) { go_to(static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(event)))); }
+void on_tab(lv_event_t *event) {
+    go_to(static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(event))));
+}
 
 void on_refresh(lv_event_t *event) {
     if (hooks.on_refresh) hooks.on_refresh(event);
@@ -426,10 +431,12 @@ void on_released(lv_event_t *) {
     if (gesture.strip_dir > 0 && x <= -threshold) {
         sliding = true;
         pending_view = active + 1;
+        select_tab(pending_view, false);
         play_shift(-width, landed);
     } else if (gesture.strip_dir < 0 && x >= gesture.strip_rest + threshold) {
         sliding = true;
         pending_view = active - 1;
+        select_tab(pending_view, false);
         play_shift(0, landed);
     } else if (gesture.strip_dir != 0) {
         sliding = true;
@@ -669,7 +676,7 @@ void todoist_panel::set_views(int selected) {
         lv_obj_t *chip = kit::chip(tabs, task_store::view(i).name, i == selected, on_tab,
                                    reinterpret_cast<void *>(static_cast<intptr_t>(i)));
         kit::set_chip_tone(chip, palette::widget_todoist());
-        kit::set_chip_selected(chip, i == selected, true);
+        kit::set_chip_selected(chip, i == selected, false);
     }
     show_view(selected);
 }

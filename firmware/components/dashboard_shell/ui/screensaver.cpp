@@ -13,13 +13,20 @@ namespace {
 
 // Flip clock: HH:MM (4) or HH:MM:SS (6). Seconds mode uses smaller cards so it
 // still fits the 320 px portrait width.
+//
+// Physical Solari / CSS3D Lab anatomy (four leaves per digit):
+//   1. static top  = NEW glyph top (revealed as old top falls)
+//   2. static bottom = OLD glyph bottom (until new bottom rises)
+//   3. falling flap = OLD glyph top, hinges at seam, ease-in
+//   4. rising flap  = NEW glyph bottom, hinges at seam, ease-out after fall
+// Height animation approximates rotateX without a 3D transform.
 constexpr int kMaxDigits = 6;
-
-// Flip realista (refs: CSS3D Lab / Solari / Tock):
-// fase 1 = folha de cima cai (gravidade, ease-in);
-// fase 2 = folha de baixo aterrissa (ease-out).
-constexpr uint32_t kFallMs = 280;
-constexpr uint32_t kRiseMs = 300;
+// Seconds must finish well under 1 s (fall+rise+stagger). Minutes can be slower.
+constexpr uint32_t kFallMsHms = 90;
+constexpr uint32_t kRiseMsHms = 95;
+constexpr uint32_t kFallMsHm = 150;
+constexpr uint32_t kRiseMsHm = 160;
+constexpr uint32_t kStaggerMs = 28;
 
 struct Metrics {
     int digit_w;
@@ -53,10 +60,7 @@ Metrics metrics_for(bool with_seconds) {
         m.digit_n = 4;
     }
     m.half_h = m.digit_h / 2;
-    // Children: digits + (digit_n/2 - 0) colons → digit_n digits + (digit_n/2 - 1)? 
-    // Layout: HH : MM [: SS] → digit_n + digit_n/2 - 1? For 4: 4 dig + 1 colon = 5 kids, 4 gaps.
-    // For 6: 6 dig + 2 colon = 8 kids, 7 gaps. Flex pad_column applies between kids.
-    int kids = m.digit_n + (m.digit_n / 2) - 1;  // 4→5, 6→8? 6/2-1=2 colons, 6+2=8 ✓; 4/2-1=1, 4+1=5 ✓
+    int kids = m.digit_n + (m.digit_n / 2) - 1;
     m.clock_w = m.digit_n * m.digit_w + (kids - m.digit_n) * m.colon_w + (kids - 1) * m.gap;
     return m;
 }
@@ -68,8 +72,11 @@ lv_obj_t *top_labels[kMaxDigits] = {};
 lv_obj_t *bottom_labels[kMaxDigits] = {};
 lv_obj_t *flap_top[kMaxDigits] = {};
 lv_obj_t *flap_bot[kMaxDigits] = {};
+lv_obj_t *flap_top_lab[kMaxDigits] = {};
+lv_obj_t *flap_bot_lab[kMaxDigits] = {};
 lv_obj_t *colon_boxes[2] = {};
 char shown[kMaxDigits + 1] = "------";
+char queued[kMaxDigits] = {};
 int hour_cache = -1;
 int minute_cache = -1;
 int second_cache = -1;
@@ -84,12 +91,8 @@ bool want_seconds() {
     return face_prefs::options().time == clock_face::TimeFormat::Hms;
 }
 
-bool any_flipping() {
-    for (int i = 0; i < metrics.digit_n; ++i) {
-        if (flipping[i]) return true;
-    }
-    return false;
-}
+uint32_t fall_ms() { return metrics.digit_n >= 6 ? kFallMsHms : kFallMsHm; }
+uint32_t rise_ms() { return metrics.digit_n >= 6 ? kRiseMsHms : kRiseMsHm; }
 
 void style_half(lv_obj_t *half, bool top) {
     lv_obj_set_size(half, metrics.digit_w, metrics.half_h);
@@ -111,7 +114,21 @@ void style_digit_label(lv_obj_t *label) {
 void place_top_glyph(lv_obj_t *label) { lv_obj_align(label, LV_ALIGN_CENTER, 0, metrics.half_h / 2); }
 void place_bottom_glyph(lv_obj_t *label) { lv_obj_align(label, LV_ALIGN_CENTER, 0, -metrics.half_h / 2); }
 
-void set_digit_text(int index, char ch) {
+// Pin digit optical center on the seam so foreshortening clips correctly as height changes.
+void pin_glyph_on_seam_above(lv_obj_t *label) {
+    if (!label) return;
+    lv_obj_update_layout(label);
+    lv_coord_t h = lv_obj_get_height(label);
+    lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, h / 2);
+}
+void pin_glyph_on_seam_below(lv_obj_t *label) {
+    if (!label) return;
+    lv_obj_update_layout(label);
+    lv_coord_t h = lv_obj_get_height(label);
+    lv_obj_align(label, LV_ALIGN_TOP_MID, 0, -h / 2);
+}
+
+void set_static_digit(int index, char ch) {
     char one[2] = {ch, '\0'};
     if (top_labels[index]) lv_label_set_text(top_labels[index], one);
     if (bottom_labels[index]) lv_label_set_text(bottom_labels[index], one);
@@ -119,23 +136,26 @@ void set_digit_text(int index, char ch) {
 
 void style_flap(lv_obj_t *flap, bool top) {
     lv_obj_set_size(flap, metrics.digit_w, metrics.half_h);
-    lv_obj_set_style_bg_color(flap, lv_color_hex(top ? 0xE4E0D6 : 0xDCD7CC), 0);
+    lv_obj_set_style_bg_color(flap, lv_color_hex(top ? 0xE8E4DA : 0xE0DBD0), 0);
     lv_obj_set_style_bg_opa(flap, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(flap, 8, 0);
     lv_obj_set_style_clip_corner(flap, true, 0);
     lv_obj_set_style_border_width(flap, 0, 0);
     lv_obj_set_style_pad_all(flap, 0, 0);
     lv_obj_add_flag(flap, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(flap, LV_OBJ_FLAG_SCROLLABLE);
 }
 
 void reset_flap_top(lv_obj_t *flap) {
+    // Hinge at the seam (bottom of the top half) — free edge is the card top.
     lv_obj_set_height(flap, metrics.half_h);
-    lv_obj_align(flap, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(flap, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_set_style_bg_opa(flap, LV_OPA_COVER, 0);
     lv_obj_set_style_opa(flap, LV_OPA_COVER, 0);
 }
 
 void reset_flap_bot(lv_obj_t *flap) {
+    // Hinge at the seam (top of the bottom half) — free edge grows downward.
     lv_obj_set_height(flap, 3);
     lv_obj_align(flap, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_opa(flap, LV_OPA_COVER, 0);
@@ -192,15 +212,27 @@ lv_obj_t *make_digit(lv_obj_t *parent, int index) {
     place_top_glyph(top_lab);
     top_labels[index] = top_lab;
 
+    // Falling leaf: old top glyph rides on the flap.
     lv_obj_t *ft = kit::bare(top);
     style_flap(ft, true);
     reset_flap_top(ft);
+    lv_obj_t *ftl = lv_label_create(ft);
+    style_digit_label(ftl);
+    lv_label_set_text(ftl, "0");
+    place_top_glyph(ftl);
     flap_top[index] = ft;
+    flap_top_lab[index] = ftl;
 
+    // Rising leaf: new bottom glyph rides on the flap.
     lv_obj_t *fb = kit::bare(bottom);
     style_flap(fb, false);
     reset_flap_bot(fb);
+    lv_obj_t *fbl = lv_label_create(fb);
+    style_digit_label(fbl);
+    lv_label_set_text(fbl, "0");
+    place_bottom_glyph(fbl);
     flap_bot[index] = fb;
+    flap_bot_lab[index] = fbl;
 
     lv_obj_t *seam = lv_obj_create(card);
     lv_obj_remove_style_all(seam);
@@ -229,21 +261,26 @@ int flap_bot_index(lv_obj_t *flap) {
 }
 
 void shade_by_height(lv_obj_t *flap, int32_t h) {
-    if (h < 16) {
-        lv_opa_t opa = static_cast<lv_opa_t>((h * LV_OPA_COVER) / 16);
-        if (opa < 70) opa = 70;
-        lv_obj_set_style_bg_opa(flap, opa, 0);
-    } else {
-        lv_obj_set_style_bg_opa(flap, LV_OPA_COVER, 0);
-    }
+    // Edge-on ≈ darker leaf — never drop opacity (that ghosts the digit underneath).
+    const int full = metrics.half_h > 0 ? metrics.half_h : 1;
+    int t = (h * 100) / full;
+    if (t < 0) t = 0;
+    if (t > 100) t = 100;
+    // Open ≈ #E8E4DA; edge-on ≈ #9A958C
+    const int r = 0x9A + ((0xE8 - 0x9A) * t) / 100;
+    const int g = 0x95 + ((0xE4 - 0x95) * t) / 100;
+    const int b = 0x8C + ((0xDA - 0x8C) * t) / 100;
+    lv_obj_set_style_bg_color(flap, lv_color_hex((r << 16) | (g << 8) | b), 0);
+    lv_obj_set_style_bg_opa(flap, LV_OPA_COVER, 0);
 }
+
+void flip_digit(int index, char next, uint32_t delay_ms);
 
 void finish_digit(int i) {
     if (i < 0 || i >= metrics.digit_n) return;
     char ch = pending_new[i] ? pending_new[i] : shown[i];
-    char one[2] = {ch, '\0'};
-    if (top_labels[i]) lv_label_set_text(top_labels[i], one);
-    if (bottom_labels[i]) lv_label_set_text(bottom_labels[i], one);
+    set_static_digit(i, ch);
+    shown[i] = ch;
     if (flap_top[i]) {
         reset_flap_top(flap_top[i]);
         lv_obj_add_flag(flap_top[i], LV_OBJ_FLAG_HIDDEN);
@@ -255,6 +292,9 @@ void finish_digit(int i) {
     flipping[i] = false;
     pending_new[i] = 0;
     pending_old[i] = 0;
+    char next = queued[i];
+    queued[i] = 0;
+    if (next && next != ch) flip_digit(i, next, 0);
 }
 
 void rise_exec(void *obj, int32_t h);
@@ -269,19 +309,24 @@ void start_rise(int i) {
     }
     lv_obj_t *fb = flap_bot[i];
     char one[2] = {pending_new[i], '\0'};
-    if (bottom_labels[i]) lv_label_set_text(bottom_labels[i], one);
+    // Keep static bottom as OLD until the rising leaf covers it; glyph rides on flap.
+    if (flap_bot_lab[i]) {
+        lv_label_set_text(flap_bot_lab[i], one);
+        pin_glyph_on_seam_below(flap_bot_lab[i]);
+    }
 
     lv_anim_delete(fb, nullptr);
     reset_flap_bot(fb);
     lv_obj_remove_flag(fb, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(fb);
+    if (flap_bot_lab[i]) pin_glyph_on_seam_below(flap_bot_lab[i]);
 
     lv_anim_t anim;
     lv_anim_init(&anim);
     lv_anim_set_var(&anim, fb);
     lv_anim_set_exec_cb(&anim, rise_exec);
     lv_anim_set_values(&anim, 3, metrics.half_h);
-    lv_anim_set_duration(&anim, kRiseMs);
+    lv_anim_set_duration(&anim, rise_ms());
     lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
     lv_anim_set_completed_cb(&anim, rise_ready);
     lv_anim_start(&anim);
@@ -293,6 +338,8 @@ void rise_exec(void *obj, int32_t h) {
     lv_obj_set_height(flap, h);
     lv_obj_align(flap, LV_ALIGN_TOP_MID, 0, 0);
     shade_by_height(flap, h);
+    int i = flap_bot_index(flap);
+    if (i >= 0) pin_glyph_on_seam_below(flap_bot_lab[i]);
 }
 
 void rise_ready(lv_anim_t *anim) {
@@ -304,8 +351,10 @@ void fall_exec(void *obj, int32_t h) {
     auto *flap = static_cast<lv_obj_t *>(obj);
     if (h < 2) h = 2;
     lv_obj_set_height(flap, h);
-    lv_obj_align(flap, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(flap, LV_ALIGN_BOTTOM_MID, 0, 0);  // hinge stays on the seam
     shade_by_height(flap, h);
+    int i = flap_top_index(flap);
+    if (i >= 0) pin_glyph_on_seam_above(flap_top_lab[i]);
 }
 
 void fall_ready(lv_anim_t *anim) {
@@ -316,17 +365,21 @@ void fall_ready(lv_anim_t *anim) {
         lv_obj_add_flag(flap, LV_OBJ_FLAG_HIDDEN);
     }
     if (i >= 0) {
-        char one[2] = {pending_new[i], '\0'};
-        if (top_labels[i]) lv_label_set_text(top_labels[i], one);
+        // New top already set at flip start; land the new bottom.
         start_rise(i);
     }
 }
 
-void flip_digit(int index, char next) {
+void flip_digit(int index, char next, uint32_t delay_ms) {
     if (index < 0 || index >= metrics.digit_n || !flap_top[index] || !top_labels[index]) return;
     char cur = shown[index];
+    if (cur == next && !flipping[index]) return;
+    if (flipping[index]) {
+        // Keep latest target — physical cards also skip intermediate if spun fast.
+        queued[index] = next;
+        return;
+    }
     if (cur == next) return;
-    if (flipping[index]) return;
 
     lv_obj_t *ft = flap_top[index];
     lv_anim_delete(ft, nullptr);
@@ -334,16 +387,27 @@ void flip_digit(int index, char next) {
 
     char old_txt[2] = {cur, '\0'};
     char new_txt[2] = {next, '\0'};
-    lv_label_set_text(top_labels[index], new_txt);
-    lv_label_set_text(bottom_labels[index], old_txt);
+    // Anatomy: static top = NEW (behind fall); static bottom = OLD until rise lands.
+    if (top_labels[index]) lv_label_set_text(top_labels[index], new_txt);
+    if (bottom_labels[index]) lv_label_set_text(bottom_labels[index], old_txt);
+    if (flap_top_lab[index]) {
+        lv_label_set_text(flap_top_lab[index], old_txt);
+        pin_glyph_on_seam_above(flap_top_lab[index]);
+    }
+    if (flap_bot_lab[index]) {
+        lv_label_set_text(flap_bot_lab[index], new_txt);
+        pin_glyph_on_seam_below(flap_bot_lab[index]);
+    }
     pending_old[index] = cur;
     pending_new[index] = next;
     shown[index] = next;
     flipping[index] = true;
+    queued[index] = 0;
 
     reset_flap_top(ft);
     lv_obj_remove_flag(ft, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(ft);
+    if (flap_top_lab[index]) pin_glyph_on_seam_above(flap_top_lab[index]);
     if (flap_bot[index]) lv_obj_add_flag(flap_bot[index], LV_OBJ_FLAG_HIDDEN);
 
     lv_anim_t anim;
@@ -351,7 +415,8 @@ void flip_digit(int index, char next) {
     lv_anim_set_var(&anim, ft);
     lv_anim_set_exec_cb(&anim, fall_exec);
     lv_anim_set_values(&anim, metrics.half_h, 3);
-    lv_anim_set_duration(&anim, kFallMs);
+    lv_anim_set_duration(&anim, fall_ms());
+    lv_anim_set_delay(&anim, delay_ms);
     lv_anim_set_path_cb(&anim, lv_anim_path_ease_in);
     lv_anim_set_completed_cb(&anim, fall_ready);
     lv_anim_start(&anim);
@@ -364,11 +429,15 @@ void set_time_digits(int hour, int minute, int second, bool animate) {
     } else {
         snprintf(buf, sizeof(buf), "%02d%02d", hour, minute);
     }
+    int stagger_i = 0;
     for (int i = 0; i < metrics.digit_n; ++i) {
         if (animate && shown[i] != '-' && shown[i] != buf[i]) {
-            flip_digit(i, buf[i]);
+            // Left→right cascade like a Solari board; units still lead visually
+            // because they change alone most of the time.
+            flip_digit(i, buf[i], static_cast<uint32_t>(stagger_i) * kStaggerMs);
+            ++stagger_i;
         } else if (!flipping[i]) {
-            set_digit_text(i, buf[i]);
+            set_static_digit(i, buf[i]);
             if (flap_top[i]) {
                 lv_anim_delete(flap_top[i], nullptr);
                 reset_flap_top(flap_top[i]);
@@ -380,6 +449,9 @@ void set_time_digits(int hour, int minute, int second, bool animate) {
                 lv_obj_add_flag(flap_bot[i], LV_OBJ_FLAG_HIDDEN);
             }
             shown[i] = buf[i];
+            queued[i] = 0;
+        } else if (shown[i] != buf[i]) {
+            queued[i] = buf[i];
         }
     }
     hour_cache = hour;
@@ -400,9 +472,12 @@ void clear_digit_slots() {
         bottom_labels[i] = nullptr;
         flap_top[i] = nullptr;
         flap_bot[i] = nullptr;
+        flap_top_lab[i] = nullptr;
+        flap_bot_lab[i] = nullptr;
         flipping[i] = false;
         pending_new[i] = 0;
         pending_old[i] = 0;
+        queued[i] = 0;
         shown[i] = '-';
     }
     shown[kMaxDigits] = '\0';
@@ -430,7 +505,6 @@ void build_clock_box() {
     lv_obj_set_style_pad_column(clock_box, metrics.gap, 0);
     lv_obj_add_flag(clock_box, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
 
-    // HH : MM [: SS]
     digits[0] = make_digit(clock_box, 0);
     digits[1] = make_digit(clock_box, 1);
     colon_boxes[0] = make_colon(clock_box);
@@ -476,6 +550,7 @@ void screensaver::show() {
     read_now(hour, minute, second);
     for (int i = 0; i < metrics.digit_n; ++i) {
         flipping[i] = false;
+        queued[i] = 0;
         if (flap_top[i]) {
             lv_anim_delete(flap_top[i], nullptr);
             reset_flap_top(flap_top[i]);
@@ -502,13 +577,13 @@ bool screensaver::visible() { return shown_flag; }
 void screensaver::tick(uint32_t now_ms) {
     (void)now_ms;
     if (!shown_flag || !screen) return;
-    if (any_flipping()) return;
     const bool before_secs = built_with_seconds;
     ensure_layout();
     int hour = 0, minute = 0, second = 0;
     read_now(hour, minute, second);
     const bool secs = metrics.digit_n >= 6;
     const bool rebuilt = before_secs != built_with_seconds;
+    // Never drop a second/minute — queue onto digits that are mid-flip.
     if (rebuilt || hour != hour_cache || minute != minute_cache || (secs && second != second_cache)) {
         set_time_digits(hour, minute, second, !rebuilt);
     }

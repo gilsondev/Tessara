@@ -33,6 +33,21 @@ void test_dashboard_enable_appends_when_missing(void) {
     TEST_ASSERT_EQUAL_STRING(dashboard::id_weather(), layout.ids[5]);
 }
 
+void test_dashboard_calendar_inserts_after_aitokens(void) {
+    dashboard::Layout layout = dashboard::defaults();
+    dashboard::set_enabled(layout, dashboard::id_calendar(), true);
+    TEST_ASSERT_EQUAL(7, layout.count);
+    TEST_ASSERT_EQUAL_STRING(dashboard::id_aitokens(), layout.ids[5]);
+    TEST_ASSERT_EQUAL_STRING(dashboard::id_calendar(), layout.ids[6]);
+    // Re-enable when already present but out of order → snap under AI Tokens.
+    dashboard::set_enabled(layout, dashboard::id_weather(), false);
+    dashboard::set_enabled(layout, dashboard::id_calendar(), false);
+    dashboard::set_enabled(layout, dashboard::id_weather(), true);
+    dashboard::set_enabled(layout, dashboard::id_calendar(), true);
+    TEST_ASSERT_EQUAL_STRING(dashboard::id_aitokens(), layout.ids[4]);
+    TEST_ASSERT_EQUAL_STRING(dashboard::id_calendar(), layout.ids[5]);
+}
+
 void test_dashboard_unknown_ids_ignored_on_parse(void) {
     dashboard::Layout layout = {};
     TEST_ASSERT_TRUE(dashboard::parse("org.tessara.weather,org.fake.nope,org.tessara.todoist", layout));

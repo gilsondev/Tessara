@@ -6,7 +6,7 @@
 #include <cstring>
 
 namespace {
-char line[320];
+char line[2048];  // calendar catalog chunks need headroom
 size_t used = 0;
 
 void dispatch(char *text, ConsoleHandler &handler) {
@@ -46,6 +46,10 @@ void dispatch(char *text, ConsoleHandler &handler) {
     } else if (!strncmp(text, "AGENT", 5)) {
         if (text[5] == '?') return;
         handler.on_agent(text);
+    } else if (!strncmp(text, "CALENDAR", 8)) {
+        // Panel→host queries end with '?'; agent pushes have no '?'.
+        if (strchr(text, '?')) return;
+        handler.on_calendar(text);
     } else if (!strcmp(text, "REST") || !strncmp(text, "REST ", 5)) {
         handler.on_rest(!strcmp(text, "REST") ? "" : text + 5);
     }
