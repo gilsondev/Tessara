@@ -59,3 +59,31 @@ _Avoid_ na UI nova.
 **Fonte**:
 Um provedor ou ferramenta cuja cota/uso o Bridge consegue ler no Mac (MVP: Codex, Claude Code, Cursor). Rótulos na UI: **Codex**, **Claude**, **Cursor**. Preferência de exibição: **% restante**.
 _Avoid_: Provider (só no código se precisar), conta
+
+**Mac** (subsistema):
+Subsistema do painel: cartão na home mais a tela de detalhe. Glance-and-act sobre o computador ligado ao Agente Tessara pela USB (MVP Fase 1: Agora tocando + play/pause/next). O rótulo de exibição começa como “Mac” e pode passar a refletir o modelo/tipo da máquina quando o Agente informar.
+_Avoid_: Notebook (colide com a página do celular), Host (só no código se precisar), Controle remoto, Remote desktop
+
+**Cartão Mac**:
+Resumo do Mac na home: só leitura — faixa/artista do Agora tocando, ou estado vazio. Toque abre a tela de detalhe. Sem botões de mídia no cartão.
+_Avoid_: Widget do Mac
+
+**Tela Mac**:
+Detalhe do Mac. Fase 1: bloco de mídia (Agora tocando + play/pause/previous/next), sem capa. Focus e Lock entram depois na mesma tela; capa do álbum é evolução posterior, não da primeira entrega.
+_Avoid_: Página do Mac
+
+**Agora tocando**:
+Faixa que o macOS expõe como sessão de mídia ativa (qualquer app). No painel: título, artista quando houver, e estado tocando/pausado; com várias sessões, prevalece a que está tocando, senão a mais recente. Pausado ainda mostra a faixa.
+_Avoid_: Now Playing (só no código/spec se precisar), Media session
+
+**Mac offline**:
+Estado em que não há Agente Tessara falando pela USB. Distinto de silêncio (agente ok, nada tocando). Cartão Mac permanece na home nesse estado.
+_Avoid_: Desconectado (genérico demais), Offline sozinho (colide com outros subsistemas)
+
+**Focus** (no Mac):
+Modo de concentração do macOS exposto na Tela Mac: lista para escolher. Toque no Focus já ativo desliga; toque noutro troca; com nenhum ativo, toque liga o escolhido. No cartão (quando a fase existir): só o Focus ativo, leitura.
+_Avoid_: DND, Não perturbe (rótulo de um Focus, não do conceito), Focus Mode (só no código se precisar)
+
+**Lock** (no Mac):
+Ação na Tela Mac que trava a sessão do computador ligado ao Agente. Acionamento por segurar (hold), não por toque curto.
+_Avoid_: Bloquear tela, Sleep (é outra ação, fora destas fases)
