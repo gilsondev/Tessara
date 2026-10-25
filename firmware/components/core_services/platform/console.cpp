@@ -26,6 +26,10 @@ void dispatch(char *text, ConsoleHandler &handler) {
         handler.on_perf();
     } else if (!strcmp(text, "FLASH")) {
         handler.on_flash();
+    } else if (!strcmp(text, "AGENT_PUSH")) {
+        handler.on_agent_push(true);
+    } else if (!strcmp(text, "AGENT_PUSH_OFF")) {
+        handler.on_agent_push(false);
     } else if (!strcmp(text, "SETUP")) {
         handler.on_enter_setup();
     } else if (!strcmp(text, "RESTORE")) {
@@ -50,6 +54,9 @@ void dispatch(char *text, ConsoleHandler &handler) {
         // Panel→host queries end with '?'; agent pushes have no '?'.
         if (strchr(text, '?')) return;
         handler.on_calendar(text);
+    } else if (!strncmp(text, "MEDIA", 5)) {
+        if (text[5] == '?') return;
+        handler.on_media(text);
     } else if (!strcmp(text, "REST") || !strncmp(text, "REST ", 5)) {
         handler.on_rest(!strcmp(text, "REST") ? "" : text + 5);
     }

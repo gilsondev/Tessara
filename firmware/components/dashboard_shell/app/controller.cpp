@@ -4,6 +4,7 @@
 #include "aitokens/snapshot.h"
 #include "calendar/catalog.h"
 #include "calendar/snapshot.h"
+#include "mac/snapshot.h"
 #include "app/nav.h"
 #include "domain/list_prefs.h"
 #include "domain/pending_closes.h"
@@ -11,6 +12,7 @@
 #include "todoist/snapshot.h"
 #include "ui/palette.h"
 #include "platform/chime.h"
+#include "platform/agent_push.h"
 #include "platform/console.h"
 #include "platform/daytime.h"
 #include "platform/device_resources.h"
@@ -87,6 +89,7 @@ public:
             widget_settings::set(dashboard::id_clock(), "timezone", tz);
         }
         daytime::set_timezone(tz);
+        daytime::restore();  // last wall clock from NVS until NTP arrives
         char time_fmt[12] = {};
         if (!widget_settings::get(dashboard::id_clock(), "time_format", time_fmt, sizeof(time_fmt)) ||
             !time_fmt[0]) {
@@ -101,6 +104,11 @@ public:
         palette::set_mode(resolve_dark(device_) ? palette::Mode::Dark : palette::Mode::Light);
         display_host::begin(*board.display, board.backlight, board.descriptor, rotation_for(device_.portrait));
         display_host::set_brightness(device_.brightness);
+        // Branded splash before the rest of boot (SD / Wi‑Fi / widgets).
+        ui::show_loader("", "");
+        display_host::refresh_now();
+        // Deploy window: flash-agent can PUT as soon as Wi‑Fi is up (no extra USB arm).
+        agent_push::arm_boot();
         input_host::begin(board.touch, board.button, board.descriptor);
         input_host::set_wake_handler([]() {
             if (g_controller) g_controller->on_rest_wake();
@@ -139,7 +147,7 @@ public:
         }
         paint_calendar();
         ask_calendar_refresh();
-        ui::show_loader("Iniciando", "Preparando o painel");
+        if (!ui::loader_visible()) ui::show_loader("", "");
         display_host::refresh_now();
         Serial.printf("tela %s\n", device_.portrait ? "em pe" : "deitada");
         configure();
@@ -181,6 +189,7 @@ public:
         chime::pump();
         if (aitokens::refresh_age(aitokens_, millis())) paint_aitokens();
         if (calendar::refresh_age(calendar_, millis())) paint_calendar();
+        if (mac::refresh_age(mac_, millis())) paint_mac();
         // USB drops often — re-ask while the agent is up but agenda never arrived.
         if (agent_.ok && !calendar_.ready && millis() - calendar_ask_at_ > 5000u) {
             calendar_ask_at_ = millis();
@@ -251,12 +260,22 @@ public:
         ui::aitokens_refreshing();
     }
 
+    void on_mac_cmd(const char *cmd) override {
+        if (!cmd || !cmd[0]) return;
+        if (cmd[0] == '?' && cmd[1] == '\0') {
+            ask_media_refresh();
+            return;
+        }
+        push_media_cmd(cmd);
+    }
+
     void on_back_home() override {
         nav::back(nav_);
         todoist::bump(gate_);
         ui::show_home();
         paint_summary();
         paint_aitokens();
+        paint_mac();
     }
 
     void on_open_settings() override { beneath_ = nav_.screen; nav::open_settings(nav_); }
@@ -276,6 +295,17 @@ public:
     void paint_weather() { ui::set_weather(weather::view(millis())); }
 
     void paint_aitokens() { ui::set_aitokens(aitokens_); }
+
+    void paint_mac() { ui::set_mac(mac_, agent_.ok); }
+
+    void ask_media_refresh() { Serial.println("MEDIA?"); }
+
+    void push_media_cmd(const char *cmd) {
+        if (!cmd || !cmd[0]) return;
+        char line[32];
+        snprintf(line, sizeof(line), "MEDIA\t%s", cmd);
+        Serial.println(line);
+    }
 
     void paint_summary() {
         todoist::ListTally rows[kMaxViews];
@@ -441,9 +471,18 @@ public:
             }
             ask_calendar_refresh();
             calendar_ask_at_ = millis();
+            ask_media_refresh();
+            paint_mac();
+        } else {
+            paint_mac();
         }
         settings_panel_show_agent();
         publish();
+    }
+
+    void on_media(const char *line) override {
+        if (!mac::apply_line(mac_, line, millis())) return;
+        paint_mac();
     }
 
     void sync_calendar_link_from_catalog() {
@@ -508,8 +547,26 @@ public:
         return sd_host::ready() && sd_host::exists("/tessera/agent.tgz");
     }
 
+    void read_agent_pack_version(char *dest, size_t cap) const {
+        if (!dest || !cap) return;
+        dest[0] = '\0';
+        size_t n = 0;
+        uint8_t *raw = sd_host::read_file("/tessera/agent.version", &n);
+        if (!raw || !n) {
+            sd_host::free_buf(raw);
+            return;
+        }
+        size_t len = n < cap - 1 ? n : cap - 1;
+        while (len > 0 && (raw[len - 1] == '\n' || raw[len - 1] == '\r' || raw[len - 1] == ' ')) --len;
+        std::memcpy(dest, raw, len);
+        dest[len] = '\0';
+        sd_host::free_buf(raw);
+    }
+
     void settings_panel_show_agent() {
-        ui::set_agent(agent::for_display(agent_, millis()), agent_pack_ready());
+        char ver[24] = {};
+        if (agent_pack_ready()) read_agent_pack_version(ver, sizeof(ver));
+        ui::set_agent(agent::for_display(agent_, millis()), agent_pack_ready(), ver);
     }
 
     void on_flash() override {
@@ -523,6 +580,17 @@ public:
         display_host::refresh_now();
         if (board_->backlight) board_->backlight->hold_through_reset();
         Serial.println("flash pronto");
+        Serial.flush();
+    }
+
+    void on_agent_push(bool on) override {
+        if (on) {
+            agent_push::arm();
+            Serial.println("agent push pronto");
+        } else {
+            agent_push::disarm();
+            Serial.println("agent push off");
+        }
         Serial.flush();
     }
 
@@ -747,6 +815,9 @@ private:
         snapshot.agent.ok = agent_ui.ok;
         text::copy(snapshot.agent.detail, sizeof(snapshot.agent.detail), agent_ui.detail);
         snapshot.agent_pack = agent_pack_ready();
+        snapshot.agent_push_armed = agent_push::armed();
+        snapshot.agent_pack_version[0] = '\0';
+        if (snapshot.agent_pack) read_agent_pack_version(snapshot.agent_pack_version, sizeof(snapshot.agent_pack_version));
         snapshot.aitokens_ready = aitokens_.ready;
         snapshot.aitokens_stale = aitokens_.stale;
         snapshot.aitokens_age_s =
@@ -789,7 +860,7 @@ private:
         ui::set_face(snapshot.clock_timezone, snapshot.clock_time_format, snapshot.date_format);
         web_portal::publish(snapshot);
         web_portal::publish_calendar_catalog(catalog_view);
-        ui::set_agent(agent_ui, agent_pack_ready());
+        ui::set_agent(agent_ui, agent_pack_ready(), snapshot.agent_pack_version);
         paint_summary();
         paint_weather();
     }
@@ -1318,6 +1389,7 @@ private:
     calendar::View calendar_{};
     calendar::Catalog calendar_catalog_{};
     uint32_t calendar_ask_at_ = 0;
+    mac::View mac_{};
     agent::View agent_{};
     todoist::Gate gate_{};
     uint32_t inflight_gen_ = 1;

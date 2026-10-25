@@ -4,6 +4,7 @@
 #include "aitokens/snapshot.h"
 #include "calendar/snapshot.h"
 #include "domain/dashboard_layout.h"
+#include "mac/snapshot.h"
 #include "domain/device_settings.h"
 #include "weather/cache.h"
 
@@ -25,6 +26,8 @@ public:
     // Open a registered widget by stable id (org.tessara.*). Shell stays id-agnostic.
     virtual void on_open_widget(const char *widget_id) = 0;
     virtual void on_aitokens_refresh() = 0;
+    // Mac media: "?" refresh, or "PLAYPAUSE" / "NEXT" / "PREV".
+    virtual void on_mac_cmd(const char *cmd) = 0;
     virtual void on_back_home() = 0;
     virtual void on_open_settings() = 0;
     virtual void on_settings_closed() = 0;
@@ -49,7 +52,8 @@ void set_summary(int total, bool pending);
 void set_weather(const weather::View &view);
 void set_aitokens(const aitokens::View &view);
 void set_calendar(const calendar::View &view);
-void set_agent(const agent::View &view, bool pack_on_sd = false);
+void set_mac(const mac::View &view, bool agent_ok);
+void set_agent(const agent::View &view, bool pack_on_sd = false, const char *pack_version = nullptr);
 void apply_theme();
 // Rebuilds tabs from task_store's views and shows `active`.
 void set_views(int active);

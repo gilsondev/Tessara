@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import glob
-import sys
 import time
 
 try:
@@ -11,11 +10,13 @@ try:
 except ImportError as exc:  # pragma: no cover
     raise SystemExit("instale pyserial: pip install pyserial") from exc
 
-from agent.capabilities import aitokens, calendar
+from agent.capabilities import aitokens, calendar, media
 from agent.protocol import agent_hello
+from agent.self_update import maybe_self_update
 
 PUSH_S = 5.0
 CALENDAR_PUSH_S = 20.0  # keep agenda warm; USB is lossy on reconnect
+MEDIA_PUSH_S = 8.0  # heartbeat; on-change also answered via MEDIA?
 RETRY_S = 1.5
 BAUD = 115200
 
@@ -62,15 +63,17 @@ def main() -> int:
     port = None
     last_push = 0.0
     last_cal = 0.0
+    last_media = 0.0
+    last_update_check = [0.0]
     buf = bytearray()
-    print("tessera-agent: aguardando painel USB…", flush=True)
+    print("tessara-agent: aguardando painel USB…", flush=True)
     while True:
         if ser is None or not ser.is_open:
             ser, port = open_serial()
             if ser is None:
                 time.sleep(RETRY_S)
                 continue
-            print(f"tessera-agent: conectado em {port}", flush=True)
+            print(f"tessara-agent: conectado em {port}", flush=True)
             try:
                 ser.write(agent_hello(True).encode())
                 ser.flush()
@@ -78,7 +81,11 @@ def main() -> int:
                 pass
             last_push = 0.0
             last_cal = 0.0
+            last_media = 0.0
             buf.clear()
+            # Fresh USB link: check panel package once (then every CHECK_S).
+            if maybe_self_update(force_check=True, last_check=last_update_check):
+                return 0
         try:
             chunk = ser.read(256)
             if chunk:
@@ -89,24 +96,34 @@ def main() -> int:
                     if text.startswith("AITOKENS?"):
                         write_lines(ser, [aitokens.build_line()])
                         last_push = time.time()
+                    elif text.startswith("MEDIA"):
+                        replies = media.handle_line(text)
+                        if replies:
+                            write_lines(ser, replies)
+                            last_media = time.time()
                     elif text.startswith("CALENDAR"):
                         replies = calendar.handle_line(text)
                         if replies:
                             write_lines(ser, replies)
                             last_cal = time.time()
             now = time.time()
+            if maybe_self_update(last_check=last_update_check):
+                return 0
             # Keep capability pushes on separate turns so a partial USB read
             # cannot glue AITOKENS fields into a CALENDAR_CATALOG line.
             if now - last_cal >= CALENDAR_PUSH_S:
                 write_lines(ser, calendar.push_lines())
                 last_cal = now
+            elif now - last_media >= MEDIA_PUSH_S:
+                write_lines(ser, [media.build_line()])
+                last_media = now
             elif now - last_push >= PUSH_S:
                 ser.write(agent_hello(True).encode())
                 ser.write((aitokens.build_line() + "\n").encode())
                 ser.flush()
                 last_push = now
         except (OSError, serial.SerialException) as exc:
-            print(f"tessera-agent: porta liberada ({exc})", flush=True)
+            print(f"tessara-agent: porta liberada ({exc})", flush=True)
             try:
                 ser.close()
             except Exception:

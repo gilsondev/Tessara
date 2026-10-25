@@ -16,9 +16,11 @@
 #include "aitokens_widget.h"
 #include "calendar_widget.h"
 #include "clock_widget.h"
+#include "mac_widget.h"
 #include "todoist_widget.h"
 #include "weather_widget.h"
 #include "ui/calendar_page.h"
+#include "ui/mac_page.h"
 
 #include <cstring>
 #include <lvgl.h>
@@ -64,6 +66,10 @@ void on_aitokens_refresh(lv_event_t *) {
     if (events) events->on_aitokens_refresh();
 }
 
+void on_mac_cmd(const char *cmd) {
+    if (events && cmd) events->on_mac_cmd(cmd);
+}
+
 bool todoist_idle_allowed() {
     return !loader::visible() && !settings_panel::visible() && !setup_panel::visible();
 }
@@ -96,6 +102,7 @@ void ui::begin(UiEvents &handler) {
     weather_page::begin(on_back);
     aitokens_page::begin(on_back, on_aitokens_refresh);
     calendar_page::begin(on_back);
+    mac_page::begin(on_back, on_mac_cmd);
     clock_page::begin(on_back);
     detail_host::begin();
     tessara::bind_host_services();
@@ -173,13 +180,23 @@ void ui::set_calendar(const calendar::View &view) {
     else calendar_page::paint(view);
 }
 
-void ui::set_agent(const agent::View &view, bool pack_on_sd) { settings_panel::show_agent(view, pack_on_sd); }
+void ui::set_mac(const mac::View &view, bool agent_ok) {
+    home::set_mac(view, agent_ok);
+    int slot = tessara::runtime().find_type(tessara::mac_widget_id());
+    if (slot >= 0) tessara::mac_widget_paint(tessara::runtime().widget(slot), view, agent_ok);
+    else mac_page::paint(view, agent_ok);
+}
+
+void ui::set_agent(const agent::View &view, bool pack_on_sd, const char *pack_version) {
+    settings_panel::show_agent(view, pack_on_sd, pack_version);
+}
 
 void ui::apply_theme() {
     weather_icons::apply_theme();
     home::apply_theme();
     weather_page::apply_theme();
     calendar_page::apply_theme();
+    mac_page::apply_theme();
     aitokens_page::apply_theme();
     clock_page::apply_theme();
     todoist_panel::apply_theme();

@@ -33,6 +33,7 @@ uint32_t widget_todoist();
 uint32_t widget_calendar();
 uint32_t widget_weather();
 uint32_t widget_aitokens();
+uint32_t widget_mac();
 uint32_t priority(uint8_t level);
 
 uint32_t paper();

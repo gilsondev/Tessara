@@ -31,6 +31,7 @@ include_directories(
   "${FW}/widgets/weather"
   "${FW}/widgets/aitokens"
   "${FW}/widgets/calendar"
+  "${FW}/widgets/mac"
   "${FW}/widgets/clock"
   "${FW}/components/widget_sdk"
   "${LVGL_DIR}"

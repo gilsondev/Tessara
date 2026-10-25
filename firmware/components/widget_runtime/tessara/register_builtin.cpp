@@ -5,6 +5,7 @@
 #include "clock_widget.h"
 #include "date_widget.h"
 #include "greeting_widget.h"
+#include "mac_widget.h"
 #include "todoist_widget.h"
 #include "weather_widget.h"
 
@@ -18,6 +19,7 @@ void register_builtin_widgets() {
     rt.register_type(weather_widget_id(), create_weather_widget);
     rt.register_type(aitokens_widget_id(), create_aitokens_widget);
     rt.register_type(calendar_widget_id(), create_calendar_widget);
+    rt.register_type(mac_widget_id(), create_mac_widget);
     rt.register_type(clock_widget_id(), create_clock_widget);
 }
 

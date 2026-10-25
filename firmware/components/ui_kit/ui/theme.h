@@ -24,6 +24,7 @@ inline lv_color_t widget_todoist() { return lv_color_hex(palette::widget_todoist
 inline lv_color_t widget_calendar() { return lv_color_hex(palette::widget_calendar()); }
 inline lv_color_t widget_weather() { return lv_color_hex(palette::widget_weather()); }
 inline lv_color_t widget_aitokens() { return lv_color_hex(palette::widget_aitokens()); }
+inline lv_color_t widget_mac() { return lv_color_hex(palette::widget_mac()); }
 
 inline lv_color_t paper() { return background(); }
 inline lv_color_t ink() { return text_primary(); }

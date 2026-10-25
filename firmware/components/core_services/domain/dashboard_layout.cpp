@@ -38,6 +38,7 @@ const char *dashboard::id_todoist() { return "org.tessara.todoist"; }
 const char *dashboard::id_weather() { return "org.tessara.weather"; }
 const char *dashboard::id_aitokens() { return "org.tessara.aitokens"; }
 const char *dashboard::id_calendar() { return "org.tessara.calendar"; }
+const char *dashboard::id_mac() { return "org.tessara.mac"; }
 const char *dashboard::id_clock() { return "org.tessara.clock"; }
 const char *dashboard::id_greeting() { return "org.tessara.greeting"; }
 const char *dashboard::id_date() { return "org.tessara.date"; }
@@ -46,8 +47,8 @@ const char *dashboard::id_hello() { return "org.tessara.hello"; }
 
 bool dashboard::known_type(const char *type_id) {
     return eq(type_id, id_todoist()) || eq(type_id, id_weather()) || eq(type_id, id_aitokens()) ||
-           eq(type_id, id_calendar()) || eq(type_id, id_clock()) || eq(type_id, id_greeting()) ||
-           eq(type_id, id_date());
+           eq(type_id, id_calendar()) || eq(type_id, id_mac()) || eq(type_id, id_clock()) ||
+           eq(type_id, id_greeting()) || eq(type_id, id_date());
 }
 
 dashboard::Layout dashboard::defaults() {
@@ -58,7 +59,8 @@ dashboard::Layout dashboard::defaults() {
     copy_id(out.ids[3], kIdLen, id_todoist());
     copy_id(out.ids[4], kIdLen, id_weather());
     copy_id(out.ids[5], kIdLen, id_aitokens());
-    out.count = 6;
+    copy_id(out.ids[6], kIdLen, id_mac());
+    out.count = 7;
     return out;
 }
 

@@ -3,6 +3,7 @@
 
 #include "clock_summary.h"
 #include "domain/dashboard_layout.h"
+#include "mac/snapshot.h"
 #include "platform/daytime.h"
 #include "platform/face_prefs.h"
 #include "platform/power.h"
@@ -59,6 +60,9 @@ lv_obj_t *calendar_tile = nullptr;
 lv_obj_t *calendar_icon = nullptr;
 lv_obj_t *calendar_glyph = nullptr;
 lv_obj_t *calendar_detail = nullptr;
+lv_obj_t *mac_tile = nullptr;
+lv_obj_t *mac_icon = nullptr;
+lv_obj_t *mac_detail = nullptr;
 bool linked = false;
 int link_rssi = 0;
 lv_event_cb_t open_widget_cb = nullptr;
@@ -91,6 +95,9 @@ void clear_tile_ptrs() {
     calendar_icon = nullptr;
     calendar_glyph = nullptr;
     calendar_detail = nullptr;
+    mac_tile = nullptr;
+    mac_icon = nullptr;
+    mac_detail = nullptr;
 }
 
 void set_if_changed(lv_obj_t *label, const char *text) {
@@ -146,25 +153,34 @@ void cache_hero_flags(const dashboard::Layout &layout) {
 }
 
 void paint_clock(lv_timer_t *) {
+    // Poll often; only commit a new civil second ~once per real second so a 1 s
+    // LVGL timer (or an NTP step) cannot flash 1→2→3 as a glitch.
     static uint8_t beat = 0;
-    if (beat++ % 20 == 0) home::set_battery(power::battery_percent());
+    if (beat++ % 25 == 0) home::set_battery(power::battery_percent());
 
     int hour = 0, minute = 0, second = 0, wday = 0, day = 0, month = 0, year = 0;
     const bool ok = daytime::local(hour, minute, second, wday, day, month, year);
     clock_face::Options opts = face_prefs::options();
     const bool want_seconds = opts.time == clock_face::TimeFormat::Hms;
 
-    // HH:MM only needs a paint on minute (or day/sync/format) change — skip the other 59 ticks.
-    // HH:MM:SS paints each second, but never reloads NVS / dashboard here.
     static int last_h = -1, last_m = -1, last_s = -1, last_day = -1;
     static bool last_ok = false;
     static uint8_t last_fmt = 0xff;
     static uint8_t last_layout_gen = 0xff;
+    static uint32_t last_sec_ms = 0;
     const uint8_t fmt = static_cast<uint8_t>(opts.time);
-    if (last_layout_gen == hero_layout_gen && ok == last_ok && hour == last_h && minute == last_m &&
-        day == last_day && fmt == last_fmt && (!want_seconds || second == last_s)) {
-        return;
+    const bool same_face = last_layout_gen == hero_layout_gen && ok == last_ok && hour == last_h &&
+                           minute == last_m && day == last_day && fmt == last_fmt &&
+                           (!want_seconds || second == last_s);
+    if (same_face) return;
+
+    if (want_seconds && last_s >= 0 && second != last_s && hour == last_h && minute == last_m &&
+        day == last_day && ok == last_ok && fmt == last_fmt && last_layout_gen == hero_layout_gen) {
+        // Natural second (or NTP) moved on — wait ~1 Hz of wall time before painting.
+        const uint32_t now_ms = lv_tick_get();
+        if (last_sec_ms != 0 && (now_ms - last_sec_ms) < 900) return;
     }
+
     last_h = hour;
     last_m = minute;
     last_s = second;
@@ -172,6 +188,7 @@ void paint_clock(lv_timer_t *) {
     last_ok = ok;
     last_fmt = fmt;
     last_layout_gen = hero_layout_gen;
+    if (want_seconds) last_sec_ms = lv_tick_get();
 
     opts.second = second;
     clock_face::Summary face = clock_face::from_parts(hour, minute, wday, day, month, year, ok, opts);
@@ -336,6 +353,49 @@ void add_calendar_tile(lv_event_cb_t on_open) {
     lv_obj_set_style_text_color(calendar_detail, theme::text_secondary(), 0);
 }
 
+void add_mac_tile(lv_event_cb_t on_open) {
+    mac_tile = TsBare(stage);
+    lv_obj_set_width(mac_tile, lv_pct(100));
+    lv_obj_set_height(mac_tile, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(mac_tile, theme::surface(), 0);
+    lv_obj_set_style_bg_opa(mac_tile, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(mac_tile, 16, 0);
+    lv_obj_set_style_border_width(mac_tile, 1, 0);
+    lv_obj_set_style_border_color(mac_tile, theme::border(), 0);
+    lv_obj_set_style_pad_all(mac_tile, 10, 0);
+    lv_obj_set_flex_flow(mac_tile, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(mac_tile, 2, 0);
+    if (on_open) {
+        lv_obj_add_flag(mac_tile, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(mac_tile, on_open, LV_EVENT_CLICKED, const_cast<char *>(dashboard::id_mac()));
+    }
+
+    lv_obj_t *head = TsBare(mac_tile);
+    lv_obj_set_width(head, lv_pct(100));
+    lv_obj_set_height(head, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(head, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(head, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(head, 8, 0);
+
+    mac_icon = lv_label_create(head);
+    lv_label_set_text(mac_icon, LV_SYMBOL_AUDIO);
+    lv_obj_set_style_text_font(mac_icon, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(mac_icon, theme::widget_mac(), 0);
+
+    lv_obj_t *title = lv_label_create(head);
+    lv_label_set_text(title, "Mac");
+    lv_obj_set_style_text_font(title, &theme::label_font(), 0);
+    lv_obj_set_style_text_color(title, theme::text_primary(), 0);
+    lv_obj_set_flex_grow(title, 1);
+
+    mac_detail = lv_label_create(mac_tile);
+    lv_label_set_text(mac_detail, "Mac offline");
+    lv_label_set_long_mode(mac_detail, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(mac_detail, lv_pct(100));
+    lv_obj_set_style_text_font(mac_detail, &theme::small_font(), 0);
+    lv_obj_set_style_text_color(mac_detail, theme::text_secondary(), 0);
+}
+
 void add_generic_tile(const char *title, const char *widget_id) {
     lv_obj_t *unused = nullptr;
     tile(grid, LV_SYMBOL_DIRECTORY, theme::text_secondary(), title ? title : "Widget", &unused, open_widget_cb,
@@ -359,6 +419,7 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
         registered[reg_n++] = dashboard::id_weather();
         registered[reg_n++] = dashboard::id_aitokens();
         registered[reg_n++] = dashboard::id_calendar();
+        registered[reg_n++] = dashboard::id_mac();
         registered[reg_n++] = dashboard::id_clock();
     }
     char slots[dashboard::kMaxSlots][dashboard::kIdLen];
@@ -378,6 +439,7 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
             else if (strcmp(id, dashboard::id_weather()) == 0) kind = tessara::HomeTile::Weather;
             else if (strcmp(id, dashboard::id_aitokens()) == 0) kind = tessara::HomeTile::AiTokens;
             else if (strcmp(id, dashboard::id_calendar()) == 0) kind = tessara::HomeTile::Calendar;
+            else if (strcmp(id, dashboard::id_mac()) == 0) kind = tessara::HomeTile::Mac;
             else kind = tessara::HomeTile::Generic;
         }
         switch (kind) {
@@ -392,6 +454,9 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
                 break;
             case tessara::HomeTile::Calendar:
                 add_calendar_tile(open_widget_cb);
+                break;
+            case tessara::HomeTile::Mac:
+                add_mac_tile(open_widget_cb);
                 break;
             case tessara::HomeTile::Generic: {
                 const char *title = rt.type_title(rt.find_registered(id));
@@ -408,7 +473,7 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
 
 void home::rebuild(const dashboard::Layout &layout) {
     if (!stage || !grid) return;
-    // AI Tokens + Calendar live on `stage` (full width), not inside `grid`.
+    // AI Tokens + Calendar + Mac live on `stage` (full width), not inside `grid`.
     if (aitokens_tile) {
         lv_obj_delete(aitokens_tile);
         aitokens_tile = nullptr;
@@ -416,6 +481,10 @@ void home::rebuild(const dashboard::Layout &layout) {
     if (calendar_tile) {
         lv_obj_delete(calendar_tile);
         calendar_tile = nullptr;
+    }
+    if (mac_tile) {
+        lv_obj_delete(mac_tile);
+        mac_tile = nullptr;
     }
     lv_obj_clean(grid);
     clear_tile_ptrs();
@@ -500,7 +569,8 @@ void home::begin(lv_event_cb_t on_open_widget, lv_event_cb_t on_settings) {
 
     // Tabular slots: proportional Montserrat digits must not shift the hero each second.
     clock_face_ui = kit::tabular_time(hero, &theme::display_font(), theme::text_primary());
-    kit::tabular_time_set(clock_face_ui, "--:--");
+    // paint_clock() fills immediately; avoid a "--:--" flash before the first tick.
+    kit::tabular_time_set(clock_face_ui, "  :  ");
     if (clock_face_ui.root) {
         lv_obj_add_flag(clock_face_ui.root, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_ext_click_area(clock_face_ui.root, 8);
@@ -520,7 +590,8 @@ void home::begin(lv_event_cb_t on_open_widget, lv_event_cb_t on_settings) {
     mount_enabled_tiles(settings::load_dashboard());
 
     arrange();
-    if (!clock_timer) clock_timer = lv_timer_create(paint_clock, 1000, nullptr);
+    // Sub-second poll catches every civil second; paint_clock rate-limits the digits.
+    if (!clock_timer) clock_timer = lv_timer_create(paint_clock, 200, nullptr);
     paint_clock(nullptr);
 }
 
@@ -543,6 +614,29 @@ void home::set_summary(int total, bool pending) {
     char text[16];
     todoist::format_home_count(summary, text, sizeof(text));
     set_if_changed(task_count, text);
+}
+
+void home::set_mac(const mac::View &view, bool agent_ok) {
+    if (!mac_detail) return;
+    char text[72];
+    if (!agent_ok) {
+        snprintf(text, sizeof(text), "Mac offline");
+    } else if (!view.ready || !view.media.ok || view.media.state == mac::MediaState::Stopped ||
+               !view.media.title[0]) {
+        snprintf(text, sizeof(text), "Nada tocando%s", view.stale ? " · desatualizado" : "");
+    } else if (view.media.artist[0]) {
+        snprintf(text, sizeof(text), "%s · %s%s%s", view.media.title, view.media.artist,
+                 view.media.state == mac::MediaState::Paused ? " · pausado" : "",
+                 view.stale ? " · desatualizado" : "");
+    } else {
+        snprintf(text, sizeof(text), "%s%s%s", view.media.title,
+                 view.media.state == mac::MediaState::Paused ? " · pausado" : "",
+                 view.stale ? " · desatualizado" : "");
+    }
+    set_if_changed(mac_detail, text);
+    if (mac_icon) {
+        lv_obj_set_style_text_color(mac_icon, agent_ok ? theme::widget_mac() : theme::error(), 0);
+    }
 }
 
 void home::set_calendar(const calendar::View &view) {
@@ -640,17 +734,24 @@ void home::set_aitokens(const aitokens::View &view) {
         }
         if (row) lv_obj_remove_flag(row, LV_OBJ_FLAG_HIDDEN);
 
-        int rem = (src->kind == aitokens::Kind::Pct) ? src->value : 100;
-        if (rem < 0) rem = 0;
-        if (rem > 100) rem = 100;
+        // Codex/Cursor: value = % restante (alerta). Claude: value = % consumido.
+        const bool cursor = strcmp(id, "cursor") == 0;
+        const bool codex = strcmp(id, "codex") == 0;
+        const bool claude = strcmp(id, "claude") == 0;
+
+        int rem = 100;
+        if (src->kind == aitokens::Kind::Pct) {
+            int v = src->value;
+            if (v < 0) v = 0;
+            if (v > 100) v = 100;
+            rem = claude ? (100 - v) : v;
+        }
         any = true;
         if (rem < worst) worst = rem;
 
         lv_color_t tone = theme::text_secondary();
         char out[72];
-        // Cursor Bridge: "3% · 13%" → home soma "16% usados". Codex: "100% · 88%" → só 5h (+ reset).
-        const bool cursor = strcmp(id, "cursor") == 0;
-        const bool codex = strcmp(id, "codex") == 0;
+        // Cursor: "3% · 13%" → home soma "16% usados". Codex: restante 5h. Claude: % consumido.
         char shown[28];
         if (cursor) {
             int a = -1, b = -1;
@@ -661,10 +762,15 @@ void home::set_aitokens(const aitokens::View &view) {
             }
         } else if (codex) {
             snprintf(shown, sizeof(shown), "%d%%", rem);
+        } else if (claude && src->kind == aitokens::Kind::Pct) {
+            int used = src->value;
+            if (used < 0) used = 0;
+            if (used > 100) used = 100;
+            snprintf(shown, sizeof(shown), "%d%%", used);
         } else {
             snprintf(shown, sizeof(shown), "%s", src->display);
         }
-        const char *unit = cursor ? "usados" : (codex ? "restante" : nullptr);
+        const char *unit = cursor ? "usados" : (claude ? "consumido" : (codex ? "restante" : nullptr));
         if (rem < kAiCriticalPct) {
             tone = theme::error();
             if (src->reset[0] && unit)
@@ -767,9 +873,12 @@ void home::apply_theme() {
     }
     if (calendar_detail) lv_obj_set_style_text_color(calendar_detail, theme::text_secondary(), 0);
     if (aitokens_icon) lv_obj_set_style_text_color(aitokens_icon, theme::widget_aitokens(), 0);
+    if (mac_icon) lv_obj_set_style_text_color(mac_icon, theme::widget_mac(), 0);
+    if (mac_detail) lv_obj_set_style_text_color(mac_detail, theme::text_secondary(), 0);
     paint_card(tasks_tile);
     paint_card(weather_tile);
     paint_card(calendar_tile);
+    paint_card(mac_tile);
     // Só o fundo do card AI Tokens — borda/cores de alerta vêm de set_aitokens.
     if (aitokens_tile) lv_obj_set_style_bg_color(aitokens_tile, theme::surface(), 0);
     auto recolor_name = [](lv_obj_t *card) {
@@ -781,6 +890,11 @@ void home::apply_theme() {
     recolor_name(calendar_tile);
     if (aitokens_tile) {
         lv_obj_t *head = lv_obj_get_child(aitokens_tile, 0);
+        lv_obj_t *title = head ? lv_obj_get_child(head, 1) : nullptr;
+        if (title) lv_obj_set_style_text_color(title, theme::text_primary(), 0);
+    }
+    if (mac_tile) {
+        lv_obj_t *head = lv_obj_get_child(mac_tile, 0);
         lv_obj_t *title = head ? lv_obj_get_child(head, 1) : nullptr;
         if (title) lv_obj_set_style_text_color(title, theme::text_primary(), 0);
     }

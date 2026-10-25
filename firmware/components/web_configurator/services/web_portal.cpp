@@ -1,5 +1,6 @@
 #include "services/web_portal.h"
 
+#include "platform/agent_push.h"
 #include "platform/log.h"
 #include "platform/sd_host.h"
 #include "services/text.h"
@@ -143,6 +144,8 @@ Reply state() {
     agent["ok"] = snapshot.agent.ok;
     agent["detail"] = snapshot.agent.detail;
     doc["agent_pack"] = snapshot.agent_pack;
+    doc["agent_push_armed"] = agent_push::armed();
+    doc["agent_pack_version"] = snapshot.agent_pack_version;
     JsonObject aitokens = doc["aitokens"].to<JsonObject>();
     aitokens["ready"] = snapshot.aitokens_ready;
     aitokens["stale"] = snapshot.aitokens_stale;
@@ -169,8 +172,9 @@ Reply state() {
     JsonArray widgets = doc["widgets"].to<JsonArray>();
     const char *catalog[] = {dashboard::id_greeting(), dashboard::id_date(),    dashboard::id_clock(),
                              dashboard::id_todoist(),  dashboard::id_weather(), dashboard::id_aitokens(),
-                             dashboard::id_calendar()};
-    const char *titles[] = {"Saudação", "Data", "Relógio", "Tarefas", "Clima", "AI Tokens", "Calendário"};
+                             dashboard::id_calendar(), dashboard::id_mac()};
+    const char *titles[] = {"Saudação", "Data", "Relógio", "Tarefas", "Clima", "AI Tokens", "Calendário",
+                            "Mac"};
     static_assert(sizeof(catalog) / sizeof(catalog[0]) == sizeof(titles) / sizeof(titles[0]), "catalog/titles");
     for (size_t i = 0; i < sizeof(catalog) / sizeof(catalog[0]); ++i) {
         JsonObject item = widgets.add<JsonObject>();
@@ -384,6 +388,14 @@ Reply route(const String &method, const String &path, const char *body) {
         text::copy(request.calendar_selection, sizeof(request.calendar_selection), sel);
         return accept(request);
     }
+    if (path == "/api/agent/arm") {
+        if (doc["off"] | false) {
+            agent_push::disarm();
+            return text_reply(200, "off");
+        }
+        agent_push::arm();
+        return text_reply(200, "armado");
+    }
     return text_reply(404, "nada aqui");
 }
 
@@ -420,10 +432,44 @@ bool send_sd_file(WiFiClient &client, const char *sd_path, const char *content_t
     return true;
 }
 
+void read_agent_pack_version(char *dest, size_t cap) {
+    if (!dest || cap == 0) return;
+    dest[0] = '\0';
+    size_t n = 0;
+    uint8_t *raw = sd_host::read_file("/tessera/agent.version", &n);
+    if (!raw || n == 0) {
+        sd_host::free_buf(raw);
+        return;
+    }
+    size_t len = n < cap - 1 ? n : cap - 1;
+    while (len > 0 && (raw[len - 1] == '\n' || raw[len - 1] == '\r' || raw[len - 1] == ' ')) --len;
+    std::memcpy(dest, raw, len);
+    dest[len] = '\0';
+    sd_host::free_buf(raw);
+}
+
 void refresh_agent_pack_flag() {
     xSemaphoreTake(guard, portMAX_DELAY);
     snapshot.agent_pack = sd_host::ready() && sd_host::exists("/tessera/agent.tgz");
+    read_agent_pack_version(snapshot.agent_pack_version, sizeof(snapshot.agent_pack_version));
     xSemaphoreGive(guard);
+}
+
+bool write_agent_pack_version(const char *version) {
+    if (!version || !version[0]) return false;
+    char clean[24] = {};
+    size_t n = 0;
+    for (const char *p = version; *p && n + 1 < sizeof(clean); ++p) {
+        const char c = *p;
+        if (c == '\r' || c == '\n') break;
+        if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '.' || c == '-' ||
+            c == '_') {
+            clean[n++] = c;
+        }
+    }
+    if (!n) return false;
+    clean[n++] = '\n';
+    return sd_host::write_file("/tessera/agent.version", reinterpret_cast<const uint8_t *>(clean), n);
 }
 
 bool send_install_command(WiFiClient &client) {
@@ -533,7 +579,7 @@ bool send_install_command(WiFiClient &client) {
 }
 
 // PUT body streamado para o SD (não cabe em kMaxRequest).
-bool put_agent_file(Slot &slot, int head_end, int length, const char *sd_path) {
+bool put_agent_file(Slot &slot, int head_end, int length, const char *sd_path, const char *version) {
     // ensure: tenta montar sem derrubar um mount saudável (remount destrutivo era a falha).
     if (!sd_host::ensure()) {
         send(slot.client, text_reply(503, "storage indisponivel"));
@@ -607,6 +653,9 @@ bool put_agent_file(Slot &slot, int head_end, int length, const char *sd_path) {
         send(slot.client, text_reply(500, "gravacao incompleta no SD"));
         return true;
     }
+    if (version && version[0]) write_agent_pack_version(version);
+    else sd_host::remove_file("/tessera/agent.version");  // portal upload without header → force next push
+    agent_push::disarm();
     refresh_agent_pack_flag();
     send(slot.client, text_reply(200, "ok"));
     return true;
@@ -632,7 +681,20 @@ bool serve(Slot &slot) {
     if (field >= 0) length = head.substring(field + 17).toInt();
 
     if (method == "PUT" && path == "/agent/agent.tgz") {
-        return put_agent_file(slot, head_end, length, "/tessera/agent.tgz");
+        if (!agent_push::armed()) {
+            send(slot.client, text_reply(403, "push nao armado"));
+            return true;
+        }
+        char version[24] = {};
+        int vf = head.indexOf("\r\nx-tessara-agent-version:");
+        if (vf >= 0) {
+            String v = head.substring(vf + 26);
+            int end = v.indexOf("\r\n");
+            if (end >= 0) v = v.substring(0, end);
+            v.trim();
+            text::copy(version, sizeof(version), v.c_str());
+        }
+        return put_agent_file(slot, head_end, length, "/tessera/agent.tgz", version);
     }
 
     if (length < 0 || head_end + 4 + length > static_cast<int>(kMaxRequest)) {

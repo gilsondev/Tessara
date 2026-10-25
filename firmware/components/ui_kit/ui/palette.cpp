@@ -29,6 +29,7 @@ uint32_t palette::widget_todoist() { return red(); }
 uint32_t palette::widget_calendar() { return 0x1A73E8; }
 uint32_t palette::widget_weather() { return 0x0284C7; }
 uint32_t palette::widget_aitokens() { return 0x7C3AED; }
+uint32_t palette::widget_mac() { return 0x5B8DEF; }
 
 uint32_t palette::paper() { return background(); }
 uint32_t palette::ink() { return text_primary(); }

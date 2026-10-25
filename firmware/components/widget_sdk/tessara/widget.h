@@ -17,6 +17,7 @@ enum class HomeTile : uint8_t {
     Weather = 3,
     AiTokens = 4,
     Calendar = 5,
+    Mac = 6,
 };
 
 struct WidgetManifest {
