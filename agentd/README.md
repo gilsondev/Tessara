@@ -18,6 +18,10 @@ With `config.media = true`, the daemon USB loop answers `MEDIA?`, pushes on enco
 
 Rust `tessara_protocol::agent_ok_line()` returns the same three fields as `agent_hello(ok=True)` before transport newline. Task 1 briefly added a fourth version field; that was removed here to match Python for cutover.
 
+### AITOKENS caveats
+
+`CursorResolver` contributes an explicit unavailable source when it finds local authentication but the Rust daemon has no live quota client; it never emits a fabricated percentage. Claude currently reads one fresh status/cache value, so Python's future multi-surface display format (`a · b`) is not yet reproduced.
+
 Refresh fixtures from Python (optional):
 
 ```bash

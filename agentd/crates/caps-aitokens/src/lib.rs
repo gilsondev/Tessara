@@ -332,20 +332,49 @@ pub fn read_codex_auth(home: &Path) -> AiTokenSource {
     AiTokenSource::unavailable("codex")
 }
 
+/// Reports a resolved Cursor session without fabricating a quota.
+///
+/// Python resolves a session and then asks Cursor for its live plan usage.
+/// Until that request is ported, expose the same useful failure mode in the
+/// wire line: authentication was found, but no current quota is available.
+pub fn read_cursor(resolver: &CursorResolver, env_credentials: CursorCredentials) -> AiTokenSource {
+    match resolver.resolve(env_credentials) {
+        Some(session) => {
+            let source = match session.source {
+                CursorSource::StateDb => "Cursor",
+                CursorSource::Keychain => "Keychain",
+                CursorSource::AuthJson => "auth.json",
+                CursorSource::TokenEnv => "CURSOR_TOKEN",
+                CursorSource::ApiKeyEnv => "CURSOR_API_KEY",
+            };
+            let mut out = AiTokenSource::unavailable("cursor");
+            out.display = format!("{source}: cota indisponível");
+            out
+        }
+        None => AiTokenSource::unavailable("cursor"),
+    }
+}
+
 /// Builds the fixed legacy order: Codex, Claude, Cursor.
+fn collect_sources_with_cursor(
+    home: &Path,
+    resolver: &CursorResolver,
+    cursor_env: CursorCredentials,
+) -> Vec<AiTokenSource> {
+    vec![
+        read_codex_auth(home),
+        read_claude_status(&home.join(".tessera")),
+        read_cursor(resolver, cursor_env),
+    ]
+}
+
 pub fn collect_sources() -> Vec<AiTokenSource> {
     let home = home_dir();
-    let tessera_home = home.join(".tessera");
     let cursor_env = CursorCredentials {
         token: env::var("CURSOR_TOKEN").ok(),
         api_key: env::var("CURSOR_API_KEY").ok(),
     };
-    let _cursor_session = CursorResolver::default_home().resolve(cursor_env);
-    vec![
-        read_codex_auth(&home),
-        read_claude_status(&tessera_home),
-        AiTokenSource::unavailable("cursor"),
-    ]
+    collect_sources_with_cursor(&home, &CursorResolver::default_home(), cursor_env)
 }
 
 fn home_dir() -> PathBuf {
@@ -392,5 +421,31 @@ impl AiTokensCapability {
 impl Default for AiTokensCapability {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collect_sources_includes_cursor_auth_json_without_live_quota() {
+        let temp = tempfile::tempdir().unwrap();
+        let auth = temp.path().join("auth.json");
+        fs::write(&auth, r#"{"accessToken":"test-access"}"#).unwrap();
+
+        let resolver = CursorResolver::with_paths(temp.path().join("missing.vscdb"), vec![auth]);
+        let sources =
+            collect_sources_with_cursor(temp.path(), &resolver, CursorCredentials::default());
+        let source = sources
+            .iter()
+            .find(|source| source.id == "cursor")
+            .expect("Cursor source");
+
+        assert_eq!(source.id, "cursor");
+        assert!(!source.available);
+        assert_eq!(source.kind, SourceKind::None);
+        assert_eq!(source.value, 0);
+        assert_eq!(source.display, "auth.json: cota indisponível");
     }
 }
