@@ -1,5 +1,6 @@
 #include "calendar/snapshot.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -120,6 +121,74 @@ bool calendar::apply_line(View &view, const char *line, uint32_t now_ms) {
 
     view = next;
     return true;
+}
+
+int calendar::next_day(const View &view) {
+    int nearest = -1;
+    for (int i = 0; i < view.event_count; ++i) {
+        const int day = view.events[i].day_offset;
+        if (nearest < 0 || day < nearest) nearest = day;
+    }
+    return nearest;
+}
+
+int calendar::events_on_day(const View &view, int day_offset, int *out, int cap) {
+    if (!out || cap <= 0) return 0;
+    int n = 0;
+    for (int i = 0; i < view.event_count && n < cap; ++i) {
+        if (view.events[i].day_offset == day_offset) out[n++] = i;
+    }
+    // Insertion sort: Dia todo first, then by start time. The wire order is already sorted, but a
+    // merged cache (several lists, old snapshot) is not guaranteed to be.
+    for (int i = 1; i < n; ++i) {
+        const int key = out[i];
+        const Event &k = view.events[key];
+        int j = i - 1;
+        while (j >= 0) {
+            const Event &cur = view.events[out[j]];
+            const bool key_first = (k.all_day && !cur.all_day) ||
+                                   (k.all_day == cur.all_day && k.start_min < cur.start_min);
+            if (!key_first) break;
+            out[j + 1] = out[j];
+            --j;
+        }
+        out[j + 1] = key;
+    }
+    return n;
+}
+
+void calendar::day_label(char *out, size_t cap, int day_offset, int weekday_today, int count) {
+    if (!out || cap == 0) return;
+    char head[16] = "";
+    if (day_offset <= 0) {
+        snprintf(head, sizeof(head), "Hoje");
+    } else if (day_offset == 1) {
+        snprintf(head, sizeof(head), "Amanhã");
+    } else if (weekday_today >= 0) {
+        static const char *kDays[7] = {"Domingo", "Segunda", "Terça",  "Quarta",
+                                       "Quinta",  "Sexta",   "Sábado"};
+        snprintf(head, sizeof(head), "%s", kDays[(weekday_today + day_offset) % 7]);
+    } else {
+        snprintf(head, sizeof(head), "Em %d dias", day_offset);
+    }
+    if (count > 0) snprintf(out, cap, "%s · %d", head, count);
+    else snprintf(out, cap, "%s", head);
+}
+
+void calendar::day_prefix(char *out, size_t cap, int day_offset, int weekday_today) {
+    if (!out || cap == 0) return;
+    out[0] = '\0';
+    if (day_offset <= 0) return;
+    if (day_offset == 1) {
+        snprintf(out, cap, "Amanhã");
+        return;
+    }
+    if (weekday_today < 0) {
+        snprintf(out, cap, "+%dd", day_offset);
+        return;
+    }
+    static const char *kShort[7] = {"Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"};
+    snprintf(out, cap, "%s", kShort[(weekday_today + day_offset) % 7]);
 }
 
 bool calendar::refresh_age(View &view, uint32_t now_ms) {

@@ -27,6 +27,8 @@ public:
         auto *parent = static_cast<lv_obj_t *>(context.ui_parent());
         if (parent) calendar_page::mount(parent);
         else calendar_page::show();
+        // Day cards past tomorrow need a weekday name; the SDK clock is the only source here.
+        calendar_page::set_weekday(context.time() ? context.time()->now().wday : -1);
         calendar_page::paint(calendar_page::last_view());
         mounted_ = true;
     }

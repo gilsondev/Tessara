@@ -137,16 +137,24 @@ pub fn describe_usb(line: &str) -> String {
                 return "agenda desligada / sem conta".into();
             }
             let mut events = Vec::new();
+            let mut total = 0usize;
             let mut i = 4usize;
-            while i + 7 < parts.len() && events.len() < 3 {
+            while i + 7 < parts.len() {
                 let start = hhmm(parts[i]);
                 let all_day = parts.get(i + 2).copied().unwrap_or("0") == "1";
                 let title = parts.get(i + 3).copied().unwrap_or("");
+                let day = parts.get(i + 7).copied().unwrap_or("0");
                 if !title.is_empty() {
-                    if all_day {
-                        events.push(format!("Dia todo · {title}"));
-                    } else {
-                        events.push(format!("{start} · {title}"));
+                    total += 1;
+                    // Only the first few are spelled out; the window spans several days now.
+                    if events.len() < 3 {
+                        let when = if all_day { "Dia todo".to_string() } else { start };
+                        let prefix = match day {
+                            "0" => String::new(),
+                            "1" => "amanhã ".into(),
+                            other => format!("+{other}d "),
+                        };
+                        events.push(format!("{prefix}{when} · {title}"));
                     }
                 }
                 i += 8;
@@ -154,7 +162,7 @@ pub fn describe_usb(line: &str) -> String {
             if events.is_empty() {
                 "ligada · sem eventos próximos".into()
             } else {
-                format!("{} evento(s): {}", events.len(), events.join(" | "))
+                format!("{total} evento(s): {}", events.join(" | "))
             }
         }
         "TODOIST" => {
@@ -198,6 +206,21 @@ pub fn describe_usb(line: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn calendar_summary_counts_all_days_and_marks_the_day() {
+        let line = "CALENDAR\tv1\t1\t1\
+            \t0000\t0000\t1\tAniversário\t\t1440\t1A73E8\t1\
+            \t0915\t1000\t0\tDevocional\t\t45\t1A73E8\t1\
+            \t1700\t1730\t0\tPets\t\t30\t1A73E8\t2\
+            \t0800\t0900\t0\tQuarta cedo\t\t60\t1A73E8\t2";
+        let out = describe_usb(line);
+        assert!(out.starts_with("4 evento(s)"), "{out}");
+        assert!(out.contains("amanhã Dia todo · Aniversário"), "{out}");
+        assert!(out.contains("+2d 17:00 · Pets"), "{out}");
+        // Only the first three are spelled out.
+        assert!(!out.contains("Quarta cedo"), "{out}");
+    }
 
     #[test]
     fn todoist_token_never_echoed() {

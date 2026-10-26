@@ -64,7 +64,7 @@ Calendário (1º consumidor):
 - Portal Agenda: chips “Altura do tile” (já).
 - Agente: seção Agenda / widgets com os mesmos chips quando o painel responde.
 - Painel Configurações → Calendário: mesmos chips.
-- Tile e detalhe: só eventos **de hoje** (`day_offset == 0`) — sem amanhã em diante.
+- Tile e detalhe: hoje e, quando hoje já acabou, o **próximo dia com eventos** (`day_offset` rotulado). Revisado em 2026-10-26.
 - Até N linhas no tile, **um por linha**, `HH:MM · título` (all-day: `Dia todo · título`).
 - Ordem: **Dia todo** (só all-day de hoje) antes dos horários; agentd ordena o cache assim no refresh.
 

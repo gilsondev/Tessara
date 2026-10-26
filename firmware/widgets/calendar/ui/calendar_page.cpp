@@ -18,6 +18,8 @@ lv_obj_t *list = nullptr;
 lv_event_cb_t back_cb = nullptr;
 bool standalone_screen = false;
 bool preserve_scroll_ = false;
+// 0 = Sunday; -1 until the widget hands over the device clock.
+int weekday_today = -1;
 calendar::View cached = {};
 
 void set_status(const char *text) {
@@ -55,10 +57,7 @@ void format_duration(char *out, size_t n, int minutes) {
 }
 
 void day_title(char *out, size_t n, int day_offset, int count) {
-    if (!out || n == 0) return;
-    (void)day_offset;  // UI is today-only; keep signature for call sites.
-    if (count > 0) snprintf(out, n, "Hoje · %d", count);
-    else snprintf(out, n, "Hoje");
+    calendar::day_label(out, n, day_offset, weekday_today, count);
 }
 
 void enable_list_scroll(lv_obj_t *obj) { kit::enable_list_scroll(obj); }
@@ -98,16 +97,9 @@ void add_centered_state(const lv_image_dsc_t *icon, const char *title, const cha
     }
 }
 
-void add_summary() {
-    // Next-up among today's events only (Dia todo first in store order).
-    const calendar::Event *next = nullptr;
-    for (int i = 0; i < cached.event_count; ++i) {
-        if (cached.events[i].day_offset == 0) {
-            next = &cached.events[i];
-            break;
-        }
-    }
-    if (!next) return;
+void add_summary(int day, const int *indices, int count) {
+    if (!indices || count <= 0) return;
+    const calendar::Event *next = &cached.events[indices[0]];
 
     lv_obj_t *card = kit::bare(list);
     lv_obj_set_width(card, lv_pct(100));
@@ -122,8 +114,16 @@ void add_summary() {
     lv_obj_set_style_pad_row(card, 4, 0);
     lv_obj_set_style_margin_bottom(card, 10, 0);
 
+    char lead[32];
+    if (day <= 0) {
+        snprintf(lead, sizeof(lead), "Próximo hoje");
+    } else {
+        char label[16];
+        calendar::day_label(label, sizeof(label), day, weekday_today, 0);
+        snprintf(lead, sizeof(lead), "Próximo · %s", label);
+    }
     lv_obj_t *eyebrow = lv_label_create(card);
-    lv_label_set_text(eyebrow, "Próximo hoje");
+    lv_label_set_text(eyebrow, lead);
     lv_obj_set_style_text_font(eyebrow, &theme::small_font(), 0);
     lv_obj_set_style_text_color(eyebrow, theme::widget_calendar(), 0);
 
@@ -223,7 +223,7 @@ void add_event_into(lv_obj_t *parent, const calendar::Event &event, bool last) {
     }
 }
 
-void add_day_card_today(const int *indices, int count) {
+void add_day_card(int day, const int *indices, int count) {
     if (!indices || count <= 0) return;
 
     lv_obj_t *card = kit::bare(list);
@@ -242,7 +242,7 @@ void add_day_card_today(const int *indices, int count) {
     lv_obj_set_style_margin_bottom(card, 10, 0);
 
     char head[40];
-    day_title(head, sizeof(head), 0, count);
+    day_title(head, sizeof(head), day, count);
     lv_obj_t *label = lv_label_create(card);
     lv_label_set_text(label, head);
     lv_obj_set_style_text_font(label, &theme::label_font(), 0);
@@ -302,18 +302,27 @@ void rebuild_body() {
         (void)spin;
         return;
     }
-    int today_idx[calendar::kMaxEvents];
-    int today_n = 0;
-    for (int i = 0; i < cached.event_count && today_n < calendar::kMaxEvents; ++i) {
-        if (cached.events[i].day_offset == 0) today_idx[today_n++] = i;
-    }
-    if (today_n <= 0) {
-        add_centered_state(calendar_icons::busy(), "Agenda livre", "Nada hoje.", theme::muted());
+    const int first_day = calendar::next_day(cached);
+    if (first_day < 0) {
+        add_centered_state(calendar_icons::busy(), "Agenda livre", "Nada pelos próximos dias.",
+                           theme::muted());
         return;
     }
 
-    add_summary();
-    add_day_card_today(today_idx, today_n);
+    // One card per day that has events, nearest first. The summary leads with the very next one.
+    int idx[calendar::kMaxEvents];
+    int shown = 0;
+    bool lead_done = false;
+    for (int day = first_day; day <= 14 && shown < cached.event_count; ++day) {
+        const int n = calendar::events_on_day(cached, day, idx, calendar::kMaxEvents);
+        if (n <= 0) continue;
+        if (!lead_done) {
+            add_summary(day, idx, n);
+            lead_done = true;
+        }
+        add_day_card(day, idx, n);
+        shown += n;
+    }
 
     lv_obj_t *spacer = kit::bare(list);
     lv_obj_set_width(spacer, lv_pct(100));
@@ -341,7 +350,8 @@ void update_status_line() {
         if (cached.events[i].day_offset == 0) ++today_n;
     }
     if (today_n <= 0) {
-        set_status("livre");
+        // Says "livre hoje" while the list below already shows the next day.
+        set_status(calendar::next_day(cached) > 0 ? "livre hoje" : "livre");
         return;
     }
     char buf[24];
@@ -436,5 +446,7 @@ void calendar_page::paint(const calendar::View &view) {
     rebuild_body();
     preserve_scroll_ = true;
 }
+
+void calendar_page::set_weekday(int wday) { weekday_today = wday >= 0 && wday < 7 ? wday : -1; }
 
 const calendar::View &calendar_page::last_view() { return cached; }

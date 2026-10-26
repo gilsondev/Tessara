@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 // Parsed agent snapshot for the Calendar home tile and detail screen.
@@ -36,5 +37,21 @@ bool apply_line(View &view, const char *line, uint32_t now_ms);
 
 // Marks stale when ready and age >= kStaleMs. Returns true if stale flag changed.
 bool refresh_age(View &view, uint32_t now_ms);
+
+// Nearest day that still has events, or -1 when the snapshot holds none. Today wins when it has
+// any; otherwise the panel shows the next day instead of claiming the agenda is empty.
+int next_day(const View &view);
+
+// Indices of the events on `day_offset`, ordered Dia todo first and then by start time.
+// Returns how many were written (at most kMaxEvents).
+int events_on_day(const View &view, int day_offset, int *out, int cap);
+
+// "Hoje", "Amanhã" or the weekday for later days; `· N` appended when count > 0.
+// `weekday_today` is 0=Sunday … 6=Saturday; pass -1 when the clock is unknown.
+void day_label(char *out, size_t cap, int day_offset, int weekday_today, int count);
+
+// Short form for the home tile, where the day shares the line with time and title:
+// empty for today, "Amanhã", then "Qua"-style abbreviations.
+void day_prefix(char *out, size_t cap, int day_offset, int weekday_today);
 
 }  // namespace calendar

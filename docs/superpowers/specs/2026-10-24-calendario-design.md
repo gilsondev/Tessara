@@ -8,11 +8,11 @@
 - **Device:** sem tokens Google; só snapshot USB + seleção NVS.
 - **Multi-conta:** N contas no agent; portal do device escolhe calendários por conta.
 - **Adicionar conta:** portal **ou Agente** → `CALENDAR_AUTH?` / `/api/calendar/add_account` → browser no Mac.
-- **UI v1:** tile home + detalhe **só de hoje** + estados (carregando / vazio / offline). Somente leitura.
-- **Escopo:** somente compromissos do dia corrente — sem amanhã em diante (agentd busca janela [00:00, amanhã); firmware ignora `day_offset != 0`).
-- **Dia todo:** só eventos all-day de **um único dia = hoje** (Google: `start.date == hoje` e fim exclusivo = amanhã). Multi-dia não entra.
-- **Com hora:** início e fim no dia de hoje; já terminados saem da lista.
-- **Ordem:** **Dia todo** primeiro; depois horários crescentes (início). Se não houver hoje → “livre” / “Nada hoje”.
+- **UI v1:** tile home + detalhe com **hoje e os próximos dias** + estados (carregando / vazio / offline). Somente leitura.
+- **Escopo (revisado em 2026-10-26):** hoje **e os próximos dias** — agentd busca a janela `[hoje 00:00, +8 dias)` e marca `day_offset`; o firmware agrupa por dia. O escopo antigo era só o dia corrente, o que deixava o painel em "livre" todas as noites, depois do último compromisso. Ver [slide/calendário](2026-10-26-calendar-upcoming-days-design.md).
+- **Dia todo:** só eventos all-day de **um único dia** (Google: fim exclusivo = dia seguinte ao início). Multi-dia não entra.
+- **Com hora:** `day_offset` vem do dia de início; já terminados saem da lista.
+- **Ordem:** dia mais próximo primeiro; dentro do dia, **Dia todo** antes dos horários crescentes. Sem nada hoje → status “livre hoje” e o próximo dia assume a lista; sem nada na janela → “Agenda livre”.
 - Agente (Widgets → Agenda): mesmas contas/calendários que o portal (marcar/desmarcar, adicionar conta).
 - Fora do aceite MVP (como Todoist).
 
@@ -26,7 +26,7 @@
 | `CALENDAR_CATALOG\tv1\t…` | Mac→painel | contas + calendários |
 | `CALENDAR_SEL\tid…` | painel→Mac | seleção |
 | `CALENDAR?` | painel→Mac | pedir eventos |
-| `CALENDAR\tv1\tbridge\tlinked\tevents…` | Mac→painel | snapshot **só hoje** (`day_offset=0`; campo mantido por compat) |
+| `CALENDAR\tv1\tbridge\tlinked\tevents…` | Mac→painel | snapshot de hoje **e dos próximos dias** (`day_offset` = 0 hoje, 1 amanhã, …) |
 
 ## Portal
 

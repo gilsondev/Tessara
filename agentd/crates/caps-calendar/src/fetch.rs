@@ -136,7 +136,7 @@ fn fetch_calendar_events(
     time_max: &str,
 ) -> Result<Vec<Value>, String> {
     let url = format!(
-        "https://www.googleapis.com/calendar/v3/calendars/{}/events?timeMin={}&timeMax={}&singleEvents=true&orderBy=startTime&maxResults=8",
+        "https://www.googleapis.com/calendar/v3/calendars/{}/events?timeMin={}&timeMax={}&singleEvents=true&orderBy=startTime&maxResults=12",
         pct_encode(calendar_id),
         pct_encode(time_min),
         pct_encode(time_max),
@@ -156,8 +156,12 @@ fn fetch_calendar_events(
         .unwrap_or_default())
 }
 
-/// Panel/home show **today only**. Drop tomorrow+; never clamp negative offsets to 0
-/// (that made past/multi-day starts look like "hoje").
+/// Days ahead the panel may show. The device clamps `day_offset` to 14 and keeps 12 events, so a
+/// week is enough to always have a "próximo compromisso" without flooding the wire.
+const WINDOW_DAYS: i64 = 8;
+
+/// Today first, then the next days. Events already finished today drop out; never clamp negative
+/// offsets to 0 (that made past/multi-day starts look like "hoje").
 fn item_to_event(item: &Value, today: NaiveDate, now: DateTime<Local>) -> Option<CalendarEvent> {
     let title = item
         .get("summary")
@@ -173,21 +177,17 @@ fn item_to_event(item: &Value, today: NaiveDate, now: DateTime<Local>) -> Option
     let end = item.get("end")?;
 
     if let Some(date) = start.get("date").and_then(|v| v.as_str()) {
-        // Google all-day: exclusive end date. Keep only events that cover today
-        // and whose start is today (single-day "Dia todo" for hoje — not multi-day
-        // spans that started earlier or continue past tonight).
+        // Google all-day: exclusive end date. Single-day "Dia todo" only — multi-day spans would
+        // repeat on every card without saying anything useful.
         let start_day = NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
-        if start_day != today {
-            return None;
-        }
-        let tomorrow = today.checked_add_signed(Duration::days(1))?;
+        let offset = day_offset(today, start_day)?;
+        let next_day = start_day.checked_add_signed(Duration::days(1))?;
         let end_day = end
             .get("date")
             .and_then(|v| v.as_str())
             .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
-            .unwrap_or(tomorrow);
-        // Exclusive end must be tomorrow for a single-day all-day event.
-        if end_day != tomorrow {
+            .unwrap_or(next_day);
+        if end_day != next_day {
             return None;
         }
         return Some(CalendarEvent {
@@ -198,7 +198,7 @@ fn item_to_event(item: &Value, today: NaiveDate, now: DateTime<Local>) -> Option
             location,
             duration_min: 1440,
             color: "1A73E8".into(),
-            day_offset: 0,
+            day_offset: offset,
         });
     }
 
@@ -206,11 +206,9 @@ fn item_to_event(item: &Value, today: NaiveDate, now: DateTime<Local>) -> Option
     let end_raw = end.get("dateTime")?.as_str()?;
     let s = parse_offset_datetime(start_raw)?;
     let e = parse_offset_datetime(end_raw)?;
-    if s.date_naive() != today {
-        return None;
-    }
+    let offset = day_offset(today, s.date_naive())?;
     if e <= now {
-        return None; // already finished today
+        return None; // already finished
     }
     let duration_min = (e - s).num_minutes().max(1) as u32;
     Some(CalendarEvent {
@@ -221,8 +219,17 @@ fn item_to_event(item: &Value, today: NaiveDate, now: DateTime<Local>) -> Option
         location,
         duration_min,
         color: "1A73E8".into(),
-        day_offset: 0,
+        day_offset: offset,
     })
+}
+
+/// Days from today to `day`, or `None` when it falls outside what the panel can show.
+fn day_offset(today: NaiveDate, day: NaiveDate) -> Option<u8> {
+    let days = (day - today).num_days();
+    if days < 0 || days > 14 {
+        return None;
+    }
+    Some(days as u8)
 }
 
 /// Refresh Google events into `events_cache.json`. Returns event count.
@@ -234,18 +241,19 @@ pub fn refresh_events_cache(paths: &CalendarPaths, selected: &[String]) -> Resul
 
     let now = Local::now();
     let today = now.date_naive();
-    // Window = today only (start of day → start of tomorrow).
-    let tomorrow = today
-        .checked_add_signed(Duration::days(1))
+    // Window = today plus the next days, so the panel still has a next appointment to show once
+    // today is over.
+    let last_day = today
+        .checked_add_signed(Duration::days(WINDOW_DAYS))
         .unwrap_or(today);
     let day_start = Local
         .from_local_datetime(&today.and_hms_opt(0, 0, 0).unwrap_or_default())
         .single()
         .unwrap_or(now);
     let day_end = Local
-        .from_local_datetime(&tomorrow.and_hms_opt(0, 0, 0).unwrap_or_default())
+        .from_local_datetime(&last_day.and_hms_opt(0, 0, 0).unwrap_or_default())
         .single()
-        .unwrap_or(now + Duration::days(1));
+        .unwrap_or(now + Duration::days(WINDOW_DAYS));
     let time_min = day_start.to_rfc3339();
     let time_max = day_end.to_rfc3339();
 
@@ -271,9 +279,10 @@ pub fn refresh_events_cache(paths: &CalendarPaths, selected: &[String]) -> Resul
         }
     }
 
-    // Today only: Dia todo first, then timed by start.
+    // Nearest day first; inside a day, Dia todo before the timed ones.
     events.sort_by(|a, b| {
-        (!a.all_day, a.start_hhmm.as_str()).cmp(&(!b.all_day, b.start_hhmm.as_str()))
+        (a.day_offset, !a.all_day, a.start_hhmm.as_str())
+            .cmp(&(b.day_offset, !b.all_day, b.start_hhmm.as_str()))
     });
     events.truncate(EVENT_LIMIT);
 

@@ -38,6 +38,55 @@ void test_calendar_all_day_and_empty_list(void) {
     TEST_ASSERT_TRUE(empty.linked);
 }
 
+// Evening case that used to blank the tile: nothing left today, so the next day leads.
+void test_calendar_next_day_falls_forward(void) {
+    calendar::View v = {};
+    const char *line =
+        "CALENDAR\tv1\t1\t1"
+        "\t0915\t1000\t0\tDevocional\t\t45\t1A73E8\t1"
+        "\t0000\t0000\t1\tAniversário\t\t1440\t1A73E8\t1"
+        "\t1700\t1730\t0\tPets\t\t30\t1A73E8\t2";
+    TEST_ASSERT_TRUE(calendar::apply_line(v, line, 1000));
+    TEST_ASSERT_EQUAL_INT(3, v.event_count);
+    TEST_ASSERT_EQUAL_INT(1, calendar::next_day(v));
+
+    int idx[calendar::kMaxEvents];
+    const int n = calendar::events_on_day(v, 1, idx, calendar::kMaxEvents);
+    TEST_ASSERT_EQUAL_INT(2, n);
+    // Dia todo leads its day even when it arrives second on the wire.
+    TEST_ASSERT_EQUAL_STRING("Aniversário", v.events[idx[0]].title);
+    TEST_ASSERT_EQUAL_STRING("Devocional", v.events[idx[1]].title);
+    TEST_ASSERT_EQUAL_INT(1, calendar::events_on_day(v, 2, idx, calendar::kMaxEvents));
+    TEST_ASSERT_EQUAL_INT(0, calendar::events_on_day(v, 0, idx, calendar::kMaxEvents));
+}
+
+void test_calendar_day_labels(void) {
+    char buf[32];
+    calendar::day_label(buf, sizeof(buf), 0, 1, 2);
+    TEST_ASSERT_EQUAL_STRING("Hoje · 2", buf);
+    calendar::day_label(buf, sizeof(buf), 1, 1, 0);
+    TEST_ASSERT_EQUAL_STRING("Amanhã", buf);
+    // Monday (1) plus three days is Thursday.
+    calendar::day_label(buf, sizeof(buf), 3, 1, 1);
+    TEST_ASSERT_EQUAL_STRING("Quinta · 1", buf);
+    // No clock: say the distance instead of guessing a weekday.
+    calendar::day_label(buf, sizeof(buf), 3, -1, 0);
+    TEST_ASSERT_EQUAL_STRING("Em 3 dias", buf);
+
+    calendar::day_prefix(buf, sizeof(buf), 0, 1);
+    TEST_ASSERT_EQUAL_STRING("", buf);
+    calendar::day_prefix(buf, sizeof(buf), 1, 1);
+    TEST_ASSERT_EQUAL_STRING("Amanhã", buf);
+    calendar::day_prefix(buf, sizeof(buf), 3, 1);
+    TEST_ASSERT_EQUAL_STRING("Qui", buf);
+}
+
+void test_calendar_no_events_has_no_next_day(void) {
+    calendar::View v = {};
+    TEST_ASSERT_TRUE(calendar::apply_line(v, "CALENDAR\tv1\t1\t1", 10));
+    TEST_ASSERT_EQUAL_INT(-1, calendar::next_day(v));
+}
+
 void test_calendar_rejects_non_calendar(void) {
     calendar::View v = {};
     TEST_ASSERT_FALSE(calendar::apply_line(v, "AITOKENS\tv1\t1", 1));

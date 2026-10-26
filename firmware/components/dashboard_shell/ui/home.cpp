@@ -745,26 +745,19 @@ void home::set_calendar(const calendar::View &view) {
         }
     };
 
-    // Home tile shows only today. Collect + sort: all-day first, then by start.
-    const calendar::Event *today[calendar::kMaxEvents];
-    int today_n = 0;
+    // Nearest day with events — today when it still has any, otherwise the next one, so the tile
+    // keeps answering "what's next" instead of going blank every evening.
+    const calendar::Event *next[calendar::kMaxEvents];
+    int next_n = 0;
+    int next_day = -1;
+    int calendar_weekday = -1;
     if (view.ready) {
-        for (int i = 0; i < view.event_count && today_n < calendar::kMaxEvents; ++i) {
-            if (view.events[i].day_offset == 0) today[today_n++] = &view.events[i];
-        }
-        for (int i = 1; i < today_n; ++i) {
-            const calendar::Event *key = today[i];
-            int j = i - 1;
-            while (j >= 0) {
-                const bool key_first =
-                    (key->all_day && !today[j]->all_day) ||
-                    (key->all_day == today[j]->all_day && key->start_min < today[j]->start_min);
-                if (!key_first) break;
-                today[j + 1] = today[j];
-                --j;
-            }
-            today[j + 1] = key;
-        }
+        next_day = calendar::next_day(view);
+        int idx[calendar::kMaxEvents];
+        const int n = next_day >= 0 ? calendar::events_on_day(view, next_day, idx, calendar::kMaxEvents) : 0;
+        for (int i = 0; i < n; ++i) next[next_n++] = &view.events[idx[i]];
+        int h = 0, m = 0, s = 0, d = 0, mo = 0, y = 0;
+        if (!daytime::local(h, m, s, calendar_weekday, d, mo, y)) calendar_weekday = -1;
     }
 
     if (!view.bridge_ok && !view.ready) {
@@ -774,7 +767,7 @@ void home::set_calendar(const calendar::View &view) {
         show_status("ligar agenda");
     } else if (!view.ready) {
         show_status("carregando…");
-    } else if (today_n <= 0) {
+    } else if (next_n <= 0) {
         char text[40];
         if (!view.linked) {
             snprintf(text, sizeof(text), "ligar agenda");
@@ -783,29 +776,37 @@ void home::set_calendar(const calendar::View &view) {
         }
         show_status(text);
     } else {
-        const int show = today_n < max_rows ? today_n : max_rows;
+        const int show = next_n < max_rows ? next_n : max_rows;
         for (int i = 0; i < 4; ++i) {
             if (!calendar_lines[i]) continue;
             if (i >= show) {
                 lv_obj_add_flag(calendar_lines[i], LV_OBJ_FLAG_HIDDEN);
                 continue;
             }
-            const calendar::Event &e = *today[i];
+            const calendar::Event &e = *next[i];
+            // Day shares the line with time and title, so it is abbreviated (and empty for today).
+            char day[12];
+            calendar::day_prefix(day, sizeof(day), e.day_offset, calendar_weekday);
             char time_text[16];
             if (e.all_day) {
-                snprintf(time_text, sizeof(time_text), "Dia todo");
+                snprintf(time_text, sizeof(time_text), day[0] ? "dia todo" : "Dia todo");
             } else {
                 snprintf(time_text, sizeof(time_text), "%02d:%02d", e.start_min / 60, e.start_min % 60);
             }
             char text[80];
-            snprintf(text, sizeof(text), "%s · %s", time_text, e.title[0] ? e.title : "Evento");
+            if (day[0]) {
+                snprintf(text, sizeof(text), "%s %s · %s", day, time_text,
+                         e.title[0] ? e.title : "Evento");
+            } else {
+                snprintf(text, sizeof(text), "%s · %s", time_text, e.title[0] ? e.title : "Evento");
+            }
             set_if_changed(calendar_lines[i], text);
             lv_obj_clear_flag(calendar_lines[i], LV_OBJ_FLAG_HIDDEN);
         }
     }
     if (calendar_glyph) {
         const lv_image_dsc_t *src = (!view.bridge_ok && !view.ready) ? calendar_icons::warn()
-                                  : (view.linked && view.ready && today_n <= 0) ? calendar_icons::busy()
+                                  : (view.linked && view.ready && next_n <= 0) ? calendar_icons::busy()
                                                                                : calendar_icons::month();
         lv_image_set_src(calendar_glyph, src);
         lv_color_t tone = (!view.bridge_ok && !view.ready) ? theme::error() : theme::widget_calendar();

@@ -74,11 +74,7 @@ pub fn encode_calendar_line(linked: bool, events: &[CalendarEvent]) -> String {
     if !linked {
         return fields.join("\t");
     }
-    for event in events
-        .iter()
-        .filter(|event| event.day_offset == 0)
-        .take(EVENT_LIMIT)
-    {
+    for event in events.iter().take(EVENT_LIMIT) {
         let (start, end, all_day) = if event.all_day {
             ("0000".to_string(), "0000".to_string(), "1")
         } else {
@@ -100,6 +96,13 @@ pub fn encode_calendar_line(linked: bool, events: &[CalendarEvent]) -> String {
 
 pub fn calendar_line_changed(last_pushed: Option<&str>, encoded: &str) -> bool {
     last_pushed != Some(encoded)
+}
+
+/// Calendar days between the cache timestamp and today (0 when written today).
+pub fn cache_age_in_days(fetched_at: &str) -> Option<i64> {
+    let written = chrono::DateTime::parse_from_rfc3339(fetched_at).ok()?;
+    let days = (chrono::Local::now().date_naive() - written.date_naive()).num_days();
+    Some(days.max(0))
 }
 
 #[derive(Debug, Clone)]
@@ -198,6 +201,13 @@ impl CalendarCapability {
         let Some(items) = value.get("events").and_then(|v| v.as_array()) else {
             return Vec::new();
         };
+        // Offsets are relative to the day the cache was written. A Mac that slept past midnight
+        // would otherwise label today's events as "amanhã".
+        let aged_days = value
+            .get("fetched_at")
+            .and_then(|v| v.as_str())
+            .and_then(cache_age_in_days)
+            .unwrap_or(0);
         items
             .iter()
             .filter_map(|item| {
@@ -226,8 +236,14 @@ impl CalendarCapability {
                         .unwrap_or(0) as u8,
                 })
             })
-            // Stale cache may still hold tomorrow+ from older agentd builds.
-            .filter(|e| e.day_offset == 0)
+            .filter_map(|mut e| {
+                let offset = i64::from(e.day_offset) - aged_days;
+                if offset < 0 {
+                    return None; // the day already passed while the cache sat there
+                }
+                e.day_offset = offset.min(14) as u8;
+                Some(e)
+            })
             .take(EVENT_LIMIT)
             .collect()
     }
@@ -351,7 +367,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn encode_drops_tomorrow_events() {
+    fn encode_keeps_tomorrow_events() {
         let line = encode_calendar_line(
             true,
             &[
@@ -377,8 +393,10 @@ mod tests {
                 },
             ],
         );
+        // The panel needs the next appointment even when it is not today; it groups by day_offset.
         assert!(line.contains("Hoje"));
-        assert!(!line.contains("Amanhã"));
+        assert!(line.contains("Amanhã"));
+        assert!(line.ends_with("\t1"), "last field is the day_offset: {line}");
     }
 
     #[test]
