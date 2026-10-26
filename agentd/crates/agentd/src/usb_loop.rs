@@ -7,6 +7,9 @@ use std::time::{Duration, Instant};
 use tessara_caps_focus::{
     focus_line_changed, FocusCapability, FOCUS_POLL_INTERVAL_S, FOCUS_PUSH_INTERVAL_S,
 };
+use tessara_caps_aitokens::{
+    aitokens_line_changed, AiTokensCapability, AITOKENS_PUSH_INTERVAL_S,
+};
 use tessara_caps_media::{
     media_line_changed, MediaCapability, MEDIA_POLL_INTERVAL_S, MEDIA_PUSH_INTERVAL_S,
 };
@@ -71,6 +74,7 @@ pub fn run_session(
     path: &str,
     media_enabled: bool,
     focus_enabled: bool,
+    aitokens_enabled: bool,
     usb_link: Option<Arc<RwLock<UsbLink>>>,
 ) -> Result<(), UsbError> {
     eprintln!("agentd: USB sessão em {path}");
@@ -81,6 +85,7 @@ pub fn run_session(
 
     let mut media = MediaCapability::with_default_watcher();
     let mut focus = FocusCapability::new();
+    let mut aitokens = AiTokensCapability::new();
     let mut buf = Vec::<u8>::new();
     let mut scratch = [0u8; 256];
     let mut last_media_heartbeat = Instant::now()
@@ -94,6 +99,9 @@ pub fn run_session(
         .unwrap_or_else(Instant::now);
     let mut last_focus_poll = Instant::now()
         .checked_sub(Duration::from_secs(FOCUS_POLL_INTERVAL_S))
+        .unwrap_or_else(Instant::now);
+    let mut last_aitokens_heartbeat = Instant::now()
+        .checked_sub(Duration::from_secs(AITOKENS_PUSH_INTERVAL_S))
         .unwrap_or_else(Instant::now);
 
     loop {
@@ -137,6 +145,17 @@ pub fn run_session(
                             }
                             last_focus_heartbeat = Instant::now();
                             last_focus_poll = Instant::now();
+                        }
+                    } else if aitokens_enabled && text.starts_with("AITOKENS") {
+                        let replies = aitokens.handle_line(text);
+                        if !replies.is_empty() {
+                            write_lines(&mut port, &replies)?;
+                            for reply in &replies {
+                                if reply.starts_with("AITOKENS\t") {
+                                    aitokens.note_pushed(reply);
+                                }
+                            }
+                            last_aitokens_heartbeat = Instant::now();
                         }
                     } else if !text.is_empty() {
                         eprintln!("agentd: ← {text}");
@@ -193,6 +212,19 @@ pub fn run_session(
                 }
             }
         }
+
+        if aitokens_enabled && !wrote_push {
+            let heartbeat_due =
+                last_aitokens_heartbeat.elapsed() >= Duration::from_secs(AITOKENS_PUSH_INTERVAL_S);
+            if heartbeat_due {
+                let line = aitokens.build_line();
+                if aitokens_line_changed(aitokens.last_pushed_line(), &line) || heartbeat_due {
+                    write_lines(&mut port, &[line.clone()])?;
+                    aitokens.note_pushed(&line);
+                    last_aitokens_heartbeat = Instant::now();
+                }
+            }
+        }
     }
 }
 
@@ -200,6 +232,7 @@ pub fn run_session(
 pub fn run_auto(
     media_enabled: bool,
     focus_enabled: bool,
+    aitokens_enabled: bool,
     usb_link: Option<Arc<RwLock<UsbLink>>>,
 ) {
     eprintln!("agentd: aguardando painel USB…");
@@ -211,7 +244,13 @@ pub fn run_auto(
             continue;
         }
         let PortName(path) = &ports[0];
-        match run_session(path, media_enabled, focus_enabled, usb_link.clone()) {
+        match run_session(
+            path,
+            media_enabled,
+            focus_enabled,
+            aitokens_enabled,
+            usb_link.clone(),
+        ) {
             Ok(()) => {}
             Err(e) => {
                 eprintln!("agentd: USB {path}: {e}");

@@ -19,3 +19,4 @@ tessara-profile = { path = "../profile" }
 tessara-usb = { path = "../usb" }
 tessara-caps-media = { path = "../caps-media" }
 tessara-caps-focus = { path = "../caps-focus" }
+tessara-caps-aitokens = { path = "../caps-aitokens" }

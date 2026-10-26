@@ -6,6 +6,7 @@ members = [
   "crates/profile",
   "crates/caps-media",
   "crates/caps-focus",
+  "crates/caps-aitokens",
   "crates/agentd",
 ]
 
