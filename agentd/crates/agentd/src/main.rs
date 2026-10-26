@@ -61,6 +61,7 @@ async fn main() {
     let media_enabled = profile.config.media;
     let focus_enabled = profile.config.focus;
     let aitokens_enabled = profile.config.aitokens;
+    let calendar_enabled = profile.config.calendar;
     let app_state = ipc::AppState::default();
     let usb_link = app_state.usb.clone();
 
@@ -73,6 +74,7 @@ async fn main() {
                     media_enabled,
                     focus_enabled,
                     aitokens_enabled,
+                    calendar_enabled,
                     Some(usb_link),
                 )
             {
@@ -82,7 +84,13 @@ async fn main() {
     } else {
         usb_loop::print_candidate_ports();
         std::thread::spawn(move || {
-            usb_loop::run_auto(media_enabled, focus_enabled, aitokens_enabled, Some(usb_link))
+            usb_loop::run_auto(
+                media_enabled,
+                focus_enabled,
+                aitokens_enabled,
+                calendar_enabled,
+                Some(usb_link),
+            )
         });
     }
 

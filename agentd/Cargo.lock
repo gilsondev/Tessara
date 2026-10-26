@@ -11,6 +11,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tessara-caps-aitokens",
+ "tessara-caps-calendar",
  "tessara-caps-focus",
  "tessara-caps-media",
  "tessara-profile",
@@ -869,6 +870,14 @@ version = "0.1.0"
 dependencies = [
  "rusqlite",
  "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "tessara-caps-calendar"
+version = "0.1.0"
+dependencies = [
  "serde_json",
  "tempfile",
 ]

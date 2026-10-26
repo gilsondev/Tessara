@@ -10,6 +10,7 @@ use tessara_caps_focus::{
 use tessara_caps_aitokens::{
     aitokens_line_changed, AiTokensCapability, AITOKENS_PUSH_INTERVAL_S,
 };
+use tessara_caps_calendar::CalendarCapability;
 use tessara_caps_media::{
     media_line_changed, MediaCapability, MEDIA_POLL_INTERVAL_S, MEDIA_PUSH_INTERVAL_S,
 };
@@ -75,6 +76,7 @@ pub fn run_session(
     media_enabled: bool,
     focus_enabled: bool,
     aitokens_enabled: bool,
+    calendar_enabled: bool,
     usb_link: Option<Arc<RwLock<UsbLink>>>,
 ) -> Result<(), UsbError> {
     eprintln!("agentd: USB sessão em {path}");
@@ -86,6 +88,7 @@ pub fn run_session(
     let mut media = MediaCapability::with_default_watcher();
     let mut focus = FocusCapability::new();
     let mut aitokens = AiTokensCapability::new();
+    let mut calendar = CalendarCapability::default();
     let mut buf = Vec::<u8>::new();
     let mut scratch = [0u8; 256];
     let mut last_media_heartbeat = Instant::now()
@@ -156,6 +159,16 @@ pub fn run_session(
                                 }
                             }
                             last_aitokens_heartbeat = Instant::now();
+                        }
+                    } else if calendar_enabled && text.starts_with("CALENDAR") {
+                        let replies = calendar.handle_line(text);
+                        if !replies.is_empty() {
+                            write_lines(&mut port, &replies)?;
+                            for reply in &replies {
+                                if reply.starts_with("CALENDAR\t") {
+                                    calendar.note_pushed(reply);
+                                }
+                            }
                         }
                     } else if !text.is_empty() {
                         eprintln!("agentd: ← {text}");
@@ -233,6 +246,7 @@ pub fn run_auto(
     media_enabled: bool,
     focus_enabled: bool,
     aitokens_enabled: bool,
+    calendar_enabled: bool,
     usb_link: Option<Arc<RwLock<UsbLink>>>,
 ) {
     eprintln!("agentd: aguardando painel USB…");
@@ -249,6 +263,7 @@ pub fn run_auto(
             media_enabled,
             focus_enabled,
             aitokens_enabled,
+            calendar_enabled,
             usb_link.clone(),
         ) {
             Ok(()) => {}

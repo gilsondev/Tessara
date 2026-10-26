@@ -1,0 +1,10 @@
+[package]
+name = "tessara-caps-calendar"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
