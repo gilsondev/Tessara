@@ -53,7 +53,7 @@ Programa no Mac que fala com o painel pela USB. Produto atual: Python em `agent/
 _Avoid_: Servidor, API gateway, proxy de nuvem. Em docs técnicas antigas, “Bridge” = mesmo processo.
 
 **agentd**:
-Daemon Rust do Agent v2 (USB, Doctor, perfis). Distinto do agent Python legado (`com.tessera.agent`).
+Daemon Rust do Agent v2 (USB, Doctor, perfis). Distinto do agent Python legado (`com.tessera.agent`). Pack SD: `agentd/pack_sd.sh` → `/tessera/agentd/` (`agentd.tgz`, `agentd.version`, `install.command`); sem OAuth/tokens no cartão.
 
 **Bridge**:
 Nome legado do Agente Tessara (só transporte USB de cotas). Preferir **Agente Tessara** na UI.

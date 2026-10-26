@@ -5,6 +5,7 @@ include/secrets.h
 .DS_Store
 simulator/build/
 agent/dist/
+agentd/dist/
 agent/.venv/
 tmp/
 *.ppm

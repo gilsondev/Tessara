@@ -7,6 +7,17 @@ mise run agentd-test
 mise run agentd-run
 ```
 
+## SD pack (v2)
+
+```bash
+mise run agentd-build
+mise run agent-ui-build   # ou SKIP_APP=1 para só o daemon
+./pack_sd.sh              # → dist/sd/tessera/agentd/
+make pack-agentd          # na raiz do monorepo
+```
+
+Sidecar `agentd.version`; tarball **sem** segredos (`client.json`, tokens, `.env`). Cutover Mac: `tools/cutover_agent_v2.sh`; gate: `tools/agent_v2_gate.md`.
+
 ## Protocol parity
 
 USB lines are tab-separated. Golden fixtures under `crates/protocol/tests/fixtures/lines/` were taken from the legacy Python encoders:

@@ -12,7 +12,7 @@
 #   make help         — list targets
 #   ./tools/bootstrap-env.sh — once per machine (after OS packages)
 
-.PHONY: help test test-native e2e sim sim-build sim-run verify flash finish finish-host device device-snap monitor
+.PHONY: help test test-native e2e sim sim-build sim-run verify flash finish finish-host device device-snap monitor pack-agentd push-agentd
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 PIO  := $(ROOT)/.venv/bin/pio
@@ -43,6 +43,10 @@ help: ## List harness tasks
 	@echo "  make verify       alias of make e2e"
 	@echo "  make device-snap  capture panel framebuffer (SNAP → PNG)"
 	@echo "  make monitor      alias of make device"
+	@echo ""
+	@echo "Agent v2 (Mac companion, paralelo ao legacy até gate):"
+	@echo "  make pack-agentd  agentd/pack_sd.sh → dist/sd/tessera/agentd/"
+	@echo "  make push-agentd  pack + instruções PUT (firmware /agentd/ ainda TBD)"
 	@echo ""
 	@echo "E2E/SNAP artifacts: \$$SIM_OUT (default $(OUT))"
 	@echo "Docs: docs/getting-started.md · docs/guides/finish-gate.md"
@@ -95,3 +99,17 @@ finish: e2e flash ## Gate completo (e2e já roda nativos; depois flash)
 
 finish-host: e2e ## Gate host (sem flash)
 	@echo "==> finish OK (host only)"
+
+# --- Agent v2 SD pack (cutover Task 7) ---------------------------------------
+
+AGENTD_SD := $(ROOT)/agentd/dist/sd/tessera/agentd
+
+pack-agentd: ## Empacota agentd + Tessara.app para staging SD (sem segredos)
+	$(ROOT)/agentd/pack_sd.sh
+
+push-agentd: pack-agentd ## Pack v2; PUT ao painel quando rota /agentd/ existir no firmware
+	@echo "==> push-agentd: artefatos em $(AGENTD_SD)"
+	@echo "    Copiar ao cartão: ./agentd/pack_sd.sh /Volumes/TESSARA"
+	@echo "    Cutover Mac: BOOTOUT_LEGACY=1 tools/cutover_agent_v2.sh --bootout-legacy"
+	@echo "    Gate manual: tools/agent_v2_gate.md (obrigatório antes de retirar agent/ Python)"
+	@echo "    Nota: PUT /agentd/agentd.tgz + AGENT_PUSH no firmware ainda não implementado neste worktree."
