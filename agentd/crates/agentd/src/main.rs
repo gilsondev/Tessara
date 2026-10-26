@@ -11,7 +11,7 @@ struct Args {
 fn main() {
     let args = Args::parse();
     if args.print_agent_line {
-        print!("{}", tessara_protocol::agent_ok_line(env!("CARGO_PKG_VERSION")));
+        println!("{}", tessara_protocol::agent_ok_line());
         return;
     }
     eprintln!("agentd: USB loop not wired yet — see plan parity");
