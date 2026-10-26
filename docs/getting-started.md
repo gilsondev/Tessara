@@ -139,6 +139,11 @@ cp include/secrets.example.h include/secrets.h
 | Linux permission denied on serial | `sudo usermod -aG dialout $USER` then re-login |
 | Wrong upload port | List ports (`ls /dev/cu.usb*`, `ls /dev/ttyACM*`) and update `platformio.ini` |
 
+## Agent (Mac)
+
+- Agent v2 (em construção): [guides/agent-v2-dev.md](guides/agent-v2-dev.md) — `mise install`
+- Agent legacy (Python): `cd agent && …` ou `mise run agent-legacy-run`
+
 ## Next
 
 - Architecture: [`guides/architecture.md`](guides/architecture.md)

@@ -1,5 +1,8 @@
 # Tessara Agent
 
+> **Legado.** O produto atual é este pacote Python. O redesign (Rust agentd + Tauri) está em
+> `docs/superpowers/specs/2026-10-25-tessera-agent-v2-design.md`. Até o cutover, hotfix aqui; features novas no v2.
+
 Pacote Mac do monorepo Tessara (irmão do firmware em `../src`).
 
 Recursos via USB: **AI Tokens** (cotas), **Calendar** (Google, OAuth no Mac) e **MEDIA** (Agora tocando + play/pause/prev/next — Music/Spotify via AppleScript). Ver `capabilities/calendar/README.md`.
