@@ -8,6 +8,11 @@ name = "agentd"
 path = "src/main.rs"
 
 [dependencies]
+axum = { version = "=0.7.9", features = ["json"] }
 clap = { version = "=4.5.23", features = ["derive"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tower = { version = "=0.5.2", features = ["util"] }
 tessara-protocol = { path = "../protocol" }
 tessara-usb = { path = "../usb" }

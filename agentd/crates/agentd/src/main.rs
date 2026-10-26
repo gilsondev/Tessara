@@ -1,3 +1,4 @@
+mod ipc;
 mod usb_loop;
 
 use clap::Parser;
@@ -16,7 +17,8 @@ struct Args {
     once: bool,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Args::parse();
     if args.print_agent_line {
         println!("{}", tessara_protocol::agent_ok_line());
@@ -50,6 +52,8 @@ fn main() {
     }
 
     usb_loop::print_candidate_ports();
-    eprintln!("agentd: USB loop contínuo ainda não implementado — ver plano parity");
-    std::process::exit(0);
+    if let Err(e) = ipc::run_ipc_server(ipc::AppState::default()).await {
+        eprintln!("agentd: IPC: {e}");
+        std::process::exit(1);
+    }
 }

@@ -23,3 +23,24 @@ python3 tools/agent_capture_golden.py
 ```
 
 Golden lines: `crates/protocol/tests/fixtures/`.
+
+## Localhost IPC
+
+Companion UI reads daemon state over HTTP on **127.0.0.1 only** (not exposed on LAN).
+
+| Env | Default |
+|-----|---------|
+| `TESSARA_AGENTD_IPC_PORT` | `19792` |
+
+| Method | Path | Response |
+|--------|------|----------|
+| GET | `/v1/status` | `{ "ok": true, "version": "<crate version>", "usb": "disconnected" \| "up" }` |
+| GET | `/v1/health` | `{ "ok": true }` |
+
+Example:
+
+```bash
+curl -s http://127.0.0.1:19792/v1/status
+```
+
+Without `--once` / `--print-agent-line`, `agentd` starts this server and keeps running until interrupted.
