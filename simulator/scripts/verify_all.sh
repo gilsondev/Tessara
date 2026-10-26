@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SIM="$ROOT/simulator"
-OUT="${SIM_OUT:-/tmp/tessara-sim-out}"
+OUT="${SIM_OUT:-/tmp/tessera-sim-out}"
 mkdir -p "$OUT"
 
 echo "==> native suite"

@@ -232,7 +232,8 @@ def build_events_line() -> str:
 
     now = datetime.now(TZ)
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    horizon = day_start + timedelta(days=7)
+    # Today only — no tomorrow onwards on the panel.
+    horizon = day_start + timedelta(days=1)
     time_min = day_start.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     time_max = horizon.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -269,10 +270,19 @@ def build_events_line() -> str:
                         s_local = datetime.fromisoformat(start["date"]).replace(tzinfo=TZ)
                     except ValueError:
                         continue
+                    # Single-day all-day for today only (Google exclusive end = tomorrow).
+                    if s_local.date() != day_start.date():
+                        continue
+                    try:
+                        e_date = datetime.fromisoformat(end["date"]).date()
+                    except (KeyError, ValueError, TypeError):
+                        e_date = day_start.date() + timedelta(days=1)
+                    if e_date != day_start.date() + timedelta(days=1):
+                        continue
                     start_min = 0
                     end_min = 24 * 60
                     dur = 0
-                    day_offset = (s_local.date() - day_start.date()).days
+                    day_offset = 0
                 else:
                     try:
                         sdt = datetime.fromisoformat(start["dateTime"].replace("Z", "+00:00"))
@@ -281,15 +291,13 @@ def build_events_line() -> str:
                         continue
                     s_local = sdt.astimezone(TZ)
                     day_offset = (s_local.date() - day_start.date()).days
-                    if day_offset == 0 and edt <= now.astimezone(timezone.utc):
-                        continue  # already finished today
-                    if day_offset < 0:
+                    if day_offset != 0:
                         continue
+                    if edt <= now.astimezone(timezone.utc):
+                        continue  # already finished today
                     start_min = s_local.hour * 60 + s_local.minute
                     end_min = edt.astimezone(TZ).hour * 60 + edt.astimezone(TZ).minute
                     dur = max(0, int((edt - sdt).total_seconds() // 60))
-                if day_offset < 0 or day_offset > 6:
-                    continue
                 title = (item.get("summary") or "Evento").replace("\t", " ")[:47]
                 loc = (item.get("location") or "").replace("\t", " ")[:31]
                 color = color_by_id.get(cal_id, "1A73E8")

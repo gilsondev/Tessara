@@ -1,5 +1,6 @@
 #include "domain/dashboard_layout.h"
 
+#include <cstdio>
 #include <cstring>
 
 namespace {
@@ -32,23 +33,38 @@ void remove_at(dashboard::Layout &layout, int index) {
     if (layout.count >= 0) layout.ids[layout.count][0] = '\0';
 }
 
+// Pre-rename brand typo lived in NVS CSV as org.tessara.* — map to org.tessera.*.
+void rewrite_legacy_id(char *id, size_t cap) {
+    static constexpr char kLegacy[] = "org.tessara.";
+    static constexpr char kCanon[] = "org.tessera.";
+    static constexpr size_t kPrefix = sizeof(kLegacy) - 1;
+    if (!id || cap <= kPrefix) return;
+    if (std::strncmp(id, kLegacy, kPrefix) != 0) return;
+    char rest[dashboard::kIdLen];
+    std::strncpy(rest, id + kPrefix, sizeof(rest) - 1);
+    rest[sizeof(rest) - 1] = '\0';
+    if (kPrefix + std::strlen(rest) + 1 > cap) return;
+    std::snprintf(id, cap, "%s%s", kCanon, rest);
+}
+
 }  // namespace
 
-const char *dashboard::id_todoist() { return "org.tessara.todoist"; }
-const char *dashboard::id_weather() { return "org.tessara.weather"; }
-const char *dashboard::id_aitokens() { return "org.tessara.aitokens"; }
-const char *dashboard::id_calendar() { return "org.tessara.calendar"; }
-const char *dashboard::id_mac() { return "org.tessara.mac"; }
-const char *dashboard::id_clock() { return "org.tessara.clock"; }
-const char *dashboard::id_greeting() { return "org.tessara.greeting"; }
-const char *dashboard::id_date() { return "org.tessara.date"; }
+const char *dashboard::id_todoist() { return "org.tessera.todoist"; }
+const char *dashboard::id_weather() { return "org.tessera.weather"; }
+const char *dashboard::id_aitokens() { return "org.tessera.aitokens"; }
+const char *dashboard::id_calendar() { return "org.tessera.calendar"; }
+const char *dashboard::id_media() { return "org.tessera.media"; }
+const char *dashboard::id_mac() { return "org.tessera.mac"; }
+const char *dashboard::id_clock() { return "org.tessera.clock"; }
+const char *dashboard::id_greeting() { return "org.tessera.greeting"; }
+const char *dashboard::id_date() { return "org.tessera.date"; }
 // Legacy id kept so old CSV layouts that listed hello parse cleanly (dropped by known_type).
-const char *dashboard::id_hello() { return "org.tessara.hello"; }
+const char *dashboard::id_hello() { return "org.tessera.hello"; }
 
 bool dashboard::known_type(const char *type_id) {
     return eq(type_id, id_todoist()) || eq(type_id, id_weather()) || eq(type_id, id_aitokens()) ||
-           eq(type_id, id_calendar()) || eq(type_id, id_mac()) || eq(type_id, id_clock()) ||
-           eq(type_id, id_greeting()) || eq(type_id, id_date());
+           eq(type_id, id_calendar()) || eq(type_id, id_media()) || eq(type_id, id_mac()) ||
+           eq(type_id, id_clock()) || eq(type_id, id_greeting()) || eq(type_id, id_date());
 }
 
 dashboard::Layout dashboard::defaults() {
@@ -59,8 +75,10 @@ dashboard::Layout dashboard::defaults() {
     copy_id(out.ids[3], kIdLen, id_todoist());
     copy_id(out.ids[4], kIdLen, id_weather());
     copy_id(out.ids[5], kIdLen, id_aitokens());
-    copy_id(out.ids[6], kIdLen, id_mac());
-    out.count = 7;
+    copy_id(out.ids[6], kIdLen, id_calendar());
+    copy_id(out.ids[7], kIdLen, id_media());
+    copy_id(out.ids[8], kIdLen, id_mac());
+    out.count = 9;
     return out;
 }
 
@@ -82,6 +100,7 @@ bool dashboard::parse(const char *csv, Layout &out) {
         char id[kIdLen];
         std::memcpy(id, start, n);
         id[n] = '\0';
+        rewrite_legacy_id(id, sizeof(id));
         if (!known_type(id)) continue;
         if (find_index(out, id) >= 0) continue;
         copy_id(out.ids[out.count], kIdLen, id);
@@ -148,6 +167,28 @@ void dashboard::set_enabled(Layout &layout, const char *type_id, bool on) {
     } else if (idx >= 0) {
         remove_at(layout, idx);
     }
+}
+
+bool dashboard::ensure_media_mac(Layout &layout) {
+    bool dirty = false;
+    if (!is_enabled(layout, id_media())) {
+        int before = layout.count;
+        set_enabled(layout, id_media(), true);
+        if (layout.count > before) dirty = true;
+    }
+    if (!is_enabled(layout, id_mac())) {
+        int before = layout.count;
+        set_enabled(layout, id_mac(), true);
+        if (layout.count > before) dirty = true;
+    }
+    return dirty;
+}
+
+bool dashboard::ensure_calendar(Layout &layout) {
+    if (is_enabled(layout, id_calendar())) return false;
+    int before = layout.count;
+    set_enabled(layout, id_calendar(), true);
+    return layout.count > before;
 }
 
 int dashboard::compose(const Layout &enabled, const char *const *registered, int registered_n,

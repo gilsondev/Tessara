@@ -16,29 +16,29 @@ pub enum UsbError {
 
 pub struct PortName(pub String);
 
-/// Tessara / ESP32 CDC candidates (matches `agent.runtime.app_ports` naming).
+/// Tessera / ESP32 CDC candidates (matches `agent.runtime.app_ports` naming).
 pub fn list_candidate_ports() -> Vec<PortName> {
     let mut names: Vec<String> = serialport::available_ports()
         .unwrap_or_default()
         .into_iter()
         .map(|info| info.port_name)
-        .filter(|name| is_tessara_candidate(name))
+        .filter(|name| is_tessera_candidate(name))
         .collect();
     names.sort();
     names.dedup();
     names.into_iter().map(PortName).collect()
 }
 
-fn is_tessara_candidate(name: &str) -> bool {
+fn is_tessera_candidate(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     if name.ends_with("1401") {
         return false;
     }
-    lower.contains("usbmodem") || lower.contains("tessara")
+    lower.contains("usbmodem") || lower.contains("tessera")
 }
 
 /// Open serial at 115200 with read timeout; assert DTR after settle (match Python `open_serial`).
-pub fn open_tessara_port(path: &str) -> Result<Box<dyn serialport::SerialPort>, UsbError> {
+pub fn open_tessera_port(path: &str) -> Result<Box<dyn serialport::SerialPort>, UsbError> {
     let mut port = serialport::new(path, BAUD)
         .timeout(Duration::from_millis(READ_TIMEOUT_MS))
         .open()
@@ -82,7 +82,7 @@ pub fn write_lines(w: &mut impl Write, lines: &[String]) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tessara_protocol::agent_ok_line;
+    use tessera_protocol::agent_ok_line;
 
     #[test]
     fn write_handshake_vec_u8() {

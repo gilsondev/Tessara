@@ -73,7 +73,7 @@
         "tasks": [
           {
             "id": "8993001",
-            "content": "Atualizar Tessara docs",
+            "content": "Atualizar Tessera docs",
             "priority": 2,
             "meta": "hoje"
           },
@@ -139,8 +139,8 @@
     "pack_on_sd": true
   },
   "dashboard": [
-    "org.tessara.todoist",
-    "org.tessara.weather",
-    "org.tessara.aitokens"
+    "org.tessera.todoist",
+    "org.tessera.weather",
+    "org.tessera.aitokens"
   ]
 }

@@ -1,6 +1,6 @@
 //! Golden USB lines captured from the legacy Python agent encoders.
 
-use tessara_protocol::{agent_ok_line, media_line, parse_prefix};
+use tessera_protocol::{agent_ok_line, media_line, parse_prefix};
 
 #[test]
 fn golden_agent_prefix() {

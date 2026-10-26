@@ -19,8 +19,11 @@ export const DOCTOR_FIXTURE = {
       id: "files",
       level: "bad",
       title: "Acesso aos arquivos",
-      detail: "Claude e Focus precisam que você marque o Tessara em Ajustes do Mac.",
+      detail: "Claude e Focus precisam que você marque o Tessera em Ajustes do Mac.",
       action: "setup",
+      settings_pane: "full_disk_access",
+      settings_url:
+        "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles",
     },
     {
       id: "music",
@@ -33,6 +36,10 @@ export const DOCTOR_FIXTURE = {
       level: "warn",
       title: "Focus",
       detail: "Último modo: Trabalho · pausado até liberar acesso aos arquivos",
+      action: "setup",
+      settings_pane: "full_disk_access",
+      settings_url:
+        "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles",
     },
     {
       id: "cursor",
@@ -63,7 +70,7 @@ export const DOCTOR_FIXTURE = {
 
 export const LOGS_FIXTURE_LINES = [
   "2026-10-25T21:04:12.441-03:00 INFO  usb: attached vid=303a pid=1001 serial=JC3248-A1 path=/dev/cu.usbmodem*",
-  "2026-10-25T21:04:12.610-03:00 INFO  agentd: handshake ok proto=1 device=tessara fw=0.9.4",
+  "2026-10-25T21:04:12.610-03:00 INFO  agentd: handshake ok proto=1 device=tessera fw=0.9.4",
   "2026-10-25T21:04:12.802-03:00 INFO  media.watch: source=spotify state=paused title=\"\" dirty=false",
   "2026-10-25T21:04:12.918-03:00 INFO  focus.watch: mode=\"Trabalho\" assertions_mtime=1729905851 push=ok",
   "2026-10-25T21:04:13.104-03:00 DEBUG aitokens.cursor: remaining=42% window=monthly path=~/Library/Application Support/Cursor/*",

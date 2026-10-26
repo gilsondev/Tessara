@@ -13,9 +13,18 @@ use crate::MachineProfile;
 pub struct AgentdConfig {
     pub media: bool,
     pub focus: bool,
+    /// Master: any AI Tokens push over USB.
     pub aitokens: bool,
+    /// Per-provider collect (ignored when `aitokens` is false).
+    pub aitokens_cursor: bool,
+    pub aitokens_claude: bool,
+    pub aitokens_codex: bool,
     pub calendar: bool,
+    /// Todoist HTTPS on the Mac; panel receives USB snapshots.
+    pub todoist: bool,
     pub setup_completed: bool,
+    /// When true, agentd downloads and applies GitHub Releases without prompt.
+    pub auto_update: bool,
 }
 
 impl Default for AgentdConfig {
@@ -24,9 +33,21 @@ impl Default for AgentdConfig {
             media: true,
             focus: true,
             aitokens: true,
+            aitokens_cursor: true,
+            aitokens_claude: true,
+            aitokens_codex: true,
             calendar: true,
+            todoist: true,
             setup_completed: false,
+            auto_update: true,
         }
+    }
+}
+
+impl AgentdConfig {
+    /// Recompute master `aitokens` from per-provider flags.
+    pub fn sync_aitokens_master(&mut self) {
+        self.aitokens = self.aitokens_cursor || self.aitokens_claude || self.aitokens_codex;
     }
 }
 
@@ -189,11 +210,26 @@ pub fn read_scan_json(path: &Path) -> Result<Option<serde_json::Value>, ProfileE
 }
 
 fn default_display_name() -> String {
+    // Prefer the friendly ComputerName (e.g. "MacBook Pro de Gilson") over DNS hostname.
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(out) = std::process::Command::new("scutil")
+            .args(["--get", "ComputerName"])
+            .output()
+        {
+            if out.status.success() {
+                let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !name.is_empty() {
+                    return name;
+                }
+            }
+        }
+    }
     hostname::get()
         .ok()
         .and_then(|h| h.into_string().ok())
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "tessara".to_string())
+        .unwrap_or_else(|| "Este Mac".to_string())
 }
 
 #[cfg(test)]
@@ -203,6 +239,24 @@ mod tests {
     #[test]
     fn agentd_config_defaults_all_true() {
         let c = AgentdConfig::default();
-        assert!(c.media && c.focus && c.aitokens && c.calendar);
+        assert!(c.media && c.focus && c.aitokens && c.calendar && c.todoist);
+        assert!(c.aitokens_cursor && c.aitokens_claude && c.aitokens_codex);
+    }
+
+    #[test]
+    fn legacy_toml_without_provider_flags_keeps_defaults() {
+        let c: AgentdConfig = toml::from_str(
+            r#"
+media = true
+focus = true
+aitokens = true
+calendar = true
+setup_completed = true
+"#,
+        )
+        .unwrap();
+        assert!(c.setup_completed);
+        // Missing per-provider keys → struct Default (all true) via #[serde(default)].
+        assert!(c.aitokens_cursor && c.aitokens_claude && c.aitokens_codex);
     }
 }

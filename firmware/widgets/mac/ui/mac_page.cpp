@@ -13,19 +13,15 @@ lv_obj_t *screen = nullptr;
 lv_obj_t *title_label = nullptr;
 lv_obj_t *status_label = nullptr;
 lv_obj_t *body = nullptr;
-lv_obj_t *meta = nullptr;
-lv_obj_t *controls = nullptr;
-lv_obj_t *track_label = nullptr;
-lv_obj_t *artist_label = nullptr;
-lv_obj_t *app_label = nullptr;
-lv_obj_t *btn_prev = nullptr;
-lv_obj_t *btn_play = nullptr;
-lv_obj_t *btn_next = nullptr;
+lv_obj_t *grid = nullptr;
 lv_event_cb_t back_cb = nullptr;
 mac_page::CmdFn cmd_cb = nullptr;
 bool standalone_screen = false;
-mac::View cached = {};
+focus::View cached = {};
 bool cached_agent_ok = false;
+bool had_good_agent = false;
+char pending_id[focus::kIdMax] = {};
+bool pending = false;
 
 void set_if(lv_obj_t *label, const char *text) {
     if (label && text && strcmp(lv_label_get_text(label), text) != 0) lv_label_set_text(label, text);
@@ -46,42 +42,63 @@ void fire_cmd(const char *cmd) {
     if (cmd_cb && cmd) cmd_cb(cmd);
 }
 
-void on_prev(lv_event_t *) {
-    set_status("‹ anterior");
-    fire_cmd("PREV");
-}
-void on_play(lv_event_t *) {
-    set_status("play/pause…");
-    fire_cmd("PLAYPAUSE");
-}
-void on_next(lv_event_t *) {
-    set_status("próxima ›");
-    fire_cmd("NEXT");
-}
-
-lv_obj_t *make_ctrl(lv_obj_t *row, const char *symbol, lv_event_cb_t cb) {
-    lv_obj_t *btn = kit::icon_button(row, symbol, cb, palette::widget_mac());
-    lv_obj_set_size(btn, 64, 52);
-    lv_obj_set_ext_click_area(btn, 16);
-    // Ensure the glyph never steals the tap from the button.
-    lv_obj_t *lab = lv_obj_get_child(btn, 0);
-    if (lab) {
-        lv_obj_clear_flag(lab, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_flag(lab, LV_OBJ_FLAG_EVENT_BUBBLE);
+void on_mode(lv_event_t *e) {
+    auto *id = static_cast<const char *>(lv_event_get_user_data(e));
+    if (pending) return;  // ignore taps while applying
+    if (!id || !id[0]) {
+        pending = true;
+        pending_id[0] = '\0';
+        set_status("aplicando…");
+        fire_cmd("OFF");
+        return;
     }
-    return btn;
+    pending = true;
+    strncpy(pending_id, id, sizeof(pending_id) - 1);
+    pending_id[sizeof(pending_id) - 1] = '\0';
+    char line[80];
+    std::snprintf(line, sizeof(line), "SET\t%s", id);
+    set_status("aplicando…");
+    fire_cmd(line);
 }
 
-void style_controls() {
-    auto paint_btn = [](lv_obj_t *btn) {
-        if (!btn) return;
-        lv_obj_set_style_bg_color(btn, lv_color_hex(palette::widget_mac()), 0);
-        lv_obj_t *lab = lv_obj_get_child(btn, 0);
-        if (lab) lv_obj_set_style_text_color(lab, lv_color_white(), 0);
-    };
-    paint_btn(btn_prev);
-    paint_btn(btn_play);
-    paint_btn(btn_next);
+lv_obj_t *make_cell(lv_obj_t *parent, const char *label, const char *id, bool active, bool loading) {
+    lv_obj_t *cell = kit::bare(parent);
+    lv_obj_set_width(cell, 0);
+    lv_obj_set_flex_grow(cell, 1);
+    lv_obj_set_style_min_width(cell, 0, 0);
+    lv_obj_set_height(cell, 72);
+    const bool busy = loading;
+    lv_obj_set_style_bg_color(cell, active ? lv_color_hex(palette::widget_mac()) : theme::surface(), 0);
+    lv_obj_set_style_bg_opa(cell, busy ? LV_OPA_70 : LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(cell, 14, 0);
+    lv_obj_set_style_border_width(cell, 1, 0);
+    lv_obj_set_style_border_color(cell, theme::border(), 0);
+    lv_obj_set_style_pad_all(cell, 10, 0);
+    lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(cell, 4, 0);
+    if (!busy) {
+        lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
+        kit::press_feedback(cell);
+        lv_obj_add_event_cb(cell, on_mode, LV_EVENT_CLICKED, const_cast<char *>(id));
+    }
+
+    lv_obj_t *text = lv_label_create(cell);
+    lv_label_set_text(text, label);
+    lv_label_set_long_mode(text, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(text, lv_pct(100));
+    lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(text, &theme::label_font(), 0);
+    lv_obj_set_style_text_color(text, active ? lv_color_white() : theme::text_primary(), 0);
+
+    if (busy) {
+        kit::spinner(cell, 18, 3);
+    } else if (active) {
+        lv_obj_t *mark = lv_label_create(cell);
+        lv_label_set_text(mark, LV_SYMBOL_OK);
+        lv_obj_set_style_text_color(mark, lv_color_white(), 0);
+    }
+    return cell;
 }
 
 void build_into(lv_obj_t *parent) {
@@ -96,63 +113,78 @@ void build_into(lv_obj_t *parent) {
     kit::SubsysBar bar = kit::subsys_bar(parent, LV_SYMBOL_LEFT, back_cb, palette::widget_mac());
     title_label = bar.title;
     status_label = bar.status;
-    lv_label_set_text(title_label, "Mac");
+    lv_label_set_text(title_label, "Focus");
 
     body = kit::bare(parent);
     lv_obj_set_width(body, lv_pct(100));
     lv_obj_set_flex_grow(body, 1);
     lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_hor(body, 20, 0);
-    lv_obj_set_style_pad_top(body, 24, 0);
+    lv_obj_set_style_pad_hor(body, 12, 0);
+    lv_obj_set_style_pad_top(body, 12, 0);
     lv_obj_set_style_pad_bottom(body, 12, 0);
-    lv_obj_set_style_pad_row(body, 0, 0);
+    lv_obj_set_style_pad_row(body, 8, 0);
 
-    meta = kit::bare(body);
-    lv_obj_set_width(meta, lv_pct(100));
-    lv_obj_set_flex_grow(meta, 1);
-    lv_obj_set_flex_flow(meta, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(meta, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(meta, 8, 0);
+    grid = kit::bare(body);
+    lv_obj_set_width(grid, lv_pct(100));
+    lv_obj_set_flex_grow(grid, 1);
+    lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_column(grid, 8, 0);
+    lv_obj_set_style_pad_row(grid, 8, 0);
+    kit::enable_list_scroll(grid);
+}
 
-    track_label = lv_label_create(meta);
-    lv_label_set_text(track_label, "Nada tocando");
-    lv_label_set_long_mode(track_label, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(track_label, lv_pct(100));
-    lv_obj_set_style_text_align(track_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(track_label, &theme::title_font(), 0);
-    lv_obj_set_style_text_color(track_label, theme::text_primary(), 0);
+void refill_grid(const focus::View &view, bool agent_ok) {
+    if (!grid) return;
+    lv_obj_clean(grid);
 
-    artist_label = lv_label_create(meta);
-    lv_label_set_text(artist_label, "");
-    lv_label_set_long_mode(artist_label, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(artist_label, lv_pct(100));
-    lv_obj_set_style_text_align(artist_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(artist_label, &theme::label_font(), 0);
-    lv_obj_set_style_text_color(artist_label, theme::text_secondary(), 0);
+    if (!agent_ok && !had_good_agent) {
+        lv_obj_t *msg = lv_label_create(grid);
+        lv_label_set_text(msg, "Aguardando Agente…");
+        lv_obj_set_style_text_font(msg, &theme::title_font(), 0);
+        lv_obj_set_style_text_color(msg, theme::text_primary(), 0);
+        set_status("");
+        return;
+    }
 
-    app_label = lv_label_create(meta);
-    lv_label_set_text(app_label, "");
-    lv_obj_set_style_text_font(app_label, &theme::small_font(), 0);
-    lv_obj_set_style_text_color(app_label, theme::text_secondary(), 0);
+    if (!view.ready || !view.ok) {
+        lv_obj_t *msg = lv_label_create(grid);
+        lv_label_set_text(msg, view.ready ? "Focus indisponível" : "Aguardando Focus…");
+        lv_obj_set_style_text_font(msg, &theme::label_font(), 0);
+        lv_obj_set_style_text_color(msg, theme::text_secondary(), 0);
+        set_status(view.stale ? "desatualizado" : "");
+        return;
+    }
 
-    // Pin controls to the bottom of the page so title wrap never covers them.
-    controls = kit::bare(body);
-    lv_obj_set_width(controls, lv_pct(100));
-    lv_obj_set_height(controls, LV_SIZE_CONTENT);
-    lv_obj_set_flex_grow(controls, 0);
-    lv_obj_set_flex_flow(controls, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(controls, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(controls, 20, 0);
-    lv_obj_set_style_pad_top(controls, 12, 0);
-    lv_obj_set_style_pad_bottom(controls, 8, 0);
-    lv_obj_add_flag(controls, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(controls, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_move_foreground(controls);
+    // Clear pending when Mac confirms the requested mode (or none).
+    if (pending) {
+        const bool want_none = pending_id[0] == '\0';
+        const bool got_none = !view.active_id[0];
+        if (want_none && got_none) pending = false;
+        else if (!want_none && view.active_id[0] && strcmp(view.active_id, pending_id) == 0) pending = false;
+    }
 
-    btn_prev = make_ctrl(controls, LV_SYMBOL_PREV, on_prev);
-    btn_play = make_ctrl(controls, LV_SYMBOL_PLAY, on_play);
-    btn_next = make_ctrl(controls, LV_SYMBOL_NEXT, on_next);
+    const bool none_active = !view.active_id[0];
+    const bool none_loading = pending && pending_id[0] == '\0';
+    // Two cells per row: each flex_grow 1 in ROW_WRAP with ~50% via min width trick —
+    // set width to (100%-gap)/2 using fixed calc: parent pad 12*2, gap 8 → ~140 on 320.
+    auto add = [&](const char *label, const char *id, bool active, bool loading) {
+        lv_obj_t *cell = make_cell(grid, label, id, active, loading);
+        lv_obj_set_width(cell, 140);
+        lv_obj_set_flex_grow(cell, 0);
+        (void)cell;
+    };
+    add("Nenhum", "", none_active, none_loading);
+    for (int i = 0; i < view.mode_count; ++i) {
+        const bool active = view.active_id[0] && strcmp(view.modes[i].id, view.active_id) == 0;
+        const char *label = view.modes[i].name[0] ? view.modes[i].name : view.modes[i].id;
+        const bool loading = pending && pending_id[0] && strcmp(view.modes[i].id, pending_id) == 0;
+        add(label, view.modes[i].id, active, loading);
+    }
+    if (pending) set_status("aplicando…");
+    else if (view.stale) set_status("desatualizado");
+    else if (view.active_name[0]) set_status(view.active_name);
+    else set_status("Nenhum");
 }
 
 }  // namespace
@@ -167,12 +199,10 @@ void mac_page::unmount() {
     if (standalone_screen) lv_obj_delete(screen);
     else lv_obj_clean(screen);
     screen = nullptr;
-    title_label = nullptr;
-    status_label = nullptr;
-    body = meta = controls = nullptr;
-    track_label = artist_label = app_label = nullptr;
-    btn_prev = btn_play = btn_next = nullptr;
+    title_label = status_label = body = grid = nullptr;
     standalone_screen = false;
+    pending = false;
+    pending_id[0] = '\0';
 }
 
 void mac_page::mount(lv_obj_t *parent) {
@@ -181,8 +211,8 @@ void mac_page::mount(lv_obj_t *parent) {
     screen = parent;
     standalone_screen = false;
     build_into(parent);
-    if (!cmd_cb) set_status("sem handler");
-    else fire_cmd("?");
+    paint(cached, cached_agent_ok || had_good_agent);
+    fire_cmd("?");
 }
 
 void mac_page::show() {
@@ -191,6 +221,7 @@ void mac_page::show() {
     screen = lv_obj_create(lv_screen_active());
     lv_obj_set_size(screen, lv_pct(100), lv_pct(100));
     build_into(screen);
+    paint(cached, cached_agent_ok || had_good_agent);
     fire_cmd("?");
 }
 
@@ -199,59 +230,14 @@ void mac_page::apply_theme() {
     lv_obj_set_style_bg_color(screen, theme::background(), 0);
     if (title_label) lv_obj_set_style_text_color(title_label, theme::text_primary(), 0);
     if (status_label) lv_obj_set_style_text_color(status_label, theme::text_secondary(), 0);
-    if (track_label) lv_obj_set_style_text_color(track_label, theme::text_primary(), 0);
-    if (artist_label) lv_obj_set_style_text_color(artist_label, theme::text_secondary(), 0);
-    if (app_label) lv_obj_set_style_text_color(app_label, theme::text_secondary(), 0);
-    style_controls();
     paint(cached, cached_agent_ok);
 }
 
-void mac_page::paint(const mac::View &view, bool agent_ok) {
+void mac_page::paint(const focus::View &view, bool agent_ok) {
+    if (agent_ok) had_good_agent = true;
     cached = view;
     cached_agent_ok = agent_ok;
-    if (!track_label) return;
-
-    if (!agent_ok) {
-        set_if(track_label, "Mac offline");
-        set_if(artist_label, "");
-        set_if(app_label, "");
-        set_status("");
-        if (btn_play) {
-            lv_obj_t *lab = lv_obj_get_child(btn_play, 0);
-            if (lab) lv_label_set_text(lab, LV_SYMBOL_PLAY);
-        }
-        return;
-    }
-
-    if (!view.ready || !view.media.ok) {
-        set_if(track_label, "Nada tocando");
-        set_status((view.ready && !view.media.ok) ? "mídia indisponível" : "");
-        set_if(artist_label, "");
-        set_if(app_label, "");
-        return;
-    }
-
-    if (view.media.state == mac::MediaState::Stopped || !view.media.title[0]) {
-        set_if(track_label, "Nada tocando");
-        set_if(artist_label, "");
-        set_if(app_label, "");
-        set_status(view.stale ? "desatualizado" : "");
-    } else {
-        set_if(track_label, view.media.title);
-        set_if(artist_label, view.media.artist);
-        set_if(app_label, view.media.app);
-        if (view.stale) set_status("desatualizado");
-        else if (view.media.state == mac::MediaState::Paused) set_status("pausado");
-        else set_status("tocando");
-    }
-
-    if (btn_play) {
-        lv_obj_t *lab = lv_obj_get_child(btn_play, 0);
-        if (lab) {
-            lv_label_set_text(lab, view.media.state == mac::MediaState::Playing ? LV_SYMBOL_PAUSE
-                                                                              : LV_SYMBOL_PLAY);
-        }
-    }
+    refill_grid(cached, agent_ok);
 }
 
-const mac::View &mac_page::last_view() { return cached; }
+const focus::View &mac_page::last_view() { return cached; }

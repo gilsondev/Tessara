@@ -24,4 +24,13 @@ mise run agentd-run
 mise run agent-ui-dev
 ```
 
+### Instalar neste Mac (após mudanças no companion)
+
+```bash
+mise run agent-install
+# ou: make agent-install
+```
+
+Rebuilda agentd + Tessera.app e roda `tools/cutover_agent_v2.sh` (LaunchAgent + `/Applications/Tessera.app`). Self-update em produção: Pages `latest.json` + toggle **Atualizar sozinho** (ADR `0003`).
+
 Finish-gate do **firmware** continua em `make test` / `make e2e` (PlatformIO).

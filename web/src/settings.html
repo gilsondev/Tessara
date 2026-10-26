@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#147D73">
 <link rel="icon" href="data:,">
-<title>Tessara</title>
+<title>Tessera</title>
 <style>
 :root{--red:#147D73;--ink:#172C2B;--muted:#526561;--wash:#F6F5F0;--line:#D5DFDA;--card:#fff}
 *{box-sizing:border-box}
@@ -129,7 +129,7 @@ h1{font-size:30px}
 </style></head><body>
 <div class="app">
 <header>
-<div><h1>Tessara</h1><p id="who">carregando…</p></div>
+<div><h1>Tessera</h1><p id="who">carregando…</p></div>
 <p id="host"></p>
 </header>
 <main class="shell">
@@ -139,7 +139,7 @@ h1{font-size:30px}
 <button class="nav" type="button" data-go="device"><b>Geral</b><span>Tela, som e Wi-Fi</span></button>
 <button class="nav" type="button" data-go="resources"><b>Memória</b><span>DRAM, PSRAM, flash e SD</span></button>
 <button class="nav" type="button" data-go="datetime"><b>Data e hora</b><span>Fuso, hora e data</span></button>
-<button class="nav" type="button" data-go="agent"><b>Agente Tessara</b><span>USB · status e instalação</span></button>
+<button class="nav" type="button" data-go="agent"><b>Agente Tessera</b><span>USB · status e instalação</span></button>
 <p class="kicker">Widgets</p>
 <button class="nav" type="button" data-go="todoist"><b>Todoist</b><span>Listas, token e intervalo</span></button>
 <button class="nav" type="button" data-go="clima"><b>Clima</b><span>Cidade deste widget</span></button>
@@ -158,17 +158,17 @@ h1{font-size:30px}
 <p class="note">Vale para a home e para o detalhe do relógio.</p>
 <div class="fields">
 <div class="field"><h3>Fuso</h3>
-<div class="chips" data-k="timezone" data-scope="widget" data-widget="org.tessara.clock" data-o='[["sao_paulo","Brasília"],["utc","UTC"],["new_york","Nova York"],["los_angeles","Los Angeles"],["london","Londres"],["lisbon","Lisboa"],["buenos_aires","Buenos Aires"],["mexico_city","México"]]'></div></div>
+<div class="chips" data-k="timezone" data-scope="widget" data-widget="org.tessera.clock" data-o='[["sao_paulo","Brasília"],["utc","UTC"],["new_york","Nova York"],["los_angeles","Los Angeles"],["london","Londres"],["lisbon","Lisboa"],["buenos_aires","Buenos Aires"],["mexico_city","México"]]'></div></div>
 <div class="field"><h3>Hora</h3>
-<div class="chips" data-k="time_format" data-scope="widget" data-widget="org.tessara.clock" data-o='[["hm","HH:MM"],["hms","HH:MM:SS"]]'></div></div>
+<div class="chips" data-k="time_format" data-scope="widget" data-widget="org.tessera.clock" data-o='[["hm","HH:MM"],["hms","HH:MM:SS"]]'></div></div>
 <div class="field"><h3>Data</h3>
-<div class="chips" data-k="date_format" data-scope="widget" data-widget="org.tessara.date" data-o='[["short_pt","Curto"],["dmy","DD/MM"],["ymd","ISO"],["mdy","US"],["long_pt","Longo"]]'></div></div>
+<div class="chips" data-k="date_format" data-scope="widget" data-widget="org.tessera.date" data-o='[["short_pt","Curto"],["dmy","DD/MM"],["ymd","ISO"],["mdy","US"],["long_pt","Longo"]]'></div></div>
 </div>
 </section>
 </div>
 <div class="page" id="page-agent">
 <section class="card">
-<h2>Agente Tessara</h2>
+<h2>Agente Tessera</h2>
 <div class="kv">
 <div><b>Status</b><span id="agent-status" class="off">…</span></div>
 <div><b>Pacote no SD</b><span id="agent-pack-note" class="off">…</span></div>
@@ -198,7 +198,7 @@ h1{font-size:30px}
 </div>
 <div class="page" id="page-aitokens">
 <section class="card"><h2>AI Tokens</h2>
-<p class="note" id="aitokens-note">Cotas vêm do Agente Tessara via USB.</p>
+<p class="note" id="aitokens-note">Cotas vêm do Agente Tessera via USB.</p>
 <p class="note" id="aitokens-updated">Última atualização: …</p>
 <div class="ai-toggles">
 <label class="toggle"><span>Codex na home</span><input type="checkbox" data-ai="show_aitokens_codex"></label>
@@ -210,7 +210,7 @@ h1{font-size:30px}
 </div>
 <div class="page" id="page-agenda">
 <section class="card"><h2>Agenda</h2>
-<p class="note" id="agenda-note">Contas Google via Agente Tessara (USB). Somente leitura.</p>
+<p class="note" id="agenda-note">Contas Google via Agente Tessera (USB). Somente leitura.</p>
 <p class="note" id="agenda-status">…</p>
 <p class="note" style="margin:8px 0 14px">Cada conta Google aparece num bloco. Marque só as agendas que o painel deve mostrar.</p>
 <div class="actions" style="gap:8px;flex-wrap:wrap;margin-bottom:12px">
@@ -257,7 +257,7 @@ h1{font-size:30px}
 <section class="card need" id="need"><h2>Falta o token</h2>
 <ol><li>Abra todoist.com e entre na conta.</li><li>Toque na foto, no canto superior esquerdo.</li><li>Abra Configurações, depois Integrações.</li><li>Abra Desenvolvedor e toque em Copiar token da API.</li><li>Cole o token no campo abaixo.</li></ol></section>
 <section class="card"><h2>Todoist</h2>
-<div class="fields"><div class="field"><h3>Atualizar listas a cada</h3><div class="chips" data-k="sync_minutes" data-scope="widget" data-widget="org.tessara.todoist" data-o='[[5,"5 min"],[15,"15 min"],[30,"30 min"],[60,"1 h"]]'></div></div></div>
+<div class="fields"><div class="field"><h3>Atualizar listas a cada</h3><div class="chips" data-k="sync_minutes" data-scope="widget" data-widget="org.tessera.todoist" data-o='[[5,"5 min"],[15,"15 min"],[30,"30 min"],[60,"1 h"]]'></div></div></div>
 <p class="note">Só este widget. O restante do aparelho fica em Dispositivo.</p></section>
 <section class="card token"><h2>Token do Todoist</h2><p class="note" id="tok"></p>
 <div class="pair"><div><label>Novo token</label><input id="token" type="password" autocomplete="off"></div></div>

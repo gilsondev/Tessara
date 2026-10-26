@@ -6,21 +6,22 @@
 
 namespace {
 
-const tessara::WidgetManifest kManifest = {
-    "org.tessara.mac",
+const tessera::WidgetManifest kManifest = {
+    "org.tessera.mac",
     "Mac",
     160,
     100,
     false,
-    tessara::HomeTile::Mac,
+    tessera::HomeTile::Mac,
     0x5B8DEF,
+    false,
 };
 
-class MacWidget final : public tessara::TsWidget {
+class MacWidget final : public tessera::TsWidget {
 public:
-    const tessara::WidgetManifest &manifest() const override { return kManifest; }
+    const tessera::WidgetManifest &manifest() const override { return kManifest; }
 
-    void mount(tessara::WidgetContext &context) override {
+    void mount(tessera::WidgetContext &context) override {
         generation_ = context.generation();
         if (context.logger()) context.logger()->info("mac.mount");
         auto *parent = static_cast<lv_obj_t *>(context.ui_parent());
@@ -38,7 +39,7 @@ public:
         generation_ = 0;
     }
 
-    void paint(const mac::View &view, bool agent_ok) {
+    void paint(const focus::View &view, bool agent_ok) {
         last_agent_ok_ = agent_ok;
         if (mounted_) mac_page::paint(view, agent_ok);
     }
@@ -55,16 +56,16 @@ private:
 
 }  // namespace
 
-const char *tessara::mac_widget_id() { return kManifest.id; }
+const char *tessera::mac_widget_id() { return kManifest.id; }
 
-tessara::TsWidget *tessara::create_mac_widget() { return new MacWidget(); }
+tessera::TsWidget *tessera::create_mac_widget() { return new MacWidget(); }
 
-void tessara::mac_widget_paint(TsWidget *widget, const mac::View &view, bool agent_ok) {
+void tessera::mac_widget_paint(TsWidget *widget, const focus::View &view, bool agent_ok) {
     if (!widget) return;
     static_cast<MacWidget *>(widget)->paint(view, agent_ok);
 }
 
-void tessara::mac_widget_apply_theme(TsWidget *widget) {
+void tessera::mac_widget_apply_theme(TsWidget *widget) {
     if (!widget) return;
     static_cast<MacWidget *>(widget)->apply_theme();
 }

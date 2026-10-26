@@ -18,10 +18,10 @@ def _tell(app: str, verb: str) -> bool:
         ok = r.returncode == 0
         if not ok:
             err = (r.stderr or b"").decode("utf-8", "replace")[:160]
-            print(f"tessara-agent: media tell {app!r} {verb!r} fail: {err}", flush=True)
+            print(f"tessera-agent: media tell {app!r} {verb!r} fail: {err}", flush=True)
         return ok
     except (OSError, subprocess.TimeoutExpired) as exc:
-        print(f"tessara-agent: media tell {app!r} {verb!r} err: {exc}", flush=True)
+        print(f"tessera-agent: media tell {app!r} {verb!r} err: {exc}", flush=True)
         return False
 
 

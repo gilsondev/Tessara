@@ -1,4 +1,4 @@
-# Tessara — toolchain (Agent v2 + legacy Python + UI)
+# Tessera — toolchain (Agent v2 + legacy Python + UI)
 # Docs: docs/superpowers/specs/2026-10-25-tessera-agent-v2-design.md
 
 [tools]
@@ -44,9 +44,13 @@ dir = "apps/agent-ui"
 run = "npm run tauri dev"
 
 [tasks.agent-ui-build]
-description = "Build Tessara.app"
+description = "Build Tessera.app"
 dir = "apps/agent-ui"
 run = "npm run tauri build"
+
+[tasks.agent-install]
+description = "Build agentd + Tessera.app and cutover-install on this Mac"
+run = "bash tools/agent-install.sh"
 
 [tasks.doctor-smoke]
 description = "GET /v1/doctor on running agentd (127.0.0.1:19792)"

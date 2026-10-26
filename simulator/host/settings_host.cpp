@@ -10,7 +10,7 @@
 #include <string>
 
 namespace {
-std::string g_dir = "/tmp/tessara-sim-settings";
+std::string g_dir = "/tmp/tessera-sim-settings";
 dashboard::Layout g_layout = dashboard::defaults();
 DeviceSettings g_device = {};
 

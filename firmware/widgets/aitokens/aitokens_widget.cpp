@@ -6,21 +6,22 @@
 
 namespace {
 
-const tessara::WidgetManifest kManifest = {
-    "org.tessara.aitokens",
+const tessera::WidgetManifest kManifest = {
+    "org.tessera.aitokens",
     "AI Tokens",
     160,
     120,
     false,
-    tessara::HomeTile::AiTokens,
+    tessera::HomeTile::AiTokens,
     0x8B5CF6,
+    false,
 };
 
-class AiTokensWidget final : public tessara::TsWidget {
+class AiTokensWidget final : public tessera::TsWidget {
 public:
-    const tessara::WidgetManifest &manifest() const override { return kManifest; }
+    const tessera::WidgetManifest &manifest() const override { return kManifest; }
 
-    void mount(tessara::WidgetContext &context) override {
+    void mount(tessera::WidgetContext &context) override {
         generation_ = context.generation();
         if (context.logger()) context.logger()->info("aitokens.mount");
         auto *parent = static_cast<lv_obj_t *>(context.ui_parent());
@@ -53,16 +54,16 @@ private:
 
 }  // namespace
 
-const char *tessara::aitokens_widget_id() { return kManifest.id; }
+const char *tessera::aitokens_widget_id() { return kManifest.id; }
 
-tessara::TsWidget *tessara::create_aitokens_widget() { return new AiTokensWidget(); }
+tessera::TsWidget *tessera::create_aitokens_widget() { return new AiTokensWidget(); }
 
-void tessara::aitokens_widget_paint(TsWidget *widget, const aitokens::View &view) {
+void tessera::aitokens_widget_paint(TsWidget *widget, const aitokens::View &view) {
     if (!widget) return;
     static_cast<AiTokensWidget *>(widget)->paint(view);
 }
 
-void tessara::aitokens_widget_apply_theme(TsWidget *widget) {
+void tessera::aitokens_widget_apply_theme(TsWidget *widget) {
     if (!widget) return;
     static_cast<AiTokensWidget *>(widget)->apply_theme();
 }

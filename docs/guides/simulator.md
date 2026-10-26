@@ -34,7 +34,7 @@ make finish        # + flash
 2. Build `painel`
 3. Headless home (+ detail) screenshots for many fixtures
 
-Artifacts: `/tmp/tessara-sim-out/` or `$SIM_OUT`.
+Artifacts: `/tmp/tessera-sim-out/` or `$SIM_OUT`.
 
 ## Interactive
 

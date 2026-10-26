@@ -1,6 +1,6 @@
 use std::fs;
 
-use tessara_caps_aitokens::{CursorCredentials, CursorResolver, CursorSource};
+use tessera_caps_aitokens::{CursorCredentials, CursorResolver, CursorSource};
 
 #[test]
 fn cursor_resolver_uses_auth_json_before_environment() {

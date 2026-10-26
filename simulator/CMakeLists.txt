@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(tessara_sim LANGUAGES C CXX)
+project(tessera_sim LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,6 +32,7 @@ include_directories(
   "${FW}/widgets/aitokens"
   "${FW}/widgets/calendar"
   "${FW}/widgets/mac"
+  "${FW}/widgets/media"
   "${FW}/widgets/clock"
   "${FW}/components/widget_sdk"
   "${LVGL_DIR}"
@@ -91,15 +92,20 @@ add_executable(painel
   host/settings_host.cpp
   host/log_host.cpp
   host/sd_host_stub.cpp
-  "${FW}/components/widget_runtime/tessara/runtime.cpp"
+  host/slide_host_stub.cpp
+  "${FW}/components/widget_runtime/tessera/runtime.cpp"
   "${FW}/components/core_services/platform/device_resources.cpp"
   "${FW}/components/core_services/domain/dashboard_layout.cpp"
+  "${FW}/components/core_services/domain/home_tile_size.cpp"
+  host/widget_settings_host.cpp
   "${FW}/components/ui_kit/ui/palette.cpp"
   "${FW}/components/ui_kit/ui/kit.cpp"
   "${FW}/components/ui_kit/ui/wifi_icons.cpp"
   "${FW}/components/ui_kit/ui/wifi_icons_data.cpp"
   "${FW}/components/ui_kit/ui/bitmaps.cpp"
   "${FW}/components/dashboard_shell/ui/brand_mark.cpp"
+  "${FW}/components/dashboard_shell/ui/tessera_mark_icon.cpp"
+  "${FW}/components/dashboard_shell/ui/tile_icons.cpp"
   "${FW}/components/dashboard_shell/ui/home.cpp"
   "${FW}/components/dashboard_shell/ui/settings_panel.cpp"
   "${FW}/components/dashboard_shell/ui/todoist_panel.cpp"
@@ -121,6 +127,10 @@ add_executable(painel
   "${FW}/widgets/calendar/ui/calendar_icons_data.cpp"
   "${FW}/widgets/clock/ui/clock_page.cpp"
   "${FW}/widgets/clock/clock_summary.cpp"
+  "${FW}/widgets/mac/mac/focus_snapshot.cpp"
+  "${FW}/widgets/media/media/snapshot.cpp"
+  "${FW}/widgets/media/ui/media_page.cpp"
+  "${FW}/widgets/mac/ui/mac_page.cpp"
   "${LVGL_DIR}/src/libs/qrcode/qrcodegen.c"
   ${LVGL_SOURCES}
 )

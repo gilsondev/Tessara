@@ -65,7 +65,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-uti
 `crates/protocol/src/lib.rs`:
 
 ```rust
-//! USB line codec — Tessara agent ↔ panel.
+//! USB line codec — Tessera agent ↔ panel.
 
 pub fn agent_ok_line(version: &str) -> String {
     // Match legacy spirit: AGENT\tv1\t1 (ok) — keep fields documented in tests
@@ -93,7 +93,7 @@ mod tests {
 
 ```toml
 [package]
-name = "tessara-protocol"
+name = "tessera-protocol"
 version.workspace = true
 edition.workspace = true
 
@@ -144,7 +144,7 @@ Add `dirs = "5"` to profile Cargo.toml dependencies.
 use clap::Parser;
 
 #[derive(Parser, Debug)]
-#[command(name = "agentd", version, about = "Tessara Agent v2 daemon")]
+#[command(name = "agentd", version, about = "Tessera Agent v2 daemon")]
 struct Args {
     /// Print AGENT handshake line and exit (for golden/CI)
     #[arg(long)]
@@ -154,7 +154,7 @@ struct Args {
 fn main() {
     let args = Args::parse();
     if args.print_agent_line {
-        print!("{}", tessara_protocol::agent_ok_line(env!("CARGO_PKG_VERSION")));
+        print!("{}", tessera_protocol::agent_ok_line(env!("CARGO_PKG_VERSION")));
         return;
     }
     eprintln!("agentd: USB loop not wired yet — see plan parity");
@@ -162,7 +162,7 @@ fn main() {
 }
 ```
 
-Dependências do bin: `clap` (derive), `tessara-protocol`, path deps.
+Dependências do bin: `clap` (derive), `tessera-protocol`, path deps.
 
 - [ ] **Step 5: Build + test**
 
@@ -219,7 +219,7 @@ Ajustar `agent_ok_line` e o fixture ao wire real (campos exatos).
 #[test]
 fn golden_agent_prefix() {
     let raw = include_str!("../fixtures/lines/agent_ok.txt").trim_end();
-    assert_eq!(tessara_protocol::parse_prefix(raw), "AGENT");
+    assert_eq!(tessera_protocol::parse_prefix(raw), "AGENT");
 }
 ```
 
@@ -269,7 +269,7 @@ EOF
 - [ ] **Step 2: Implementar open com DTR**
 
 ```rust
-pub fn open_tessara_port(path: &str) -> Result<Box<dyn serialport::SerialPort>, UsbError> {
+pub fn open_tessera_port(path: &str) -> Result<Box<dyn serialport::SerialPort>, UsbError> {
     let mut port = serialport::new(path, 115_200)
         .timeout(std::time::Duration::from_millis(200))
         .open()
@@ -288,7 +288,7 @@ Espelhar comentários de `agent/src/agent/runtime.py` sobre DTR.
 agentd --port /dev/cu.usbmodem* --once
 ```
 
-Sem porta: lista candidatos cujo nome contém `usbmodem` / `Tessara` e imprime; exit 1 se `--once` sem match (dev-friendly).
+Sem porta: lista candidatos cujo nome contém `usbmodem` / `Tessera` e imprime; exit 1 se `--once` sem match (dev-friendly).
 
 - [ ] **Step 4: Teste unitário sem hardware**
 
@@ -314,7 +314,7 @@ EOF
 
 **Interfaces:**
 - Produz: `GET http://127.0.0.1:19792/v1/status` → `{ "ok": true, "version": "...", "usb": "disconnected"|"up" }`
-- Porta configurável via `TESSARA_AGENTD_IPC_PORT` (default 19792)
+- Porta configurável via `TESSERA_AGENTD_IPC_PORT` (default 19792)
 - Bind **só** localhost
 
 - [ ] **Step 1: axum router com `/v1/status` e `/v1/health`**

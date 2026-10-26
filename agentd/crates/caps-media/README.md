@@ -1,4 +1,4 @@
-# tessara-caps-media
+# tessera-caps-media
 
 USB `MEDIA` capability — encoder + watcher (parity with `agent/src/agent/capabilities/media/`).
 
@@ -24,8 +24,9 @@ Sanitization: tabs/newlines → space, trim, truncate with `…` at limit−1.
 
 - `MEDIA?` — refresh metadata line
 - `MEDIA\tPLAYPAUSE`, `MEDIA\tNEXT`, `MEDIA\tPREV` / `PREVIOUS` — transport (stub in v1)
-- `MEDIA_COVER` — ignored (no blocking cover fetch in first ship)
+- `MEDIA_COVER?` — fetch artwork for current track and push RGB565 chunks
+- Push lines: `MEDIA_COVER\tv1\t1\t<key>\t200\t200\trgb565le\t<n>\t<i>\t<hex>`
 
 ## Push
 
-When `config.media` is enabled: poll the watcher every 2s and push immediately if the encoded line changed; 8s heartbeat still pushes as fallback (matches legacy push-on-dirty + `MEDIA_PUSH_S`).
+When `config.media` is enabled: **mac_events** wakes on Music/Spotify distributed notifications → immediate `MEDIA` (+ cover) push. Safety-net poll every 8s; 8s heartbeat as fallback.

@@ -1,4 +1,4 @@
-# Tessara panel — harness / finish gate
+# Tessera panel — harness / finish gate
 #
 # After any implementation, in this order:
 #   1. make test     — automated tests (PlatformIO native)
@@ -12,18 +12,18 @@
 #   make help         — list targets
 #   ./tools/bootstrap-env.sh — once per machine (after OS packages)
 
-.PHONY: help test test-native e2e sim sim-build sim-run verify flash finish finish-host device device-snap monitor pack-agentd push-agentd
+.PHONY: help test test-native e2e sim sim-build sim-run verify flash finish finish-host device device-snap monitor pack-agentd push-agentd agent-install
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 PIO  := $(ROOT)/.venv/bin/pio
 SIM  := $(ROOT)/simulator
 PAINEL := $(SIM)/build/painel
-OUT  ?= /tmp/tessara-sim-out
+OUT  ?= /tmp/tessera-sim-out
 SCENARIO ?= normal
 export SIM_OUT := $(OUT)
 
 help: ## List harness tasks
-	@echo "Tessara panel — finish gate"
+	@echo "Tessera panel — finish gate"
 	@echo ""
 	@echo "  make test         1) automated tests (pio test -e native)"
 	@echo "  make e2e          2) simulator E2E (verify_all: native+build+screenshots)"
@@ -45,8 +45,9 @@ help: ## List harness tasks
 	@echo "  make monitor      alias of make device"
 	@echo ""
 	@echo "Agent v2 (Mac companion, paralelo ao legacy até gate):"
-	@echo "  make pack-agentd  agentd/pack_sd.sh → dist/sd/tessera/agentd/"
-	@echo "  make push-agentd  pack + instruções PUT (firmware /agentd/ ainda TBD)"
+	@echo "  make agent-install  build agentd+app e instala neste Mac"
+	@echo "  make pack-agentd    agentd/pack_sd.sh → dist/sd/tessera/agentd/"
+	@echo "  make push-agentd    pack + instruções PUT (firmware /agentd/ ainda TBD)"
 	@echo ""
 	@echo "E2E/SNAP artifacts: \$$SIM_OUT (default $(OUT))"
 	@echo "Docs: docs/getting-started.md · docs/guides/finish-gate.md"
@@ -104,12 +105,15 @@ finish-host: e2e ## Gate host (sem flash)
 
 AGENTD_SD := $(ROOT)/agentd/dist/sd/tessera/agentd
 
-pack-agentd: ## Empacota agentd + Tessara.app para staging SD (sem segredos)
+pack-agentd: ## Empacota agentd + Tessera.app para staging SD (sem segredos)
 	$(ROOT)/agentd/pack_sd.sh
+
+agent-install: ## Build agentd + Tessera.app e instala neste Mac (LaunchAgent + /Applications)
+	bash $(ROOT)/tools/agent-install.sh
 
 push-agentd: pack-agentd ## Pack v2; PUT ao painel quando rota /agentd/ existir no firmware
 	@echo "==> push-agentd: artefatos em $(AGENTD_SD)"
-	@echo "    Copiar ao cartão: ./agentd/pack_sd.sh /Volumes/TESSARA"
-	@echo "    Cutover Mac: BOOTOUT_LEGACY=1 tools/cutover_agent_v2.sh --bootout-legacy"
+	@echo "    Copiar ao cartão: ./agentd/pack_sd.sh /Volumes/TESSERA"
+	@echo "    Cutover Mac: make agent-install   # ou tools/cutover_agent_v2.sh"
 	@echo "    Gate manual: tools/agent_v2_gate.md (obrigatório antes de retirar agent/ Python)"
 	@echo "    Nota: PUT /agentd/agentd.tgz + AGENT_PUSH no firmware ainda não implementado neste worktree."

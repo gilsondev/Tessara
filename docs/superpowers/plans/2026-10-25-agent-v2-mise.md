@@ -30,7 +30,7 @@
 - [ ] **Step 1: Criar `mise.toml`**
 
 ```toml
-# Tessara — toolchain (Agent v2 + legacy Python + UI)
+# Tessera — toolchain (Agent v2 + legacy Python + UI)
 # Docs: docs/superpowers/specs/2026-10-25-tessera-agent-v2-design.md
 
 [tools]
@@ -52,7 +52,7 @@ _.file = ".env"
 Run:
 
 ```bash
-cd /Users/gilson/Developer/Projects/gilsondev/Tessara
+cd /Users/gilson/Developer/Projects/gilsondev/Tessera
 mise trust
 mise install
 mise which rustc
@@ -160,7 +160,7 @@ dir = "apps/agent-ui"
 run = "npm run tauri dev"
 
 [tasks.agent-ui-build]
-description = "Build Tessara.app"
+description = "Build Tessera.app"
 dir = "apps/agent-ui"
 run = "npm run tauri build"
 

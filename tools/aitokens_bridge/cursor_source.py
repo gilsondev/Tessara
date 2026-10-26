@@ -9,7 +9,7 @@ NÃO usar:
 - `totalPercentUsed` — métrica agregada, não é nenhuma das barras
 - `displayMessage` ("You've used 61%…") — não aparece nessas barras do Settings
 
-No protocolo Tessara (que usa % restante p/ alertas):
+No protocolo Tessera (que usa % restante p/ alertas):
 - `display` = "3% · 13%" (usados, na ordem Modelos · Outros — igual ao Settings)
 - `value`   = restante do pior pool = 100 - max(usados)  (alertas / borda)
 - `reset`   = data do fim do ciclo (`billingCycleEnd`)

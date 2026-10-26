@@ -13,14 +13,14 @@
 | `cargo test --workspace` (agentd) | Parcialmente verde; teste `sources` flaky sob env Cursor — re-run OK |
 | `cargo build --release -p agentd` | OK (target dir mise/cargo-cache) |
 | Legacy `com.tessera.agent` | **bootout** + processo Python morto (segurava a porta) |
-| `com.tessera.agentd` | **instalado e running** via `tools/cutover_agent_v2.sh` |
-| Tessara.app bundle | Ausente no path de release UI — cutover avisou; IPC/daemon OK sem app |
+| `com.tessera.agentd` | **instalado e running**; binário instalado = **`Tessera`** (`~/.tessera/agentd/bin/Tessera`, symlink `agentd`) |
+| Tessera.app bundle | Ausente no path de release UI — cutover avisou; IPC/daemon OK sem app |
 
 ## Checklist
 
 | # | Check | OK | Notas |
 |---|--------|----|-------|
-| 1 | MEDIA dirty-push &lt; 1 s | **parcial** | USB `up`; painel pediu `MEDIA?` com daemon em foreground. Scan marcou música **missing** (sem Spotify/Music). `media=false` após scan **ignora** handlers `MEDIA*` (bug: deveria responder `MEDIA?` mesmo desligado). Com `media=true` manual, daemon estável; **não** medimos &lt;1 s no tile (sem player + sem observação visual). |
+| 1 | MEDIA dirty-push &lt; 1 s | **parcial** | USB `up`. Fix: queries `NAME?` respondem mesmo com capability off. Dirty-push &lt;1 s no tile **ainda** precisa player + olho humano. |
 | 2 | FOCUS SET no painel | **não feito** | Shortcuts `Foco no Trabalho` cancelado pelo SO; Doctor sob LaunchAgent reporta Focus warn até FDA do **binário LaunchAgent**. SET pelo tile do painel **precisa toque humano**. |
 | 3 | AITOKENS 3 fontes | **OK p/ este Mac** | Doctor: Cursor **ok**, Codex **ok**, Claude **skip** (N/A). Coerente. |
 | 4 | CALENDAR eventos no painel | **parcial** | Scan `calendar=ready`; **não** confirmamos tile/agenda visualmente. |
@@ -36,9 +36,9 @@ Motivos restantes:
 1. Validar MEDIA dirty-push no tile com player real (&lt; 1 s).  
 2. Validar FOCUS SET a partir do painel (toque).  
 3. Validar CALENDAR no tile.  
-4. Conceder FDA ao `~/.tessera/agentd/bin/agentd` (ou Tessara.app) em Ajustes → Doctor `files`/`focus` verdes.  
-5. Build + instalar `Tessara.app`.  
-6. Fix: responder `MEDIA?` mesmo com `media=false` (ou não desligar handler no scan).
+4. Conceder FDA a **`Tessera`** (`~/.tessera/agentd/bin/Tessera`) — não ao Terminal — em Privacidade → Disco completo. Doctor já pede isso.  
+5. Build + instalar `Tessera.app`.  
+6. ~~MEDIA? com media=false~~ — feito (queries sempre respondem).
 
 ## Estado deixado na máquina
 

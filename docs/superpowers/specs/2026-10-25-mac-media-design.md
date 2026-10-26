@@ -3,7 +3,7 @@
 **Status:** approved (grilling 2026-10-25) → implement  
 **Data:** 2026-10-25  
 **Relacionado:** `2026-10-24-tessera-agent-capabilities-design.md` (mapa), `2026-10-24-tessera-agent-design.md`  
-**Glossário:** Mac, Cartão Mac, Tela Mac, Agora tocando, Mac offline, Agente Tessara
+**Glossário:** Mac, Cartão Mac, Tela Mac, Agora tocando, Mac offline, Agente Tessera
 
 ## Problema
 
@@ -31,8 +31,8 @@ Este doc **substitui** a UI da Fase 1 no mapa de capabilities (lá o card tinha 
 
 | | Abordagem | Prós | Contras |
 |---|---|---|---|
-| **A** | Widget `org.tessara.media` só mídia | Isolado | Home polui; Focus/Lock forçam segundo/terceiro card |
-| **B (recomendada)** | Widget **`org.tessara.mac`**: Fase 1 só bloco mídia; Focus/Lock entram depois na mesma tela | Casa com glossário; um cartão | Pacote cresce com o tempo |
+| **A** | Widget `org.tessera.media` só mídia | Isolado | Home polui; Focus/Lock forçam segundo/terceiro card |
+| **B (recomendada)** | Widget **`org.tessera.mac`**: Fase 1 só bloco mídia; Focus/Lock entram depois na mesma tela | Casa com glossário; um cartão | Pacote cresce com o tempo |
 | **C** | Embutir mídia no AI Tokens | Zero tile novo | Mistura conceitos; glossário proíbe |
 
 **Escolha: B.**
@@ -52,6 +52,7 @@ Mac apps ──► Agente (capabilities/media) ──USB──► console ──
 | `firmware/widgets/mac/` | Parse `MEDIA`, home tile, página detalhe; **sem** APIs Mac |
 | Shell / controller | `on_media` → `apply_line` → paint; Serial out dos comandos |
 | Portal | Fora do corte (só doc de permissões no README do agente) |
+| Agente (Widgets → Música / Focus) | **Sem** ajustes de layout: status + atalho para aba **No Mac** (coleta). Hide/show do tile fica no board **Painel → Na home** |
 
 ## Protocolo
 

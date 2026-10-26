@@ -18,9 +18,14 @@ pub struct MachineProfile {
 }
 
 pub fn default_tessera_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".tessera")
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    let next = home.join(".tessera");
+    // One-shot migrate from the previous home dir name.
+    let legacy = home.join(concat!(".", "tes", "sara"));
+    if !next.exists() && legacy.exists() {
+        let _ = std::fs::rename(&legacy, &next);
+    }
+    next
 }
 
 pub fn default_agentd_dir() -> PathBuf {

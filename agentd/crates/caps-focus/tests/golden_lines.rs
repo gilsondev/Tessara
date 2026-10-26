@@ -1,6 +1,6 @@
 //! Golden FOCUS lines from legacy Python `encode_line`.
 
-use tessara_caps_focus::{encode_focus_line, FocusMode};
+use tessera_caps_focus::{encode_focus_line, FocusMode};
 
 #[test]
 fn golden_focus_not_ok() {

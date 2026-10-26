@@ -61,8 +61,8 @@ struct Slot {
     bool used;
 };
 
-char hostname[32] = "tessara";
-char host_local[40] = "tessara.local";
+char hostname[32] = "tessera";
+char host_local[40] = "tessera.local";
 WiFiServer server(80);
 Slot slots[kSlots];
 TaskHandle_t task = nullptr;
@@ -107,6 +107,9 @@ Reply state() {
     clock_w["time_format"] = snapshot.clock_time_format[0] ? snapshot.clock_time_format : "hm";
     JsonObject date_w = wset[dashboard::id_date()].to<JsonObject>();
     date_w["date_format"] = snapshot.date_format[0] ? snapshot.date_format : "short_pt";
+    JsonObject calendar_w = wset[dashboard::id_calendar()].to<JsonObject>();
+    calendar_w["home_tile_size"] =
+        snapshot.calendar_home_tile_size[0] ? snapshot.calendar_home_tile_size : "M";
     JsonObject info = doc["info"].to<JsonObject>();
     info["host"] = snapshot.info.host;
     info["ip"] = snapshot.info.ip;
@@ -172,9 +175,9 @@ Reply state() {
     JsonArray widgets = doc["widgets"].to<JsonArray>();
     const char *catalog[] = {dashboard::id_greeting(), dashboard::id_date(),    dashboard::id_clock(),
                              dashboard::id_todoist(),  dashboard::id_weather(), dashboard::id_aitokens(),
-                             dashboard::id_calendar(), dashboard::id_mac()};
+                             dashboard::id_calendar(), dashboard::id_media(),   dashboard::id_mac()};
     const char *titles[] = {"Saudação", "Data", "Relógio", "Tarefas", "Clima", "AI Tokens", "Calendário",
-                            "Mac"};
+                            "Música",   "Mac"};
     static_assert(sizeof(catalog) / sizeof(catalog[0]) == sizeof(titles) / sizeof(titles[0]), "catalog/titles");
     for (size_t i = 0; i < sizeof(catalog) / sizeof(catalog[0]); ++i) {
         JsonObject item = widgets.add<JsonObject>();
@@ -489,14 +492,14 @@ bool send_install_command(WiFiClient &client) {
             snprintf(panel, sizeof(panel), "http://%s", snapshot.info.host);
         }
     } else {
-        snprintf(panel, sizeof(panel), "http://tessara.local");
+        snprintf(panel, sizeof(panel), "http://tessera.local");
     }
     xSemaphoreGive(guard);
 
     String body;
     body.reserve(3200);
     body += "#!/bin/bash\n";
-    body += "# Tessara Agent — gerado pelo painel\n";
+    body += "# Tessera Agent — gerado pelo painel\n";
     body += "# Uso: curl -fsSL http://painel/agent/install.command | bash\n";
     body += "#  ou: bash install-tessera-agent.command   (não use duplo clique: Downloads sem +x)\n";
     body += "set -euo pipefail\n";
@@ -566,7 +569,7 @@ bool send_install_command(WiFiClient &client) {
     body += "launchctl bootstrap \"gui/$UID_NUM\" \"$PLIST\"\n";
     body += "launchctl enable \"gui/$UID_NUM/$LABEL\" 2>/dev/null || true\n";
     body += "launchctl kickstart -k \"gui/$UID_NUM/$LABEL\" 2>/dev/null || true\n";
-    body += "echo \"Tessara Agent instalado → $INSTALL_ROOT\"\n";
+    body += "echo \"Tessera Agent instalado → $INSTALL_ROOT\"\n";
     body += "echo \"log: $LOG\"\n";
 
     client.printf("HTTP/1.1 200 OK\r\nContent-Type: application/x-sh\r\nContent-Length: %u\r\n"
@@ -686,7 +689,7 @@ bool serve(Slot &slot) {
             return true;
         }
         char version[24] = {};
-        int vf = head.indexOf("\r\nx-tessara-agent-version:");
+        int vf = head.indexOf("\r\nx-tessera-agent-version:");
         if (vf >= 0) {
             String v = head.substring(vf + 26);
             int end = v.indexOf("\r\n");
@@ -922,7 +925,7 @@ bool web_portal::begin(const char *name) {
     return task != nullptr;
 }
 
-const char *web_portal::setup_ap() { return "Tessara"; }
+const char *web_portal::setup_ap() { return "Tessera"; }
 
 const char *web_portal::setup_url() { return "http://192.168.4.1/"; }
 

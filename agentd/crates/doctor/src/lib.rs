@@ -4,9 +4,9 @@ use std::path::Path;
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
-use tessara_caps_media::MediaCapability;
-use tessara_profile::AgentdConfig;
-use tessara_scan::{run_scan, ScanConfigEnabled, ScanItem, ScanResult, ScanRoots, ScanState};
+use tessera_caps_media::MediaCapability;
+use tessera_profile::AgentdConfig;
+use tessera_scan::{run_scan, ScanConfigEnabled, ScanItem, ScanResult, ScanRoots, ScanState};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DoctorCheck {
@@ -14,8 +14,129 @@ pub struct DoctorCheck {
     pub level: String,
     pub title: String,
     pub detail: String,
+    /// Screen id for companion UI (`setup`, …).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub action: Option<String>,
+    /// Privacy pane id for deep-link (`full_disk_access`, `automation`, `login_items`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings_pane: Option<String>,
+    /// macOS System Settings / Preferences URL for this pane.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings_url: Option<String>,
+}
+
+fn check(
+    id: &str,
+    level: &str,
+    title: &str,
+    detail: impl Into<String>,
+    action: Option<&str>,
+    pane: Option<&str>,
+) -> DoctorCheck {
+    DoctorCheck {
+        id: id.into(),
+        level: level.into(),
+        title: title.into(),
+        detail: detail.into(),
+        action: action.map(str::to_string),
+        settings_pane: pane.map(str::to_string),
+        settings_url: pane.and_then(settings_url_for).map(str::to_string),
+    }
+}
+
+/// Deep links that open the exact Privacy row the user must toggle.
+pub fn settings_url_for(pane: &str) -> Option<&'static str> {
+    match pane {
+        // Ventura+ Settings; falls back gracefully on older macOS via `open`.
+        "full_disk_access" => Some(
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles",
+        ),
+        "automation" => Some(
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Automation",
+        ),
+        "login_items" => {
+            Some("x-apple.systempreferences:com.apple.LoginItems-Settings.extension")
+        }
+        "calendar" => Some(
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Calendars",
+        ),
+        _ => None,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreparePermission {
+    pub ok: bool,
+    pub pane: String,
+    pub settings_url: String,
+    /// Path the user should see / enable in the list (LaunchAgent binary).
+    pub binary_path: String,
+    pub hint: String,
+}
+
+/// Path shown in Privacy / Finder: prefer the agentd **app bundle** (Tessera icon).
+/// Falls back to the bare `bin/Tessera` for older installs.
+pub fn agentd_identity_path(home: &Path) -> std::path::PathBuf {
+    let app = home.join(".tessera/agentd/Tessera.app");
+    if app.join("Contents/MacOS/Tessera").is_file() {
+        return app;
+    }
+    home.join(".tessera/agentd/bin/Tessera")
+}
+
+/// Touch protected APIs so **Tessera** shows up in the Privacy list (toggle still off
+/// until the user enables it). Then the UI opens `settings_url`.
+pub fn prepare_permission(pane: &str, home: &Path) -> Result<PreparePermission, String> {
+    let url = settings_url_for(pane)
+        .ok_or_else(|| format!("pane desconhecido: {pane}"))?
+        .to_string();
+    let binary_path = agentd_identity_path(home).display().to_string();
+
+    match pane {
+        "full_disk_access" => {
+            // Reading Focus DBs registers this process with TCC (denied → listed).
+            // LaunchAgent must run Contents/MacOS/Tessera inside Tessera.app for the brand icon.
+            let _ = std::fs::File::open(
+                home.join("Library/DoNotDisturb/DB/ModeConfigurations.json"),
+            );
+            let _ = std::fs::File::open(home.join("Library/DoNotDisturb/DB/Assertions.json"));
+            let _ = std::fs::File::open(
+                home.join("Library/Application Support/com.apple.TCC/TCC.db"),
+            );
+        }
+        "automation" => {
+            // Harmless AppleEvent so Tessera appears under Automation → Shortcuts.
+            let _ = Command::new("osascript")
+                .args([
+                    "-e",
+                    "tell application \"System Events\" to get name",
+                ])
+                .output();
+        }
+        "login_items" | "calendar" => {}
+        _ => {}
+    }
+
+    let hint = match pane {
+        "full_disk_access" => {
+            "Na lista, ligue «Tessera» (ícone do produto — não o Terminal). Se faltar, use + e escolha Tessera.app."
+                .into()
+        }
+        "automation" => {
+            "Em Automação, expanda Tessera e marque Shortcuts / System Events.".into()
+        }
+        "login_items" => "Confirme que Tessera aparece em Itens de Abertura / Em segundo plano.".into(),
+        "calendar" => "Autorize Tessera a ver o Calendário.".into(),
+        _ => "Ligue a permissão para Tessera e volte ao app.".into(),
+    };
+
+    Ok(PreparePermission {
+        ok: true,
+        pane: pane.into(),
+        settings_url: url,
+        binary_path,
+        hint,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,86 +229,99 @@ fn summarize(checks: &[DoctorCheck]) -> String {
 
 fn check_usb(deps: &DoctorDeps) -> DoctorCheck {
     if deps.usb_up {
-        DoctorCheck {
-            id: "usb".into(),
-            level: "ok".into(),
-            title: "Painel no cabo".into(),
-            detail: "USB ok · handshake · painel conectado".into(),
-            action: None,
-        }
+        check(
+            "usb",
+            "ok",
+            "Painel no cabo",
+            "USB ok · handshake · painel conectado",
+            None,
+            None,
+        )
     } else {
-        DoctorCheck {
-            id: "usb".into(),
-            level: "warn".into(),
-            title: "Painel no cabo".into(),
-            detail: "Nenhum painel USB agora · conecte o cabo para sync".into(),
-            action: Some("setup".into()),
-        }
+        check(
+            "usb",
+            "warn",
+            "Painel no cabo",
+            "Nenhum painel USB agora · conecte o cabo para sync",
+            Some("setup-cable"),
+            None,
+        )
     }
 }
 
 fn check_agentd(deps: &DoctorDeps) -> DoctorCheck {
     if deps.launch_agent_ok {
-        DoctorCheck {
-            id: "agentd".into(),
-            level: "ok".into(),
-            title: "App em segundo plano".into(),
-            detail: "Abre com o Mac e está rodando agora".into(),
-            action: None,
-        }
+        check(
+            "agentd",
+            "ok",
+            "App em segundo plano",
+            "Abre com o Mac e está rodando agora",
+            None,
+            None,
+        )
     } else {
-        DoctorCheck {
-            id: "agentd".into(),
-            level: "warn".into(),
-            title: "App em segundo plano".into(),
-            detail: "agentd rodando, mas LaunchAgent com.tessera.agentd não está carregado".into(),
-            action: None,
-        }
+        check(
+            "agentd",
+            "warn",
+            "App em segundo plano",
+            "Tessera está rodando, mas não abre sozinho com o Mac (LaunchAgent ausente)",
+            Some("setup"),
+            Some("login_items"),
+        )
     }
 }
 
 fn check_files(deps: &DoctorDeps) -> DoctorCheck {
     if deps.files_ok {
-        DoctorCheck {
-            id: "files".into(),
-            level: "ok".into(),
-            title: "Acesso aos arquivos".into(),
-            detail: "Full Disk Access ok para paths do Tessara".into(),
-            action: None,
-        }
+        check(
+            "files",
+            "ok",
+            "Acesso aos arquivos",
+            "Full Disk Access ok para paths do Tessera",
+            None,
+            None,
+        )
     } else {
-        DoctorCheck {
-            id: "files".into(),
-            level: "bad".into(),
-            title: "Acesso aos arquivos".into(),
-            detail: "Claude e Focus precisam que você marque o Tessara em Ajustes do Mac.".into(),
-            action: Some("setup".into()),
-        }
+        check(
+            "files",
+            "bad",
+            "Acesso aos arquivos",
+            "Marque «Tessera» (não o Terminal) em Privacidade → Disco completo.",
+            Some("setup"),
+            Some("full_disk_access"),
+        )
     }
 }
 
 fn check_music(deps: &DoctorDeps) -> DoctorCheck {
-    DoctorCheck {
-        id: "music".into(),
-        level: deps.media_level.into(),
-        title: "Música".into(),
-        detail: deps.media_detail.clone(),
-        action: None,
-    }
+    check(
+        "music",
+        deps.media_level,
+        "Música",
+        deps.media_detail.clone(),
+        None,
+        None,
+    )
 }
 
 fn check_focus(deps: &DoctorDeps) -> DoctorCheck {
-    DoctorCheck {
-        id: "focus".into(),
-        level: deps.focus_level.into(),
-        title: "Focus".into(),
-        detail: deps.focus_detail.clone(),
-        action: if deps.focus_level == "bad" {
-            Some("setup".into())
-        } else {
-            None
-        },
-    }
+    let needs_fda = deps.focus_level == "warn" && !deps.files_ok;
+    let needs_auto = deps.focus_level == "bad";
+    let (action, pane) = if needs_fda {
+        (Some("setup"), Some("full_disk_access"))
+    } else if needs_auto {
+        (Some("setup"), Some("automation"))
+    } else {
+        (None, None)
+    };
+    check(
+        "focus",
+        deps.focus_level,
+        "Focus",
+        deps.focus_detail.clone(),
+        action,
+        pane,
+    )
 }
 
 fn item<'a>(scan: &'a ScanResult, id: &str) -> Option<&'a ScanItem> {
@@ -232,40 +366,31 @@ fn ai_check(
     files_ok: bool,
 ) -> DoctorCheck {
     let Some(item) = item else {
-        return DoctorCheck {
-            id: id.into(),
-            level: "skip".into(),
-            title: title.into(),
-            detail: "Varredura indisponível".into(),
-            action: None,
-        };
+        return check(id, "skip", title, "Varredura indisponível", None, None);
     };
     if !enabled {
-        return DoctorCheck {
-            id: id.into(),
-            level: "skip".into(),
-            title: title.into(),
-            detail: "Desligado neste Mac — nada a fazer".into(),
-            action: None,
-        };
+        return check(
+            id,
+            "skip",
+            title,
+            "Desligado neste Mac — nada a fazer",
+            None,
+            None,
+        );
     }
     match item.state {
-        ScanState::Missing => DoctorCheck {
-            id: id.into(),
-            level: "skip".into(),
-            title: title.into(),
-            detail: "Não instalado neste Mac — nada a fazer".into(),
-            action: None,
-        },
-        ScanState::Ready => DoctorCheck {
-            id: id.into(),
-            level: "ok".into(),
-            title: title.into(),
-            detail: "Conta logada · cotas lidas".into(),
-            action: None,
-        },
+        ScanState::Missing => check(
+            id,
+            "skip",
+            title,
+            "Não instalado neste Mac — nada a fazer",
+            None,
+            None,
+        ),
+        ScanState::Ready => check(id, "ok", title, "Conta logada · cotas lidas", None, None),
         ScanState::NeedsAuth => {
-            let (level, detail) = if !files_ok && (id == "claude" || id == "cursor") {
+            let blocked_by_fda = !files_ok && (id == "claude" || id == "cursor");
+            let (level, detail) = if blocked_by_fda {
                 (
                     "warn",
                     "App achado · cotas bloqueadas pela autorização de arquivos",
@@ -273,53 +398,57 @@ fn ai_check(
             } else {
                 ("warn", "App achado · falta login ou autorização")
             };
-            DoctorCheck {
-                id: id.into(),
-                level: level.into(),
-                title: title.into(),
-                detail: detail.into(),
-                action: if level == "warn" && !files_ok {
-                    Some("setup".into())
+            check(
+                id,
+                level,
+                title,
+                detail,
+                if blocked_by_fda { Some("setup") } else { None },
+                if blocked_by_fda {
+                    Some("full_disk_access")
                 } else {
                     None
                 },
-            }
+            )
         }
     }
 }
 
 fn check_push(deps: &DoctorDeps) -> DoctorCheck {
     if !deps.usb_up {
-        DoctorCheck {
-            id: "push".into(),
-            level: "warn".into(),
-            title: "Envio ao painel".into(),
-            detail: "Sem USB · fila pausada até reconectar".into(),
-            action: None,
-        }
+        check(
+            "push",
+            "warn",
+            "Envio ao painel",
+            "Sem USB · fila pausada até reconectar",
+            None,
+            None,
+        )
     } else if deps.push_queue_depth > 32 {
-        DoctorCheck {
-            id: "push".into(),
-            level: "bad".into(),
-            title: "Envio ao painel".into(),
-            detail: format!(
+        check(
+            "push",
+            "bad",
+            "Envio ao painel",
+            format!(
                 "Fila grande ({}) · sync pode estar atrasado",
                 deps.push_queue_depth
             ),
-            action: None,
-        }
+            None,
+            None,
+        )
     } else {
-        DoctorCheck {
-            id: "push".into(),
-            level: "ok".into(),
-            title: "Envio ao painel".into(),
-            detail: if deps.push_queue_depth == 0 {
+        check(
+            "push",
+            "ok",
+            "Envio ao painel",
+            if deps.push_queue_depth == 0 {
                 "Fila limpa · push em dia".into()
             } else {
                 format!("Fila com {} · dentro do normal", deps.push_queue_depth)
             },
-            action: None,
-        }
+            None,
+            None,
+        )
     }
 }
 
@@ -400,7 +529,7 @@ fn probe_focus(enabled: bool, scan: &ScanResult, files_ok: bool) -> (&'static st
     if item.state == ScanState::NeedsAuth {
         return (
             "bad",
-            "Sem acesso aos DBs do Focus · marque Tessara em Privacidade".into(),
+            "Sem acesso aos DBs do Focus · marque Tessera em Privacidade".into(),
         );
     }
     ("ok", "Focus ok · modos legíveis".into())
@@ -409,7 +538,7 @@ fn probe_focus(enabled: bool, scan: &ScanResult, files_ok: bool) -> (&'static st
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tessara_scan::{ScanItem, ScanResult};
+    use tessera_scan::{ScanItem, ScanResult};
 
     fn fake_deps(usb: bool, files: bool, push: usize) -> DoctorDeps {
         DoctorDeps {
@@ -474,7 +603,20 @@ mod tests {
     fn summary_one_bad_when_files_denied() {
         let report = run_doctor(&fake_deps(true, false, 0));
         assert_eq!(report.summary, "1 coisa precisa de você");
-        assert_eq!(report.checks.iter().find(|c| c.id == "files").unwrap().level, "bad");
+        let files = report.checks.iter().find(|c| c.id == "files").unwrap();
+        assert_eq!(files.level, "bad");
+        assert_eq!(files.settings_pane.as_deref(), Some("full_disk_access"));
+        assert!(files.settings_url.as_ref().is_some_and(|u| u.contains("Privacy_AllFiles")));
+    }
+
+    #[test]
+    fn prepare_full_disk_returns_url() {
+        let dir = tempfile::tempdir().unwrap();
+        let prep = prepare_permission("full_disk_access", dir.path()).unwrap();
+        assert!(prep.ok);
+        assert!(prep.settings_url.contains("Privacy_AllFiles"));
+        // No Tessera.app bundle in the temp home → bare binary path.
+        assert!(prep.binary_path.ends_with(".tessera/agentd/bin/Tessera"));
     }
 
     #[test]

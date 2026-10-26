@@ -16,9 +16,9 @@ BOOTOUT_LEGACY=1 tools/cutover_agent_v2.sh --bootout-legacy
 | 2 | FOCUS SET | No painel, SET de um modo; Focus muda no macOS | [ ] | |
 | 3 | AITOKENS | Três fontes (Codex / Claude / Cursor) ou N/A coerente com o Mac | [ ] | |
 | 4 | CALENDAR | Eventos no painel com conta linkada | [ ] | |
-| 5 | Wizard | 2ª abertura do Tessara.app **sem** wizard | [ ] | |
+| 5 | Wizard | 2ª abertura do Tessera.app **sem** wizard | [ ] | |
 | 6 | Doctor FDA | Revogue Full Disk Access; Doctor pede correção | [ ] | |
-| 7 | Legacy off | `launchctl print gui/$(id -u)/com.tessera.agent` falha; só **agentd** na USB | [ ] | |
+| 7 | Legacy off | `launchctl print gui/$(id -u)/com.tessera.agent` falha; só **Tessera** (`~/.tessera/agentd/bin/Tessera`) na USB | [ ] | |
 
 **Assinatura gate:** _______________ **Data:** ___________
 

@@ -1,10 +1,14 @@
 //! MEDIA capability — Now Playing encode + panel commands.
 
-use tessara_protocol::media_line;
+mod cover;
+
+use tessera_protocol::media_line;
 
 pub const MEDIA_PUSH_INTERVAL_S: u64 = 8;
-/// Poll watcher this often when media is enabled; push immediately if wire line changed.
-pub const MEDIA_POLL_INTERVAL_S: u64 = 2;
+/// Slow safety-net poll when DNC wakes are available (mac_events). Was 2s; events own latency now.
+pub const MEDIA_POLL_INTERVAL_S: u64 = 8;
+/// Cover edge length pushed to the panel (RGB565).
+pub const MEDIA_COVER_EDGE: u32 = 200;
 
 /// True when `encoded` should be pushed (never pushed before, or differs from last push).
 pub fn media_line_changed(last_pushed: Option<&str>, encoded: &str) -> bool {
@@ -44,7 +48,7 @@ impl MediaState {
     }
 }
 
-/// Golden-compatible encoder (delegates to `tessara_protocol::media_line`).
+/// Golden-compatible encoder (delegates to `tessera_protocol::media_line`).
 pub fn encode_media_line(
     ok: bool,
     state: &str,
@@ -169,6 +173,7 @@ pub fn default_watcher() -> Box<dyn MediaWatcher> {
 pub struct MediaCapability {
     watcher: Box<dyn MediaWatcher>,
     last_pushed: Option<String>,
+    last_info: Option<MediaInfo>,
 }
 
 impl MediaCapability {
@@ -176,6 +181,7 @@ impl MediaCapability {
         Self {
             watcher,
             last_pushed: None,
+            last_info: None,
         }
     }
 
@@ -193,15 +199,36 @@ impl MediaCapability {
 
     pub fn build_line(&mut self) -> String {
         match self.watcher.read() {
-            None => encode_media_line(false, "stopped", "", "", ""),
-            Some(info) => encode_media_line(
-                true,
-                info.state.as_str(),
-                &info.title,
-                &info.artist,
-                &info.app,
-            ),
+            None => {
+                self.last_info = None;
+                encode_media_line(false, "stopped", "", "", "")
+            }
+            Some(info) => {
+                let line = encode_media_line(
+                    true,
+                    info.state.as_str(),
+                    &info.title,
+                    &info.artist,
+                    &info.app,
+                );
+                self.last_info = Some(info);
+                line
+            }
         }
+    }
+
+    /// Fetch + encode cover for the last `build_line` track. `None` if unavailable.
+    /// Returns `(cover_key, chunk_lines)`.
+    pub fn build_cover_chunks(&mut self) -> Option<(String, Vec<String>)> {
+        let info = self.last_info.as_ref()?;
+        if info.state == MediaState::Stopped || info.title.is_empty() {
+            return None;
+        }
+        let key = cover::cover_key(info);
+        let bytes = cover::fetch_cover_bytes(info)?;
+        let rgb = cover::jpeg_or_png_to_rgb565(&bytes, MEDIA_COVER_EDGE)?;
+        let lines = cover::encode_cover_chunks(&key, MEDIA_COVER_EDGE, MEDIA_COVER_EDGE, &rgb);
+        Some((key, lines))
     }
 
     /// Panel inbound line → outbound USB lines (may be empty).
@@ -212,6 +239,12 @@ impl MediaCapability {
         }
         if raw == "MEDIA?" || raw.starts_with("MEDIA?") {
             return vec![self.build_line()];
+        }
+        if raw == "MEDIA_COVER?" || raw.starts_with("MEDIA_COVER?") {
+            return self
+                .build_cover_chunks()
+                .map(|(_, lines)| lines)
+                .unwrap_or_default();
         }
         if raw.starts_with("MEDIA_COVER") {
             return vec![];

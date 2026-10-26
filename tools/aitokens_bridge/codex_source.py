@@ -58,7 +58,7 @@ def read() -> dict:
     req.add_header("Authorization", f"Bearer {access}")
     if account:
         req.add_header("ChatGPT-Account-Id", account)
-    req.add_header("User-Agent", "TessaraAiTokensBridge/1.0")
+    req.add_header("User-Agent", "TesseraAiTokensBridge/1.0")
     try:
         with urllib.request.urlopen(req, timeout=12) as resp:
             data = json.loads(resp.read().decode("utf-8"))

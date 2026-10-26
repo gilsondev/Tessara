@@ -1,6 +1,6 @@
 #include "weather_widget.h"
 
-#include "tessara/host_clock.h"
+#include "tessera/host_clock.h"
 #include "ui/weather_page.h"
 #include "weather/cache.h"
 #include "weather/http_contract.h"
@@ -9,21 +9,22 @@
 
 namespace {
 
-const tessara::WidgetManifest kManifest = {
-    "org.tessara.weather",
+const tessera::WidgetManifest kManifest = {
+    "org.tessera.weather",
     "Clima",
     140,
     100,
     false,
-    tessara::HomeTile::Weather,
+    tessera::HomeTile::Weather,
     0x3D9AE8,
+    false,
 };
 
-class WeatherWidget final : public tessara::TsWidget {
+class WeatherWidget final : public tessera::TsWidget {
 public:
-    const tessara::WidgetManifest &manifest() const override { return kManifest; }
+    const tessera::WidgetManifest &manifest() const override { return kManifest; }
 
-    void mount(tessara::WidgetContext &context) override {
+    void mount(tessera::WidgetContext &context) override {
         generation_ = context.generation();
         cache_gen_ = 0;
         if (context.logger()) context.logger()->info("weather.mount");
@@ -32,7 +33,7 @@ public:
         if (parent) weather_page::mount(parent);
         else weather_page::show();
 
-        weather_page::paint(weather::view(tessara::host_now_ms()));
+        weather_page::paint(weather::view(tessera::host_now_ms()));
         mounted_ = true;
 
         float lat = 0, lon = 0;
@@ -63,11 +64,11 @@ public:
     }
 
 private:
-    static void on_http(void *user, uint32_t generation, const tessara::HttpResult &result) {
+    static void on_http(void *user, uint32_t generation, const tessera::HttpResult &result) {
         auto *self = static_cast<WeatherWidget *>(user);
         if (!self || !self->mounted_ || generation != self->generation_) return;
-        const uint32_t now = tessara::host_now_ms();
-        if (result.status != tessara::HttpStatus::Ok || !result.body) {
+        const uint32_t now = tessera::host_now_ms();
+        if (result.status != tessera::HttpStatus::Ok || !result.body) {
             weather::note_failure();
             weather_page::paint(weather::view(now));
             return;
@@ -85,16 +86,16 @@ private:
 
 }  // namespace
 
-const char *tessara::weather_widget_id() { return kManifest.id; }
+const char *tessera::weather_widget_id() { return kManifest.id; }
 
-tessara::TsWidget *tessara::create_weather_widget() { return new WeatherWidget(); }
+tessera::TsWidget *tessera::create_weather_widget() { return new WeatherWidget(); }
 
-void tessara::weather_widget_paint(TsWidget *widget, const weather::View &view) {
+void tessera::weather_widget_paint(TsWidget *widget, const weather::View &view) {
     if (!widget) return;
     static_cast<WeatherWidget *>(widget)->paint(view);
 }
 
-void tessara::weather_widget_apply_theme(TsWidget *widget) {
+void tessera::weather_widget_apply_theme(TsWidget *widget) {
     if (!widget) return;
     static_cast<WeatherWidget *>(widget)->apply_theme();
 }

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
+autobins = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,6 +14,12 @@ edition = "2021"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "agent_ui_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+# macOS 26 maps NSStatusItem by executable path; "agent-ui" was hosted as
+# path:agent-ui with .ephemeral positioning and never appeared in the menu bar.
+[[bin]]
+name = "Tessera"
+path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

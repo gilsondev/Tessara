@@ -1,6 +1,6 @@
 use std::fs;
 
-use tessara_profile::{load_or_init_with_paths, read_config, write_config, ProfilePaths};
+use tessera_profile::{load_or_init_with_paths, read_config, write_config, ProfilePaths};
 
 #[test]
 fn config_roundtrip() {

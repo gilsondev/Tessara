@@ -1,9 +1,9 @@
 ---
-description: Tessara architecture — widgets via SDK, thin shell
+description: Tessera architecture — widgets via SDK, thin shell
 alwaysApply: true
 ---
 
-# Tessara architecture
+# Tessera architecture
 
 - Widgets in `firmware/widgets/` — Widget SDK + UI Kit only; no Arduino/Wi‑Fi/board headers.
 - Thin shell: slots, nav, theme; no product logic keyed by widget id.

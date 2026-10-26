@@ -30,6 +30,8 @@ struct Snapshot {
     bool weather_ready;
     AgentInfo agent;
     bool agent_pack;  // agent.tgz no SD (install.command é gerado no GET)
+    bool agent_push_armed;
+    char agent_pack_version[24];
     dashboard::Layout dashboard;
     bool aitokens_ready;
     bool aitokens_stale;
@@ -47,6 +49,8 @@ struct Snapshot {
     char clock_timezone[24];
     char clock_time_format[12];
     char date_format[16];
+    // Calendar home tile height: S | M | L | XL
+    char calendar_home_tile_size[8];
 };
 
 enum class Kind : uint8_t {

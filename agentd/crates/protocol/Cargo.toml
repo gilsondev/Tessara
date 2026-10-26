@@ -1,5 +1,5 @@
 [package]
-name = "tessara-protocol"
+name = "tessera-protocol"
 version.workspace = true
 edition.workspace = true
 

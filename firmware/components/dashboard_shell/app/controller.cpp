@@ -4,7 +4,8 @@
 #include "aitokens/snapshot.h"
 #include "calendar/catalog.h"
 #include "calendar/snapshot.h"
-#include "mac/snapshot.h"
+#include "mac/focus_snapshot.h"
+#include "media/snapshot.h"
 #include "app/nav.h"
 #include "domain/list_prefs.h"
 #include "domain/pending_closes.h"
@@ -25,11 +26,13 @@
 #include "platform/settings.h"
 #include "platform/widget_settings.h"
 #include "domain/dashboard_layout.h"
+#include "domain/home_tile_size.h"
 #include "services/net_worker.h"
 #include "services/text.h"
+#include "services/todoist_bridge.h"
 #include "services/web_portal.h"
 #include "platform/device_http.h"
-#include "tessara/runtime.h"
+#include "tessera/runtime.h"
 #include "ui/screensaver.h"
 #include "ui/ui.h"
 #include "ui/weather_icons.h"
@@ -51,7 +54,7 @@ constexpr uint32_t kForgetClosedMs = 60000;
 constexpr uint32_t kCloseSettleMs = 3000;
 constexpr int kMaxCloses = 16;
 constexpr int kMaxPending = pending_closes::kMax;
-constexpr char kHostName[] = "tessara";
+constexpr char kHostName[] = "tessera";
 
 bool resolve_dark(const DeviceSettings &settings) {
     int hour = 0, minute = 0, wday = 0, day = 0, month = 0;
@@ -130,23 +133,23 @@ public:
         screen_rest::set_clock_minutes(rest_, device_.clock_minutes);
         settings::WeatherPlace saved = settings::load_weather();
         if (saved.set) weather::set_place(saved.name, saved.latitude, saved.longitude);
-        paint_weather();
-        paint_aitokens();
+        reload_dash();
+        if (tile_on(dashboard::id_weather())) paint_weather();
+        if (tile_on(dashboard::id_aitokens())) paint_aitokens();
         {
             char sel[512] = {};
             if (widget_settings::get(dashboard::id_calendar(), "selection", sel, sizeof(sel)) && sel[0]) {
                 calendar::apply_selection(calendar_catalog_, sel);
+                // Trust saved selection until a real CALENDAR / catalog reply — avoid "ligar agenda" flash.
+                calendar_.linked = true;
             }
         }
-        {
-            dashboard::Layout dash = settings::load_dashboard();
-            if (dashboard::is_enabled(dash, dashboard::id_calendar())) {
-                dashboard::set_enabled(dash, dashboard::id_calendar(), true);  // snap under AI Tokens
-                settings::save_dashboard(dash);
-            }
+        if (tile_on(dashboard::id_calendar())) {
+            dashboard::set_enabled(dash_, dashboard::id_calendar(), true);  // snap under AI Tokens
+            settings::save_dashboard(dash_);
+            paint_calendar();
+            ask_calendar_refresh();
         }
-        paint_calendar();
-        ask_calendar_refresh();
         if (!ui::loader_visible()) ui::show_loader("", "");
         display_host::refresh_now();
         Serial.printf("tela %s\n", device_.portrait ? "em pe" : "deitada");
@@ -187,16 +190,33 @@ public:
         pump_screen_rest();
         display_host::tick();
         chime::pump();
-        if (aitokens::refresh_age(aitokens_, millis())) paint_aitokens();
-        if (calendar::refresh_age(calendar_, millis())) paint_calendar();
-        if (mac::refresh_age(mac_, millis())) paint_mac();
+        // Stale paint / USB pulls only for tiles that are on the home (hidden = not allocated).
+        if (tile_on(dashboard::id_aitokens()) && aitokens::refresh_age(aitokens_, millis())) {
+            paint_aitokens();
+        }
+        if (tile_on(dashboard::id_calendar()) && calendar::refresh_age(calendar_, millis())) {
+            paint_calendar();
+        }
+        if (tile_on(dashboard::id_media()) && media::refresh_age(media_, millis())) paint_media();
+        if (tile_on(dashboard::id_mac()) && focus::refresh_age(focus_, millis())) paint_mac();
         // USB drops often — re-ask while the agent is up but agenda never arrived.
-        if (agent_.ok && !calendar_.ready && millis() - calendar_ask_at_ > 5000u) {
-            calendar_ask_at_ = millis();
-            ask_calendar_refresh();
-        } else if (agent_.ok && calendar_.ready && millis() - calendar_ask_at_ > 45000u) {
-            calendar_ask_at_ = millis();
-            ask_calendar_refresh();
+        if (tile_on(dashboard::id_calendar()) && agent_.ok) {
+            if (!calendar_.ready && millis() - calendar_ask_at_ > 5000u) {
+                calendar_ask_at_ = millis();
+                ask_calendar_refresh();
+            } else if (calendar_.ready && millis() - calendar_ask_at_ > 45000u) {
+                calendar_ask_at_ = millis();
+                ask_calendar_refresh();
+            }
+        }
+        // Same safety net for Tarefas: a dropped bundle must not leave the lists
+        // empty until the Mac cache happens to change.
+        if (tile_on(dashboard::id_todoist()) && agent_.ok) {
+            todoist_bridge::refresh_age(millis());
+            const todoist_bridge::Status todoist_usb = todoist_bridge::status();
+            const bool warm = todoist_usb.ready && !todoist_usb.stale && task_store::view_count() > 0;
+            if (millis() - todoist_ask_at_ > (warm ? 45000u : 5000u)) ask_todoist_refresh();
+            give_up_on_todoist();
         }
         // Auto appearance: re-check when the clock crosses the evening/morning window
         // (or after the portal reports a new OS preference).
@@ -244,9 +264,12 @@ public:
 
     void on_open_widget(const char *widget_id) override {
         if (!widget_id || !widget_id[0]) return;
-        auto &rt = tessara::runtime();
+        auto &rt = tessera::runtime();
         if (!rt.type_registered(widget_id)) return;
         if (rt.type_hero_only(widget_id)) return;
+        // Prefetch Agente state before paint so pages don't flash offline.
+        if (std::strcmp(widget_id, dashboard::id_media()) == 0) ask_media_refresh();
+        if (std::strcmp(widget_id, dashboard::id_mac()) == 0) ask_focus_refresh();
         nav::open_detail(nav_, widget_id);
         ui::show_widget(widget_id);  // widget paints itself on mount
     }
@@ -254,13 +277,13 @@ public:
     void on_aitokens_refresh() override {
         // Refresh updates the AI Tokens screen in place — do not navigate home.
         if (nav_.screen != nav::Screen::Detail ||
-            std::strcmp(nav_.widget_id, "org.tessara.aitokens") != 0) {
+            std::strcmp(nav_.widget_id, "org.tessera.aitokens") != 0) {
             nav::open_aitokens(nav_);
         }
         ui::aitokens_refreshing();
     }
 
-    void on_mac_cmd(const char *cmd) override {
+    void on_media_cmd(const char *cmd) override {
         if (!cmd || !cmd[0]) return;
         if (cmd[0] == '?' && cmd[1] == '\0') {
             ask_media_refresh();
@@ -269,12 +292,22 @@ public:
         push_media_cmd(cmd);
     }
 
+    void on_mac_cmd(const char *cmd) override {
+        if (!cmd || !cmd[0]) return;
+        if (cmd[0] == '?' && cmd[1] == '\0') {
+            ask_focus_refresh();
+            return;
+        }
+        push_focus_cmd(cmd);
+    }
+
     void on_back_home() override {
         nav::back(nav_);
         todoist::bump(gate_);
         ui::show_home();
         paint_summary();
         paint_aitokens();
+        paint_media();
         paint_mac();
     }
 
@@ -292,13 +325,39 @@ public:
         on_widget_settings(request);
     }
 
-    void paint_weather() { ui::set_weather(weather::view(millis())); }
+    void reload_dash() { dash_ = settings::load_dashboard(); }
 
-    void paint_aitokens() { ui::set_aitokens(aitokens_); }
+    bool tile_on(const char *id) const { return dashboard::is_enabled(dash_, id); }
 
-    void paint_mac() { ui::set_mac(mac_, agent_.ok); }
+    void paint_weather() {
+        if (!tile_on(dashboard::id_weather())) return;
+        ui::set_weather(weather::view(millis()));
+    }
 
-    void ask_media_refresh() { Serial.println("MEDIA?"); }
+    void paint_aitokens() {
+        if (!tile_on(dashboard::id_aitokens())) return;
+        ui::set_aitokens(aitokens_);
+    }
+
+    void paint_media() {
+        if (!tile_on(dashboard::id_media())) return;
+        ui::set_media(media_, agent_.ok);
+    }
+
+    void paint_mac() {
+        if (!tile_on(dashboard::id_mac())) return;
+        ui::set_mac(focus_, agent_.ok);
+    }
+
+    void ask_media_refresh() {
+        if (!tile_on(dashboard::id_media())) return;
+        Serial.println("MEDIA?");
+    }
+
+    void ask_focus_refresh() {
+        if (!tile_on(dashboard::id_mac())) return;
+        Serial.println("FOCUS?");
+    }
 
     void push_media_cmd(const char *cmd) {
         if (!cmd || !cmd[0]) return;
@@ -307,7 +366,19 @@ public:
         Serial.println(line);
     }
 
+    void push_focus_cmd(const char *cmd) {
+        if (!cmd || !cmd[0]) return;
+        char line[96];
+        if (strcmp(cmd, "OFF") == 0) {
+            snprintf(line, sizeof(line), "FOCUS\tOFF");
+        } else {
+            snprintf(line, sizeof(line), "FOCUS\t%s", cmd);  // SET\t<id>
+        }
+        Serial.println(line);
+    }
+
     void paint_summary() {
+        if (!tile_on(dashboard::id_todoist())) return;
         todoist::ListTally rows[kMaxViews];
         int count = task_store::view_count();
         for (int i = 0; i < count; ++i) {
@@ -350,6 +421,8 @@ public:
             Serial.printf("tela %s\n", device_.portrait ? "em pe" : "deitada");
         }
         if (theme) ui::apply_theme();
+        // Auto → ask Agente for current macOS appearance (portal alone is the browser, not the Mac).
+        if (device_.appearance == Appearance::Auto) Serial.println("THEME?");
         publish();
         paint_summary();
     }
@@ -441,6 +514,8 @@ public:
         settings::stash();
         settings::clear_token();
         ++epoch_;
+        todoist_ui_mounted_ = false;
+        todoist_token_seeded_ = false;
         configure();
         Serial.println("sem token");
     }
@@ -462,6 +537,7 @@ public:
     }
 
     void on_agent(const char *line) override {
+        const bool was_ok = agent_.ok;
         if (!agent::apply_line(agent_, line, millis())) return;
         if (agent_.ok) {
             // Bridge is up even before the first CALENDAR events line lands.
@@ -469,11 +545,20 @@ public:
                 calendar_.bridge_ok = true;
                 paint_calendar();
             }
-            ask_calendar_refresh();
-            calendar_ask_at_ = millis();
-            ask_media_refresh();
+            // Full capability refresh only on connect edge — not every AGENT heartbeat.
+            if (!was_ok) {
+                ask_calendar_refresh();
+                calendar_ask_at_ = millis();
+                ask_todoist_refresh();
+                todoist_ask_at_ = millis();
+                ask_media_refresh();
+                ask_focus_refresh();
+                if (device_.appearance == Appearance::Auto) Serial.println("THEME?");
+            }
+            paint_media();
             paint_mac();
         } else {
+            paint_media();
             paint_mac();
         }
         settings_panel_show_agent();
@@ -481,22 +566,53 @@ public:
     }
 
     void on_media(const char *line) override {
-        if (!mac::apply_line(mac_, line, millis())) return;
+        if (!line) return;
+        if (strncmp(line, "MEDIA_COVER\t", 12) == 0) {
+            if (media::apply_cover_line(media_, line)) paint_media();
+            return;
+        }
+        if (!media::apply_line(media_, line, millis())) return;
+        paint_media();
+    }
+
+    void on_focus(const char *line) override {
+        if (!focus::apply_line(focus_, line, millis())) return;
         paint_mac();
     }
 
+    void on_theme(const char *line) override {
+        if (!line || strncmp(line, "THEME\t", 6) != 0) return;
+        // THEME\tv1\t1\tdark|light
+        const char *p = line + 6;
+        if (strncmp(p, "v1\t", 3) != 0) return;
+        p += 3;
+        if (*p != '1') return;
+        ++p;
+        if (*p == '\t') ++p;
+        bool dark = false;
+        if (!strncmp(p, "dark", 4)) dark = true;
+        else if (!strncmp(p, "light", 5)) dark = false;
+        else return;
+        bool was = resolve_dark(device_);
+        device_.os_prefers_dark = dark;
+        device_.os_theme_known = true;
+        settings::save_device(device_);
+        if (device_.appearance != Appearance::Auto) return;
+        bool want = resolve_dark(device_);
+        if (want == was && (palette::mode() == palette::Mode::Dark) == want) return;
+        palette::set_mode(want ? palette::Mode::Dark : palette::Mode::Light);
+        ui::apply_theme();
+    }
+
     void sync_calendar_link_from_catalog() {
-        bool any_sel = false;
-        for (int i = 0; i < calendar_catalog_.count; ++i) {
-            if (calendar_catalog_.items[i].selected) {
-                any_sel = true;
-                break;
-            }
-        }
-        const bool linked = any_sel || calendar_catalog_.count > 0;
-        if (calendar_.linked == linked && (calendar_.bridge_ok || !agent_.ok)) return;
-        calendar_.linked = linked;
+        // Empty catalog (agent offline / still loading) must not demote linked or wipe
+        // the event cache. Only a real CALENDAR line may clear link.
+        if (calendar_catalog_.count <= 0) return;
+        const bool was_linked = calendar_.linked;
+        const bool was_bridge = calendar_.bridge_ok;
+        calendar_.linked = true;
         if (agent_.ok) calendar_.bridge_ok = true;
+        if (was_linked && was_bridge == calendar_.bridge_ok) return;
         paint_calendar();
     }
 
@@ -518,9 +634,129 @@ public:
         if (changed) publish();
     }
 
-    void paint_calendar() { ui::set_calendar(calendar_); }
+    void on_todoist(const char *line) override {
+        if (!line || !line[0]) return;
+        bool ok = false;
+        char id[20] = {};
+        if (todoist_bridge::apply_close_ack(line, &ok, id, sizeof(id))) {
+            if (ok) drop_close(id);
+            else {
+                drop_close(id);
+                forget_closed(id);
+                ui::set_status("falha ao fechar");
+            }
+            close_usb_wait_ = false;
+            return;
+        }
+        if (!todoist_bridge::apply_line(line, millis())) return;
+        const todoist_bridge::Snapshot *snap = todoist_bridge::last();
+        if (!snap) return;
+        ingest_todoist_usb(*snap);
+    }
 
-    void ask_calendar_refresh() { Serial.println("CALENDAR?"); }
+    bool todoist_via_agent() const {
+        const todoist_bridge::Status st = todoist_bridge::status();
+        return agent_.ok && st.bridge_ok && st.linked && st.ready;
+    }
+
+    void ask_todoist_refresh(bool force = false) {
+        if (!tile_on(dashboard::id_todoist())) return;
+        // One in-flight ask — overlapping USB bundles used to zero list counts.
+        if (todoist_awaiting_ && millis() - todoist_ask_at_ < 15000u) return;
+        seed_todoist_token_to_agent();
+        if (force || refreshing_) Serial.println("TODOIST?\tforce");
+        else Serial.println("TODOIST?");
+        todoist_awaiting_ = true;
+        todoist_ask_at_ = millis();
+        if (!todoist_quiet_since_) todoist_quiet_since_ = millis();
+    }
+
+    // A silent agent used to leave every list spinning forever. After a few seconds say so instead:
+    // lists that already hold cached tasks keep showing them, the rest get a message.
+    void give_up_on_todoist() {
+        if (!todoist_quiet_since_ || millis() - todoist_quiet_since_ < 12000u) return;
+        todoist_quiet_since_ = 0;
+        if (task_store::view_count() == 0) {
+            // Nothing cached to fall back to: at least stop claiming the lists are on their way.
+            if (ui::loader_visible()) ui::show_loader("Sem resposta do Mac", "Tentando de novo as tarefas");
+            return;
+        }
+        bool changed = false;
+        for (int view = 0; view < task_store::view_count(); ++view) {
+            if (task_store::state(view) != task_store::State::Empty) continue;
+            task_store::fail(view, "Sem resposta do Mac.");
+            changed = true;
+        }
+        if (changed) ui::view_changed(ui::active_view());
+    }
+
+    void seed_todoist_token_to_agent() {
+        if (todoist_token_seeded_ || !agent_.ok) return;
+        settings::Credentials credentials = settings::load_credentials();
+        if (!credentials.token[0]) return;
+        // Migrate NVS token → Mac (~/.tessera/todoist/) once per boot; never log the value.
+        Serial.printf("TODOIST_TOKEN\t%s\n", credentials.token);
+        todoist_token_seeded_ = true;
+    }
+
+    void ingest_todoist_usb(const todoist_bridge::Snapshot &snap) {
+        todoist_awaiting_ = false;
+        todoist_quiet_since_ = 0;
+        if (!snap.linked) {
+            // Stay in Views until a linked snapshot builds chips — otherwise we skip
+            // set_views and the horizontal list slide never mounts.
+            if (ui::loader_visible()) ui::hide_loader();
+            paint_summary();
+            publish();
+            return;
+        }
+        need_token_ = false;
+        ui::hide_token_needed();
+        ViewItem catalog[kMaxViews];
+        for (int i = 0; i < snap.view_count; ++i) catalog[i] = snap.views[i].item;
+        char active_name[sizeof(ViewItem::name)] = "";
+        int keep = ui::active_view();
+        if (keep >= 0 && keep < task_store::view_count()) {
+            text::copy(active_name, sizeof(active_name), task_store::view(keep).name);
+        }
+        const int prev_n = task_store::view_count();
+        remember_catalog(catalog, snap.view_count);
+        int selected = apply_visible(active_name);
+        for (int i = 0; i < task_store::view_count(); ++i) {
+            const char *q = task_store::view(i).query;
+            for (int v = 0; v < snap.view_count; ++v) {
+                if (strcmp(snap.views[v].item.query, q)) continue;
+                // Skip views whose TASKS line never arrived (overlap left count=0).
+                if (!snap.views[v].tasks_received) break;
+                store_filtered(i, snap.views[v].tasks, snap.views[v].count);
+                break;
+            }
+        }
+        const bool need_mount =
+            !todoist_ui_mounted_ || prev_n == 0 || task_store::view_count() != prev_n || refreshing_;
+        phase_ = Phase::Running;
+        if (need_mount) {
+            ui::set_views(selected);
+            todoist_ui_mounted_ = true;
+        } else {
+            // Soft refresh of the visible page only — do not rebuild chips/sheet (kills slide).
+            ui::view_changed(ui::active_view());
+        }
+        if (refreshing_) finish_refresh();
+        if (ui::loader_visible()) ui::hide_loader();
+        paint_summary();
+        publish();
+    }
+
+    void paint_calendar() {
+        if (!tile_on(dashboard::id_calendar())) return;
+        ui::set_calendar(calendar_);
+    }
+
+    void ask_calendar_refresh() {
+        if (!tile_on(dashboard::id_calendar())) return;
+        Serial.println("CALENDAR?");
+    }
 
     void ask_calendar_auth() { Serial.println("CALENDAR_AUTH?"); }
 
@@ -763,6 +999,14 @@ private:
             publish();
             return;
         }
+        if (std::strcmp(id, dashboard::id_calendar()) == 0) {
+            widget_settings::set(id, key, value);
+            if (std::strcmp(key, home_tile::kSettingKey) == 0) {
+                paint_calendar();
+            }
+            publish();
+            return;
+        }
         widget_settings::set(id, key, value);
         publish();
     }
@@ -857,6 +1101,13 @@ private:
             !snapshot.date_format[0]) {
             text::copy(snapshot.date_format, sizeof(snapshot.date_format), "short_pt");
         }
+        if (!widget_settings::get(dashboard::id_calendar(), home_tile::kSettingKey,
+                                  snapshot.calendar_home_tile_size,
+                                  sizeof(snapshot.calendar_home_tile_size)) ||
+            !snapshot.calendar_home_tile_size[0]) {
+            text::copy(snapshot.calendar_home_tile_size, sizeof(snapshot.calendar_home_tile_size),
+                       home_tile::to_string(home_tile::Size::M));
+        }
         ui::set_face(snapshot.clock_timezone, snapshot.clock_time_format, snapshot.date_format);
         web_portal::publish(snapshot);
         web_portal::publish_calendar_catalog(catalog_view);
@@ -876,15 +1127,24 @@ private:
             case web_portal::Kind::Setup: on_setup(request); break;
             case web_portal::Kind::Lists: on_lists(request); break;
             case web_portal::Kind::WeatherPlace: on_weather_place(request); break;
-            case web_portal::Kind::Dashboard:
+            case web_portal::Kind::Dashboard: {
+                const bool had_cal = tile_on(dashboard::id_calendar());
+                const bool had_media = tile_on(dashboard::id_media());
+                const bool had_mac = tile_on(dashboard::id_mac());
                 settings::save_dashboard(request.dashboard);
-                ui::rebuild_home(request.dashboard);
+                dash_ = request.dashboard;
+                ui::rebuild_home(dash_);
                 paint_summary();
                 paint_weather();
                 paint_aitokens();
                 paint_calendar();
+                // Kick USB only when a tile was just turned on (hidden stays quiet).
+                if (!had_cal && tile_on(dashboard::id_calendar())) ask_calendar_refresh();
+                if (!had_media && tile_on(dashboard::id_media())) ask_media_refresh();
+                if (!had_mac && tile_on(dashboard::id_mac())) ask_focus_refresh();
                 publish();
                 break;
+            }
             case web_portal::Kind::WidgetSettings:
                 on_widget_settings(request);
                 break;
@@ -923,8 +1183,9 @@ private:
         ui::hide_setup();
         ui::hide_token_needed();
         if (!credentials.token[0]) {
+            // Token may live only on the Mac (agent). Still bring Wi‑Fi up for weather/portal.
             need_token_ = true;
-            phase_ = Phase::Unconfigured;
+            phase_ = Phase::Connecting;
             net_worker::configure(credentials.ssid, credentials.pass, "");
             submit(net_worker::Kind::Connect);
             ui::show_loader("Conectando ao Wi-Fi", credentials.ssid);
@@ -966,28 +1227,53 @@ private:
                 if (need_token_ && !net_worker::online()) submit(net_worker::Kind::Connect);
                 return;
             case Phase::Connecting: submit(net_worker::Kind::Connect); return;
-            case Phase::Views: submit(net_worker::Kind::Views); return;
+            case Phase::Views:
+                if (agent_.ok) {
+                    ask_todoist_refresh();
+                    return;
+                }
+                submit(net_worker::Kind::Views);
+                return;
             case Phase::Running: break;
         }
         if (refreshing_) {
+            // Pull-to-refresh is Todoist-centric — skip when that tile is off the home.
+            if (!tile_on(dashboard::id_todoist())) {
+                refreshing_ = false;
+                ui::hide_loader();
+                return;
+            }
+            if (todoist_via_agent() || (agent_.ok && todoist_bridge::status().bridge_ok)) {
+                ask_todoist_refresh(true);
+                return;
+            }
             if (refresh_next_ < 0) submit(net_worker::Kind::Views);
             else submit(net_worker::Kind::Tasks, refresh_order(refresh_next_));
             return;
         }
         bool quiet = settling();
-        if (closes_n > 0 && !quiet) {
+        if (closes_n > 0 && !quiet && !close_usb_wait_) {
+            if (todoist_via_agent() || agent_.ok) {
+                Serial.printf("TODOIST_CLOSE\t%s\n", closes[0].id);
+                close_usb_wait_ = true;
+                return;
+            }
             submit(net_worker::Kind::Close, closes[0].view, closes[0].id);
             return;
         }
         if ((quiet || closes_n > 0) && wanted_ < 0) return;
-        // Empty/Failed lists before weather — otherwise the home card stays on "…" through boot.
-        int view = next_fetch();
-        if (view >= 0) {
-            submit(net_worker::Kind::Tasks, view);
-            return;
+        // Prefer agent USB for Todoist — avoids mbedTLS DRAM pressure on the panel.
+        if (todoist_via_agent()) {
+            // Warm via agent heartbeat / TODOIST?; no Wi‑Fi Tasks.
+        } else if (tile_on(dashboard::id_todoist())) {
+            int view = next_fetch();
+            if (view >= 0) {
+                submit(net_worker::Kind::Tasks, view);
+                return;
+            }
         }
-        if (!refreshing_ && closes_n == 0 && !quiet && wanted_ < 0 && weather::wants_fetch(millis()) &&
-            millis() - last_weather_warm_ >= kWarmGapMs) {
+        if (tile_on(dashboard::id_weather()) && !refreshing_ && closes_n == 0 && !quiet && wanted_ < 0 &&
+            weather::wants_fetch(millis()) && millis() - last_weather_warm_ >= kWarmGapMs) {
             last_weather_warm_ = millis();
             weather_gen_ = weather::note_request();
             submit(net_worker::Kind::WeatherForecast);
@@ -1032,7 +1318,7 @@ private:
         if (net_worker::busy()) return;
         char url[400];
         uint32_t gen = 0;
-        int http_job = tessara::device_http().take_pending(url, sizeof(url), &gen);
+        int http_job = tessera::device_http().take_pending(url, sizeof(url), &gen);
         if (http_job < 0) return;
         (void)gen;
         net_worker::Job job = {};
@@ -1041,7 +1327,7 @@ private:
         job.http_job = http_job;
         text::copy(job.query, sizeof(job.query), url);
         if (!net_worker::submit(job)) {
-            tessara::device_http().complete(http_job, tessara::HttpStatus::Network, nullptr, 0);
+            tessera::device_http().complete(http_job, tessera::HttpStatus::Network, nullptr, 0);
         }
     }
 
@@ -1060,9 +1346,9 @@ private:
             case net_worker::Kind::WeatherGeocode:
             case net_worker::Kind::WeatherForecast: on_weather(result); break;
             case net_worker::Kind::HttpGet: {
-                tessara::HttpStatus st =
-                    result.ok ? tessara::HttpStatus::Ok : tessara::HttpStatus::Network;
-                tessara::device_http().complete(result.http_job, st, result.body, result.body_len);
+                tessera::HttpStatus st =
+                    result.ok ? tessera::HttpStatus::Ok : tessera::HttpStatus::Network;
+                tessera::device_http().complete(result.http_job, st, result.body, result.body_len);
                 paint_weather();
                 publish();
                 break;
@@ -1209,6 +1495,11 @@ private:
         if (!result.ok) {
             retry_at_ = millis() + kRetryMs;
             if (refreshing_) finish_refresh();
+            // TLS/catalog can fail under low DRAM — never leave the shell on a stuck loader.
+            if (ui::loader_visible()) {
+                ui::hide_loader();
+                ui::set_status(result.error[0] ? result.error : "listas indisponíveis");
+            }
             return;
         }
         int keep = ui::active_view();
@@ -1217,9 +1508,12 @@ private:
         remember_catalog(result.views, result.count);
         int selected = apply_visible(active_name);
         publish();
-        bool first = phase_ != Phase::Running;
+        bool first = phase_ != Phase::Running || !todoist_ui_mounted_;
         phase_ = Phase::Running;
-        if (first || refreshing_) ui::set_views(selected);
+        if (first || refreshing_) {
+            ui::set_views(selected);
+            todoist_ui_mounted_ = true;
+        }
         if (first) {
             wanted_ = selected;
             ui::show_loader("Carregando", "");
@@ -1238,8 +1532,11 @@ private:
             else if (result.query[0]) store_filtered(-1, result.tasks, result.count, result.query);
         } else if (view >= 0) {
             task_store::fail(view, result.error);
-            // Per-list retry is in next_fetch (kFailRetryMs). Global backoff only when offline.
+            // Per-list retry is in next_fetch (kFailRetryMs). Global backoff when offline or TLS/DRAM.
             if (!net_worker::online()) retry_at_ = millis() + kRetryMs;
+            else if (strstr(result.error, "sem conexão") || strstr(result.error, "sem memória")) {
+                retry_at_ = millis() + kRetryMs;
+            }
         }
         if (view >= 0 && wanted_ == view) wanted_ = -1;
         if (fresh && view >= 0) ui::view_changed(view);
@@ -1364,6 +1661,7 @@ private:
 
     hal::Board *board_ = nullptr;
     DeviceSettings device_;
+    dashboard::Layout dash_{};  // cached home layout — hidden tiles skip USB/HTTP work
     uint32_t theme_check_at_ = 0;
     uint32_t last_check_ = 0;
     Phase phase_ = Phase::Unconfigured;
@@ -1389,8 +1687,16 @@ private:
     calendar::View calendar_{};
     calendar::Catalog calendar_catalog_{};
     uint32_t calendar_ask_at_ = 0;
-    mac::View mac_{};
+    media::View media_{};
+    focus::View focus_{};
     agent::View agent_{};
+    bool close_usb_wait_ = false;
+    bool todoist_token_seeded_ = false;
+    bool todoist_ui_mounted_ = false;
+    bool todoist_awaiting_ = false;
+    uint32_t todoist_ask_at_ = 0;
+    // First ask still unanswered; zero once a bundle lands.
+    uint32_t todoist_quiet_since_ = 0;
     todoist::Gate gate_{};
     uint32_t inflight_gen_ = 1;
     Close closes[kMaxPending];

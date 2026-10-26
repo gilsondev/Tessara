@@ -4,7 +4,7 @@
 
 // Ts UI Kit — Terrara-facing aliases over kit::. Widgets and shell may include this
 // instead of talking to kit:: directly; behavior is identical.
-namespace tessara {
+namespace tessera {
 namespace ui {
 
 inline lv_obj_t *TsBare(lv_obj_t *parent) { return kit::bare(parent); }
@@ -37,4 +37,4 @@ inline lv_obj_t *TsCard(lv_obj_t *parent, const char *title, lv_event_cb_t on_cl
 inline void TsSetCardDetail(lv_obj_t *card, const char *text) { kit::set_card_detail(card, text); }
 
 }  // namespace ui
-}  // namespace tessara
+}  // namespace tessera

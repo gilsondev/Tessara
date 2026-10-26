@@ -1,4 +1,4 @@
-"""Cursor plan usage for the Tessara panel (Mac-side collector).
+"""Cursor plan usage for the Tessera panel (Mac-side collector).
 
 O Settings do Cursor mostra *dois* pools em **% usados** (não restante):
 

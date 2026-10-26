@@ -1,6 +1,6 @@
 //! Golden MEDIA lines from legacy Python `encode_line`.
 
-use tessara_caps_media::encode_media_line;
+use tessera_caps_media::encode_media_line;
 
 #[test]
 fn golden_media_not_ok() {

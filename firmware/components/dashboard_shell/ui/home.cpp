@@ -1,14 +1,18 @@
 #include "ui/brand_mark.h"
+#include "ui/tile_icons.h"
 #include "ui/home.h"
 
 #include "clock_summary.h"
 #include "domain/dashboard_layout.h"
-#include "mac/snapshot.h"
+#include "domain/home_tile_size.h"
+#include "mac/focus_snapshot.h"
+#include "media/snapshot.h"
 #include "platform/daytime.h"
 #include "platform/face_prefs.h"
 #include "platform/power.h"
 #include "platform/settings.h"
-#include "tessara/runtime.h"
+#include "platform/widget_settings.h"
+#include "tessera/runtime.h"
 #include "todoist/snapshot.h"
 #include "ui/aitokens_logos.h"
 #include "ui/kit.h"
@@ -19,12 +23,12 @@
 #include "ui/palette.h"
 #include "ui/theme.h"
 
-using tessara::ui::TsBare;
-using tessara::ui::TsIconButton;
-using tessara::ui::TsSetBattery;
-using tessara::ui::TsSetWifi;
-using tessara::ui::TsSpinner;
-using tessara::ui::TsWifi;
+using tessera::ui::TsBare;
+using tessera::ui::TsIconButton;
+using tessera::ui::TsSetBattery;
+using tessera::ui::TsSetWifi;
+using tessera::ui::TsSpinner;
+using tessera::ui::TsWifi;
 
 #include <cstdio>
 #include <cstring>
@@ -59,7 +63,14 @@ lv_obj_t *aitokens_line_cursor = nullptr;
 lv_obj_t *calendar_tile = nullptr;
 lv_obj_t *calendar_icon = nullptr;
 lv_obj_t *calendar_glyph = nullptr;
+lv_obj_t *calendar_body = nullptr;
+lv_obj_t *calendar_lines[4] = {};
+// Legacy single-line pointer kept for theme paths that still mention it.
 lv_obj_t *calendar_detail = nullptr;
+lv_obj_t *pair = nullptr;  // Música + Mac side-by-side (same band as Tarefas/Clima).
+lv_obj_t *media_tile = nullptr;
+lv_obj_t *media_icon = nullptr;
+lv_obj_t *media_detail = nullptr;
 lv_obj_t *mac_tile = nullptr;
 lv_obj_t *mac_icon = nullptr;
 lv_obj_t *mac_detail = nullptr;
@@ -94,7 +105,13 @@ void clear_tile_ptrs() {
     calendar_tile = nullptr;
     calendar_icon = nullptr;
     calendar_glyph = nullptr;
+    calendar_body = nullptr;
+    for (auto &line : calendar_lines) line = nullptr;
     calendar_detail = nullptr;
+    pair = nullptr;
+    media_tile = nullptr;
+    media_icon = nullptr;
+    media_detail = nullptr;
     mac_tile = nullptr;
     mac_icon = nullptr;
     mac_detail = nullptr;
@@ -122,6 +139,7 @@ lv_obj_t *tile(lv_obj_t *parent, const char *symbol, lv_color_t tone, const char
     lv_obj_set_style_pad_row(box, 2, 0);
     if (on_click) {
         lv_obj_add_flag(box, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(box, LV_OBJ_FLAG_SCROLL_CHAIN);  // drag on tile scrolls Home
         lv_obj_add_event_cb(box, on_click, LV_EVENT_CLICKED, user_data);
     }
     lv_obj_t *slot = TsBare(box);
@@ -199,9 +217,22 @@ void paint_clock(lv_timer_t *) {
     home::set_clock(time, date, hello);
 }
 
+void replace_glyph_with_image(lv_obj_t **icon_out, const lv_image_dsc_t &dsc, lv_color_t tone) {
+    if (!icon_out || !*icon_out) return;
+    lv_obj_t *slot = lv_obj_get_parent(*icon_out);
+    lv_obj_delete(*icon_out);
+    *icon_out = lv_image_create(slot);
+    lv_image_set_src(*icon_out, &dsc);
+    lv_obj_set_size(*icon_out, 24, 24);
+    lv_obj_set_style_image_recolor(*icon_out, tone, 0);
+    lv_obj_set_style_image_recolor_opa(*icon_out, LV_OPA_COVER, 0);
+    lv_obj_center(*icon_out);
+}
+
 void add_todoist_tile(lv_event_cb_t on_open) {
-    tasks_tile = tile(grid, LV_SYMBOL_LIST, theme::widget_todoist(), "Tarefas", &task_icon, on_open,
+    tasks_tile = tile(grid, " ", theme::widget_todoist(), "Tarefas", &task_icon, on_open,
                       const_cast<char *>(dashboard::id_todoist()));
+    replace_glyph_with_image(&task_icon, tile_icons::todoist(), theme::widget_todoist());
     task_count = lv_label_create(tasks_tile);
     lv_label_set_text(task_count, "…");
     lv_obj_set_style_text_font(task_count, &theme::title_font(), 0);
@@ -248,6 +279,7 @@ void add_aitokens_tile(lv_event_cb_t on_open) {
     lv_obj_set_style_pad_row(aitokens_tile, 2, 0);
     if (on_open) {
         lv_obj_add_flag(aitokens_tile, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(aitokens_tile, LV_OBJ_FLAG_SCROLL_CHAIN);
         lv_obj_add_event_cb(aitokens_tile, on_open, LV_EVENT_CLICKED, const_cast<char *>(dashboard::id_aitokens()));
     }
     lv_obj_t *ai_head = TsBare(aitokens_tile);
@@ -302,6 +334,24 @@ void add_aitokens_tile(lv_event_cb_t on_open) {
     make_fonte_row(aitokens_tile, aitokens_logos::cursor(), "Cursor", &aitokens_line_cursor);
 }
 
+home_tile::Size read_calendar_tile_size() {
+    char buf[8] = {};
+    if (widget_settings::get(dashboard::id_calendar(), home_tile::kSettingKey, buf, sizeof(buf))) {
+        return home_tile::parse(buf);
+    }
+    return home_tile::Size::M;
+}
+
+void apply_calendar_tile_height() {
+    const home_tile::Size size = read_calendar_tile_size();
+    if (calendar_tile) {
+        lv_obj_set_style_min_height(calendar_tile, home_tile::tile_min_height_px(size), 0);
+    }
+    if (calendar_body) {
+        lv_obj_set_style_min_height(calendar_body, home_tile::body_min_height_px(size), 0);
+    }
+}
+
 void add_calendar_tile(lv_event_cb_t on_open) {
     // Full-width on stage (same band as AI Tokens) — not in the Tarefas/Clima row.
     calendar_tile = TsBare(stage);
@@ -317,6 +367,7 @@ void add_calendar_tile(lv_event_cb_t on_open) {
     lv_obj_set_style_pad_row(calendar_tile, 2, 0);
     if (on_open) {
         lv_obj_add_flag(calendar_tile, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(calendar_tile, LV_OBJ_FLAG_SCROLL_CHAIN);
         lv_obj_add_event_cb(calendar_tile, on_open, LV_EVENT_CLICKED,
                             const_cast<char *>(dashboard::id_calendar()));
     }
@@ -345,55 +396,66 @@ void add_calendar_tile(lv_event_cb_t on_open) {
     lv_obj_set_style_text_color(title, theme::text_primary(), 0);
     lv_obj_set_flex_grow(title, 1);
 
-    calendar_detail = lv_label_create(calendar_tile);
-    lv_label_set_text(calendar_detail, "ligar agenda");
-    lv_label_set_long_mode(calendar_detail, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(calendar_detail, lv_pct(100));
-    lv_obj_set_style_text_font(calendar_detail, &theme::small_font(), 0);
-    lv_obj_set_style_text_color(calendar_detail, theme::text_secondary(), 0);
+    calendar_body = TsBare(calendar_tile);
+    lv_obj_set_width(calendar_body, lv_pct(100));
+    lv_obj_set_height(calendar_body, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(calendar_body, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(calendar_body, 2, 0);
+
+    for (int i = 0; i < 4; ++i) {
+        calendar_lines[i] = lv_label_create(calendar_body);
+        lv_label_set_text(calendar_lines[i], i == 0 ? "ligar agenda" : "");
+        lv_label_set_long_mode(calendar_lines[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_width(calendar_lines[i], lv_pct(100));
+        lv_obj_set_style_text_font(calendar_lines[i], &theme::small_font(), 0);
+        lv_obj_set_style_text_color(calendar_lines[i], theme::text_secondary(), 0);
+        if (i > 0) lv_obj_add_flag(calendar_lines[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    calendar_detail = calendar_lines[0];
+    apply_calendar_tile_height();
+}
+
+void ensure_pair_row() {
+    if (pair || !stage) return;
+    pair = TsBare(stage);
+    lv_obj_set_width(pair, lv_pct(100));
+    lv_obj_set_height(pair, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(pair, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(pair, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_column(pair, 8, 0);
+}
+
+// Half-width card in `pair` — same proportions as Tarefas/Clima in `grid`.
+void add_pair_tile(lv_obj_t **tile_out, lv_obj_t **icon_out, lv_obj_t **detail_out, const char *symbol,
+                   lv_color_t tone, const char *title, const char *detail, const char *widget_id,
+                   lv_event_cb_t on_open) {
+    ensure_pair_row();
+    *tile_out = tile(pair, symbol, tone, title, icon_out, on_open,
+                     widget_id ? const_cast<char *>(widget_id) : nullptr);
+    if (*tile_out) kit::press_feedback(*tile_out);
+    *detail_out = lv_label_create(*tile_out);
+    lv_label_set_text(*detail_out, detail);
+    lv_label_set_long_mode(*detail_out, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(*detail_out, lv_pct(100));
+    lv_obj_set_style_text_font(*detail_out, &theme::small_font(), 0);
+    lv_obj_set_style_text_color(*detail_out, theme::text_secondary(), 0);
+}
+
+void add_media_tile(lv_event_cb_t on_open) {
+    add_pair_tile(&media_tile, &media_icon, &media_detail, LV_SYMBOL_AUDIO, lv_color_hex(0xAF52DE), "Música",
+                  "Nada tocando", dashboard::id_media(), on_open);
+    // LED marquee — title scrolls left forever when it overflows the tile.
+    if (media_detail) {
+        lv_label_set_long_mode(media_detail, LV_LABEL_LONG_SCROLL_CIRCULAR);
+        lv_obj_set_style_anim_duration(media_detail, 4000, 0);
+    }
 }
 
 void add_mac_tile(lv_event_cb_t on_open) {
-    mac_tile = TsBare(stage);
-    lv_obj_set_width(mac_tile, lv_pct(100));
-    lv_obj_set_height(mac_tile, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_color(mac_tile, theme::surface(), 0);
-    lv_obj_set_style_bg_opa(mac_tile, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(mac_tile, 16, 0);
-    lv_obj_set_style_border_width(mac_tile, 1, 0);
-    lv_obj_set_style_border_color(mac_tile, theme::border(), 0);
-    lv_obj_set_style_pad_all(mac_tile, 10, 0);
-    lv_obj_set_flex_flow(mac_tile, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(mac_tile, 2, 0);
-    if (on_open) {
-        lv_obj_add_flag(mac_tile, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(mac_tile, on_open, LV_EVENT_CLICKED, const_cast<char *>(dashboard::id_mac()));
-    }
-
-    lv_obj_t *head = TsBare(mac_tile);
-    lv_obj_set_width(head, lv_pct(100));
-    lv_obj_set_height(head, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(head, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(head, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(head, 8, 0);
-
-    mac_icon = lv_label_create(head);
-    lv_label_set_text(mac_icon, LV_SYMBOL_AUDIO);
-    lv_obj_set_style_text_font(mac_icon, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(mac_icon, theme::widget_mac(), 0);
-
-    lv_obj_t *title = lv_label_create(head);
-    lv_label_set_text(title, "Mac");
-    lv_obj_set_style_text_font(title, &theme::label_font(), 0);
-    lv_obj_set_style_text_color(title, theme::text_primary(), 0);
-    lv_obj_set_flex_grow(title, 1);
-
-    mac_detail = lv_label_create(mac_tile);
-    lv_label_set_text(mac_detail, "Mac offline");
-    lv_label_set_long_mode(mac_detail, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(mac_detail, lv_pct(100));
-    lv_obj_set_style_text_font(mac_detail, &theme::small_font(), 0);
-    lv_obj_set_style_text_color(mac_detail, theme::text_secondary(), 0);
+    add_pair_tile(&mac_tile, &mac_icon, &mac_detail, " ", theme::widget_mac(), "Mac", "Nenhum",
+                  dashboard::id_mac(), on_open);
+    // Notebook icon — never Tessera mark on this tile (spec 2026-10-26).
+    replace_glyph_with_image(&mac_icon, tile_icons::notebook(), theme::widget_mac());
 }
 
 void add_generic_tile(const char *title, const char *widget_id) {
@@ -405,10 +467,10 @@ void add_generic_tile(const char *title, const char *widget_id) {
 void mount_enabled_tiles(const dashboard::Layout &layout) {
     cache_hero_flags(layout);
     // Compose = enabled ∩ runtime registry (new widgets appear without editing this list).
-    const char *registered[tessara::kMaxWidgetTypes];
+    const char *registered[tessera::kMaxWidgetTypes];
     int reg_n = 0;
-    for (int i = 0; i < tessara::runtime().type_count() && reg_n < tessara::kMaxWidgetTypes; ++i) {
-        const char *id = tessara::runtime().type_id(i);
+    for (int i = 0; i < tessera::runtime().type_count() && reg_n < tessera::kMaxWidgetTypes; ++i) {
+        const char *id = tessera::runtime().type_id(i);
         if (id && id[0]) registered[reg_n++] = id;
     }
     if (reg_n == 0) {
@@ -419,6 +481,7 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
         registered[reg_n++] = dashboard::id_weather();
         registered[reg_n++] = dashboard::id_aitokens();
         registered[reg_n++] = dashboard::id_calendar();
+        registered[reg_n++] = dashboard::id_media();
         registered[reg_n++] = dashboard::id_mac();
         registered[reg_n++] = dashboard::id_clock();
     }
@@ -426,45 +489,49 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
     int n = dashboard::compose(layout, registered, reg_n, slots, dashboard::kMaxSlots);
     for (int i = 0; i < n; ++i) {
         const char *id = slots[i];
-        auto &rt = tessara::runtime();
+        auto &rt = tessera::runtime();
         // Package declares tile kind (None = hero-only / no grid).
-        tessara::HomeTile kind = rt.type_home_tile(id);
-        if (kind == tessara::HomeTile::None) {
+        tessera::HomeTile kind = rt.type_home_tile(id);
+        if (kind == tessera::HomeTile::None) {
             // Hero-only (saudação/data/relógio) — sem tile na grade.
             if (strcmp(id, dashboard::id_greeting()) == 0 || strcmp(id, dashboard::id_date()) == 0 ||
                 strcmp(id, dashboard::id_clock()) == 0)
                 continue;
             // Fallback when registry was empty at compose time (sim).
-            if (strcmp(id, dashboard::id_todoist()) == 0) kind = tessara::HomeTile::Todoist;
-            else if (strcmp(id, dashboard::id_weather()) == 0) kind = tessara::HomeTile::Weather;
-            else if (strcmp(id, dashboard::id_aitokens()) == 0) kind = tessara::HomeTile::AiTokens;
-            else if (strcmp(id, dashboard::id_calendar()) == 0) kind = tessara::HomeTile::Calendar;
-            else if (strcmp(id, dashboard::id_mac()) == 0) kind = tessara::HomeTile::Mac;
-            else kind = tessara::HomeTile::Generic;
+            if (strcmp(id, dashboard::id_todoist()) == 0) kind = tessera::HomeTile::Todoist;
+            else if (strcmp(id, dashboard::id_weather()) == 0) kind = tessera::HomeTile::Weather;
+            else if (strcmp(id, dashboard::id_aitokens()) == 0) kind = tessera::HomeTile::AiTokens;
+            else if (strcmp(id, dashboard::id_calendar()) == 0) kind = tessera::HomeTile::Calendar;
+            else if (strcmp(id, dashboard::id_media()) == 0) kind = tessera::HomeTile::Media;
+            else if (strcmp(id, dashboard::id_mac()) == 0) kind = tessera::HomeTile::Mac;
+            else kind = tessera::HomeTile::Generic;
         }
         switch (kind) {
-            case tessara::HomeTile::Todoist:
+            case tessera::HomeTile::Todoist:
                 add_todoist_tile(open_widget_cb);
                 break;
-            case tessara::HomeTile::Weather:
+            case tessera::HomeTile::Weather:
                 add_weather_tile(open_widget_cb);
                 break;
-            case tessara::HomeTile::AiTokens:
+            case tessera::HomeTile::AiTokens:
                 add_aitokens_tile(open_widget_cb);
                 break;
-            case tessara::HomeTile::Calendar:
+            case tessera::HomeTile::Calendar:
                 add_calendar_tile(open_widget_cb);
                 break;
-            case tessara::HomeTile::Mac:
+            case tessera::HomeTile::Media:
+                add_media_tile(open_widget_cb);
+                break;
+            case tessera::HomeTile::Mac:
                 add_mac_tile(open_widget_cb);
                 break;
-            case tessara::HomeTile::Generic: {
+            case tessera::HomeTile::Generic: {
                 const char *title = rt.type_title(rt.find_registered(id));
                 if (!title || !title[0]) title = id;
                 add_generic_tile(title, id);
                 break;
             }
-            case tessara::HomeTile::None:
+            case tessera::HomeTile::None:
                 break;
         }
     }
@@ -473,7 +540,7 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
 
 void home::rebuild(const dashboard::Layout &layout) {
     if (!stage || !grid) return;
-    // AI Tokens + Calendar + Mac live on `stage` (full width), not inside `grid`.
+    // AI Tokens + Calendar stay full-width on `stage`. Música+Mac share a side-by-side `pair` row.
     if (aitokens_tile) {
         lv_obj_delete(aitokens_tile);
         aitokens_tile = nullptr;
@@ -482,9 +549,11 @@ void home::rebuild(const dashboard::Layout &layout) {
         lv_obj_delete(calendar_tile);
         calendar_tile = nullptr;
     }
-    if (mac_tile) {
-        lv_obj_delete(mac_tile);
-        mac_tile = nullptr;
+    if (pair) {
+        lv_obj_delete(pair);
+        pair = nullptr;
+        media_tile = media_icon = media_detail = nullptr;
+        mac_tile = mac_icon = mac_detail = nullptr;
     }
     lv_obj_clean(grid);
     clear_tile_ptrs();
@@ -522,8 +591,8 @@ void home::begin(lv_event_cb_t on_open_widget, lv_event_cb_t on_settings) {
 
     wordmark = lv_image_create(top);
     lv_image_set_src(wordmark, &tessera_lockup(palette::mode() == palette::Mode::Dark));
+    // Native lockup is 108×30 RGB565A8 (Logo Kit v1, transparent).
     lv_obj_set_size(wordmark, 108, 30);
-    lv_image_set_inner_align(wordmark, LV_IMAGE_ALIGN_STRETCH);
 
     lv_obj_t *status = TsBare(top);
     lv_obj_set_height(status, LV_SIZE_CONTENT);
@@ -543,6 +612,8 @@ void home::begin(lv_event_cb_t on_open_widget, lv_event_cb_t on_settings) {
     lv_obj_set_flex_grow(stage, 1);
     lv_obj_set_flex_flow(stage, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(stage, 6, 0);
+    lv_obj_set_style_pad_bottom(stage, 16, 0);
+    kit::enable_list_scroll(stage);  // hero + tiles overflow 480px — vertical scroll
 
     hero = TsBare(stage);
     lv_obj_set_width(hero, lv_pct(100));
@@ -573,6 +644,7 @@ void home::begin(lv_event_cb_t on_open_widget, lv_event_cb_t on_settings) {
     kit::tabular_time_set(clock_face_ui, "  :  ");
     if (clock_face_ui.root) {
         lv_obj_add_flag(clock_face_ui.root, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(clock_face_ui.root, LV_OBJ_FLAG_SCROLL_CHAIN);
         lv_obj_set_ext_click_area(clock_face_ui.root, 8);
         if (open_widget_cb) {
             lv_obj_add_event_cb(clock_face_ui.root, open_widget_cb, LV_EVENT_CLICKED,
@@ -616,57 +688,125 @@ void home::set_summary(int total, bool pending) {
     set_if_changed(task_count, text);
 }
 
-void home::set_mac(const mac::View &view, bool agent_ok) {
-    if (!mac_detail) return;
+void home::set_media(const media::View &view, bool agent_ok) {
+    if (!media_detail) return;
     char text[72];
     if (!agent_ok) {
-        snprintf(text, sizeof(text), "Mac offline");
-    } else if (!view.ready || !view.media.ok || view.media.state == mac::MediaState::Stopped ||
+        snprintf(text, sizeof(text), "sem Agente");
+    } else if (!view.ready || !view.media.ok || view.media.state == media::MediaState::Stopped ||
                !view.media.title[0]) {
         snprintf(text, sizeof(text), "Nada tocando%s", view.stale ? " · desatualizado" : "");
     } else if (view.media.artist[0]) {
         snprintf(text, sizeof(text), "%s · %s%s%s", view.media.title, view.media.artist,
-                 view.media.state == mac::MediaState::Paused ? " · pausado" : "",
+                 view.media.state == media::MediaState::Paused ? " · pausado" : "",
                  view.stale ? " · desatualizado" : "");
     } else {
         snprintf(text, sizeof(text), "%s%s%s", view.media.title,
-                 view.media.state == mac::MediaState::Paused ? " · pausado" : "",
+                 view.media.state == media::MediaState::Paused ? " · pausado" : "",
+                 view.stale ? " · desatualizado" : "");
+    }
+    set_if_changed(media_detail, text);
+    if (media_icon) {
+        lv_obj_set_style_text_color(media_icon, agent_ok ? lv_color_hex(0xAF52DE) : theme::error(), 0);
+    }
+}
+
+void home::set_mac(const focus::View &view, bool agent_ok) {
+    if (!mac_detail) return;
+    char text[72];
+    if (!agent_ok) {
+        snprintf(text, sizeof(text), "Mac offline");
+    } else if (!view.ready || !view.ok) {
+        snprintf(text, sizeof(text), "%s%s", view.ready ? "Focus indisponível" : "Aguardando…",
+                 view.stale ? " · desatualizado" : "");
+    } else if (!view.active_id[0]) {
+        snprintf(text, sizeof(text), "Nenhum%s", view.stale ? " · desatualizado" : "");
+    } else {
+        snprintf(text, sizeof(text), "%s%s", view.active_name[0] ? view.active_name : view.active_id,
                  view.stale ? " · desatualizado" : "");
     }
     set_if_changed(mac_detail, text);
     if (mac_icon) {
-        lv_obj_set_style_text_color(mac_icon, agent_ok ? theme::widget_mac() : theme::error(), 0);
+        lv_obj_set_style_image_recolor(mac_icon, agent_ok ? theme::widget_mac() : theme::error(), 0);
+        lv_obj_set_style_image_recolor_opa(mac_icon, LV_OPA_COVER, 0);
     }
 }
 
 void home::set_calendar(const calendar::View &view) {
-    if (!calendar_detail) return;
-    char text[64];
-    if (!view.bridge_ok && !view.ready) {
-        snprintf(text, sizeof(text), "sem conexão");
-    } else if (!view.linked) {
-        snprintf(text, sizeof(text), "ligar agenda");
-    } else if (!view.ready) {
-        snprintf(text, sizeof(text), "carregando…");
-    } else if (view.event_count <= 0) {
-        snprintf(text, sizeof(text), "livre%s", view.stale ? " · desatualizado" : "");
-    } else {
-        const calendar::Event &e = view.events[0];
-        char time_text[8];
-        if (e.all_day) snprintf(time_text, sizeof(time_text), "dia");
-        else snprintf(time_text, sizeof(time_text), "%02d:%02d", e.start_min / 60, e.start_min % 60);
-        if (view.event_count == 1) {
-            snprintf(text, sizeof(text), "%s · %s%s", time_text, e.title, view.stale ? " · desatualizado" : "");
-        } else {
-            snprintf(text, sizeof(text), "%s · %s · +%d%s", time_text, e.title, view.event_count - 1,
-                     view.stale ? " · desatualizado" : "");
+    if (!calendar_lines[0]) return;
+    apply_calendar_tile_height();
+    const int max_rows = home_tile::content_rows(read_calendar_tile_size());
+
+    auto show_status = [&](const char *text) {
+        set_if_changed(calendar_lines[0], text);
+        lv_obj_clear_flag(calendar_lines[0], LV_OBJ_FLAG_HIDDEN);
+        for (int i = 1; i < 4; ++i) {
+            if (calendar_lines[i]) lv_obj_add_flag(calendar_lines[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    };
+
+    // Home tile shows only today. Collect + sort: all-day first, then by start.
+    const calendar::Event *today[calendar::kMaxEvents];
+    int today_n = 0;
+    if (view.ready) {
+        for (int i = 0; i < view.event_count && today_n < calendar::kMaxEvents; ++i) {
+            if (view.events[i].day_offset == 0) today[today_n++] = &view.events[i];
+        }
+        for (int i = 1; i < today_n; ++i) {
+            const calendar::Event *key = today[i];
+            int j = i - 1;
+            while (j >= 0) {
+                const bool key_first =
+                    (key->all_day && !today[j]->all_day) ||
+                    (key->all_day == today[j]->all_day && key->start_min < today[j]->start_min);
+                if (!key_first) break;
+                today[j + 1] = today[j];
+                --j;
+            }
+            today[j + 1] = key;
         }
     }
-    set_if_changed(calendar_detail, text);
+
+    if (!view.bridge_ok && !view.ready) {
+        show_status("sem conexão");
+    } else if (!view.linked && !view.ready) {
+        // Never had a real CALENDAR reply — ask to link. Cached ready keeps events below.
+        show_status("ligar agenda");
+    } else if (!view.ready) {
+        show_status("carregando…");
+    } else if (today_n <= 0) {
+        char text[40];
+        if (!view.linked) {
+            snprintf(text, sizeof(text), "ligar agenda");
+        } else {
+            snprintf(text, sizeof(text), "livre%s", view.stale ? " · desatualizado" : "");
+        }
+        show_status(text);
+    } else {
+        const int show = today_n < max_rows ? today_n : max_rows;
+        for (int i = 0; i < 4; ++i) {
+            if (!calendar_lines[i]) continue;
+            if (i >= show) {
+                lv_obj_add_flag(calendar_lines[i], LV_OBJ_FLAG_HIDDEN);
+                continue;
+            }
+            const calendar::Event &e = *today[i];
+            char time_text[16];
+            if (e.all_day) {
+                snprintf(time_text, sizeof(time_text), "Dia todo");
+            } else {
+                snprintf(time_text, sizeof(time_text), "%02d:%02d", e.start_min / 60, e.start_min % 60);
+            }
+            char text[80];
+            snprintf(text, sizeof(text), "%s · %s", time_text, e.title[0] ? e.title : "Evento");
+            set_if_changed(calendar_lines[i], text);
+            lv_obj_clear_flag(calendar_lines[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
     if (calendar_glyph) {
         const lv_image_dsc_t *src = (!view.bridge_ok && !view.ready) ? calendar_icons::warn()
-                                  : (view.linked && view.ready && view.event_count <= 0) ? calendar_icons::busy()
-                                                                                          : calendar_icons::month();
+                                  : (view.linked && view.ready && today_n <= 0) ? calendar_icons::busy()
+                                                                               : calendar_icons::month();
         lv_image_set_src(calendar_glyph, src);
         lv_color_t tone = (!view.bridge_ok && !view.ready) ? theme::error() : theme::widget_calendar();
         lv_obj_set_style_image_recolor(calendar_glyph, tone, 0);
@@ -726,15 +866,25 @@ void home::set_aitokens(const aitokens::View &view) {
             if (row) lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
             return;
         }
+        if (row) lv_obj_remove_flag(row, LV_OBJ_FLAG_HIDDEN);
+
         const aitokens::Source *src = aitokens::find(view, id);
         const bool ok = view.ready && src && src->available && src->display[0];
         if (!ok) {
-            if (row) lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
+            // Enabled but offline / no live data — keep the row; never hide solely for available=0.
+            char out[48];
+            if (!view.ready) snprintf(out, sizeof(out), "%s · …", name);
+            else if (src && src->display[0] && strcmp(src->display, "—") != 0)
+                snprintf(out, sizeof(out), "%s · %s", name, src->display);
+            else
+                snprintf(out, sizeof(out), "%s · offline", name);
+            set_if_changed(label, out);
+            if (label) lv_obj_set_style_text_color(label, theme::text_secondary(), 0);
+            any = true;
             return;
         }
-        if (row) lv_obj_remove_flag(row, LV_OBJ_FLAG_HIDDEN);
 
-        // Codex/Cursor: value = % restante (alerta). Claude: value = % consumido.
+        // Codex: value = % restante. Claude: value = % consumido. Cursor: dual % usados no display.
         const bool cursor = strcmp(id, "cursor") == 0;
         const bool codex = strcmp(id, "codex") == 0;
         const bool claude = strcmp(id, "claude") == 0;
@@ -750,13 +900,13 @@ void home::set_aitokens(const aitokens::View &view) {
         if (rem < worst) worst = rem;
 
         lv_color_t tone = theme::text_secondary();
-        char out[72];
-        // Cursor: "3% · 13%" → home soma "16% usados". Codex: restante 5h. Claude: % consumido.
-        char shown[28];
+        char out[80];
+        // Cursor: keep Modelos/Outros separate — never sum (can exceed 100%).
+        char shown[40];
         if (cursor) {
             int a = -1, b = -1;
             if (sscanf(src->display, "%d%% · %d%%", &a, &b) == 2 && a >= 0 && b >= 0) {
-                snprintf(shown, sizeof(shown), "%d%%", a + b);
+                snprintf(shown, sizeof(shown), "Modelos %d%% · Outros %d%%", a, b);
             } else {
                 snprintf(shown, sizeof(shown), "%s", src->display);
             }
@@ -770,7 +920,7 @@ void home::set_aitokens(const aitokens::View &view) {
         } else {
             snprintf(shown, sizeof(shown), "%s", src->display);
         }
-        const char *unit = cursor ? "usados" : (claude ? "consumido" : (codex ? "restante" : nullptr));
+        const char *unit = cursor ? nullptr : (claude ? "consumido" : (codex ? "restante" : nullptr));
         if (rem < kAiCriticalPct) {
             tone = theme::error();
             if (src->reset[0] && unit)
@@ -808,6 +958,43 @@ void home::set_aitokens(const aitokens::View &view) {
     set_row("Codex", "codex", aitokens_line_codex, device.show_aitokens_codex);
     set_row("Claude", "claude", aitokens_line_claude, device.show_aitokens_claude);
     set_row("Cursor", "cursor", aitokens_line_cursor, device.show_aitokens_cursor);
+
+    // Optional order of fonte rows (widget setting sources_order CSV).
+    if (aitokens_tile) {
+        char order_buf[48] = {};
+        const char *ids[3] = {"codex", "claude", "cursor"};
+        if (widget_settings::get(dashboard::id_aitokens(), "sources_order", order_buf, sizeof(order_buf)) &&
+            order_buf[0]) {
+            int n = 0;
+            char *p = order_buf;
+            while (*p && n < 3) {
+                while (*p == ' ' || *p == ',') ++p;
+                if (!*p) break;
+                char *start = p;
+                while (*p && *p != ',') ++p;
+                char save = *p;
+                *p = '\0';
+                if (!strcmp(start, "codex") || !strcmp(start, "claude") || !strcmp(start, "cursor")) {
+                    ids[n++] = start;
+                }
+                *p = save;
+                if (*p == ',') ++p;
+            }
+        }
+        auto row_of = [](const char *id) -> lv_obj_t * {
+            lv_obj_t *label = nullptr;
+            if (!strcmp(id, "codex")) label = aitokens_line_codex;
+            else if (!strcmp(id, "claude")) label = aitokens_line_claude;
+            else if (!strcmp(id, "cursor")) label = aitokens_line_cursor;
+            return label ? lv_obj_get_parent(label) : nullptr;
+        };
+        for (int i = 0; i < 3; ++i) {
+            lv_obj_t *row = row_of(ids[i]);
+            if (!row) continue;
+            const uint32_t cnt = lv_obj_get_child_cnt(aitokens_tile);
+            if (cnt > 0) lv_obj_move_to_index(row, static_cast<int32_t>(cnt - 1));
+        }
+    }
 
     if (aitokens_empty) {
         if (!any) {
@@ -863,21 +1050,38 @@ void home::apply_theme() {
     kit::tabular_time_recolor(clock_face_ui, theme::text_primary());
     if (date_label) lv_obj_set_style_text_color(date_label, theme::text_secondary(), 0);
     if (link_icon) TsSetWifi(link_icon, linked, link_rssi);
-    if (task_icon) lv_obj_set_style_text_color(task_icon, theme::widget_todoist(), 0);
+    if (task_icon) {
+        lv_obj_set_style_image_recolor(task_icon, theme::widget_todoist(), 0);
+        lv_obj_set_style_image_recolor_opa(task_icon, LV_OPA_COVER, 0);
+    }
     if (task_count) lv_obj_set_style_text_color(task_count, theme::text_primary(), 0);
     if (weather_icon) lv_obj_set_style_text_color(weather_icon, theme::widget_weather(), 0);
+    // Weather glyphs: soft recolor for contrast on light/dark surfaces.
+    if (weather_glyph) {
+        const bool dark = palette::mode() == palette::Mode::Dark;
+        lv_obj_set_style_image_recolor(weather_glyph, dark ? lv_color_hex(0xE8F4FF) : lv_color_hex(0x1A4A6E), 0);
+        lv_obj_set_style_image_recolor_opa(weather_glyph, dark ? LV_OPA_40 : LV_OPA_30, 0);
+    }
     if (weather_detail) lv_obj_set_style_text_color(weather_detail, theme::text_secondary(), 0);
     if (calendar_glyph) {
         lv_obj_set_style_image_recolor(calendar_glyph, theme::widget_calendar(), 0);
         lv_obj_set_style_image_recolor_opa(calendar_glyph, LV_OPA_COVER, 0);
     }
-    if (calendar_detail) lv_obj_set_style_text_color(calendar_detail, theme::text_secondary(), 0);
+    for (auto *line : calendar_lines) {
+        if (line) lv_obj_set_style_text_color(line, theme::text_secondary(), 0);
+    }
     if (aitokens_icon) lv_obj_set_style_text_color(aitokens_icon, theme::widget_aitokens(), 0);
-    if (mac_icon) lv_obj_set_style_text_color(mac_icon, theme::widget_mac(), 0);
+    if (media_icon) lv_obj_set_style_text_color(media_icon, lv_color_hex(0xAF52DE), 0);
+    if (media_detail) lv_obj_set_style_text_color(media_detail, theme::text_secondary(), 0);
+    if (mac_icon) {
+        lv_obj_set_style_image_recolor(mac_icon, theme::widget_mac(), 0);
+        lv_obj_set_style_image_recolor_opa(mac_icon, LV_OPA_COVER, 0);
+    }
     if (mac_detail) lv_obj_set_style_text_color(mac_detail, theme::text_secondary(), 0);
     paint_card(tasks_tile);
     paint_card(weather_tile);
     paint_card(calendar_tile);
+    paint_card(media_tile);
     paint_card(mac_tile);
     // Só o fundo do card AI Tokens — borda/cores de alerta vêm de set_aitokens.
     if (aitokens_tile) lv_obj_set_style_bg_color(aitokens_tile, theme::surface(), 0);
@@ -888,13 +1092,10 @@ void home::apply_theme() {
     recolor_name(tasks_tile);
     recolor_name(weather_tile);
     recolor_name(calendar_tile);
+    recolor_name(media_tile);
+    recolor_name(mac_tile);
     if (aitokens_tile) {
         lv_obj_t *head = lv_obj_get_child(aitokens_tile, 0);
-        lv_obj_t *title = head ? lv_obj_get_child(head, 1) : nullptr;
-        if (title) lv_obj_set_style_text_color(title, theme::text_primary(), 0);
-    }
-    if (mac_tile) {
-        lv_obj_t *head = lv_obj_get_child(mac_tile, 0);
         lv_obj_t *title = head ? lv_obj_get_child(head, 1) : nullptr;
         if (title) lv_obj_set_style_text_color(title, theme::text_primary(), 0);
     }

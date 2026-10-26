@@ -1,4 +1,4 @@
-# Tessara Agent v2 — redesign (daemon + companion UI)
+# Tessera Agent v2 — redesign (daemon + companion UI)
 
 **Status:** design approved for planning  
 **Data:** 2026-10-25  
@@ -6,7 +6,7 @@
 - `2026-10-24-tessera-agent-design.md` (MVP Python + SD install)  
 - `2026-10-24-tessera-agent-capabilities-design.md` (mapa MEDIA / FOCUS / DEV)  
 - `docs/prototypes/agent-ui/` (UI companion)  
-- `2026-10-25-tessara-site-branding-design.md` (**depois** do cutover: Pages + brand + release CI)  
+- `2026-10-25-tessera-site-branding-design.md` (**depois** do cutover: Pages + brand + release CI)  
 **Substitui (após cutover):** runtime Python em `agent/` como produto; o protocolo USB no firmware permanece.
 
 ## Decisão de produto
@@ -22,10 +22,10 @@
 
 ## Visão
 
-O Agent v2 é o companion de mesa do Tessara no notebook:
+O Agent v2 é o companion de mesa do Tessera no notebook:
 
 1. **agentd** — daemon em segundo plano: USB, capabilities, watchers, self-update, Doctor.  
-2. **App Tessara** — janela + menu (tray): onboarding, varredura, PCs, Painel, Atividade, Doctor.  
+2. **App Tessera** — janela + menu (tray): onboarding, varredura, PCs, Painel, Atividade, Doctor.  
 3. **Painel JC3248** — continua consumindo as mesmas linhas USB (`AGENT`, `AITOKENS`, `MEDIA`, `FOCUS`, `CALENDAR`, …).
 
 Enquanto v2 não estiver pronto, o **agent Python atual** (`agent/`, launchd `com.tessera.agent`) permanece o que o usuário usa no dia a dia.
@@ -50,7 +50,7 @@ Enquanto v2 não estiver pronto, o **agent Python atual** (`agent/`, launchd `co
 
 ```
 ┌─────────────────────────────┐         USB CDC          ┌──────────────┐
-│  App Tessara (Tauri)        │◄── localhost IPC ───────►│   agentd     │
+│  App Tessera (Tauri)        │◄── localhost IPC ───────►│   agentd     │
 │  tray · janela · Doctor UI  │     (sock / HTTP local)  │  Rust daemon │
 └─────────────────────────────┘                          │  capabilities│
                                                          └──────┬───────┘
@@ -69,8 +69,8 @@ Enquanto v2 não estiver pronto, o **agent Python atual** (`agent/`, launchd `co
 | Processo | Papel |
 |---|---|
 | `agentd` | Único dono da porta USB; push/poll; persistência de perfil; Doctor engine |
-| `Tessara.app` | UI; não fala USB direto; pergunta ao agentd |
-| LaunchAgent `com.tessara.agentd` | Sobe agentd no login (substitui `com.tessera.agent` no cutover) |
+| `Tessera.app` | UI; não fala USB direto; pergunta ao agentd |
+| LaunchAgent `com.tessera.agentd` | Sobe agentd no login (substitui `com.tessera.agent` no cutover) |
 
 Durante coexistência: labels e paths **diferentes** (`com.tessera.agentd` + `~/.tessera/agentd/`) para não brigar com o Python.
 
@@ -103,8 +103,8 @@ Verdade no Mac:
 ~/.tessera/
   machine.json          # machine_id estável, display_name (“Mac do trabalho”)
   agentd/
-    config.toml         # toggles: media, focus, aitokens.*, calendar
-    scan.json           # último resultado da varredura
+    config.toml         # toggles: media, focus, aitokens + aitokens_{cursor,claude,codex}, calendar
+    scan.json           # último resultado da varredura (providers + enabled)
     state/              # caches não-secretos (ex.: último Focus ok)
 ```
 
@@ -138,18 +138,23 @@ Regra: **golden tests** — fixtures de linhas capturadas do Python; agentd deve
 
 ## Companion UI (escopo cutover)
 
-Base: `docs/prototypes/agent-ui/index.html`.
+Base: `apps/agent-ui/` (antes `docs/prototypes/agent-ui/`).
 
 | Superfície | Papel |
 |---|---|
 | Welcome → Varredura → Achados → Autorizar → Cabo | Onboarding 1ª vez |
 | Início | Mac ativo + atalhos Doctor / Painel |
-| Painel | Controles aparelho (HTTP local do painel com cabo / APIs já existentes) |
-| No Mac | Toggles do perfil local |
-| PCs | Lista de perfis conhecidos neste agent + “este Mac” |
-| Atividade | Simples + Avançado (log agentd) |
+| Painel | Controles do aparelho (Wi‑Fi `tessera.local`) + board **Na home** (ocultar/exibir widgets). USB não grava dashboard |
+| Widgets | Só widgets **ativos** na home; configs por widget (data com preview, Todoist token, clima cidade, AI Tokens ordem/fontes, Agenda contas). Música/Focus: status + link No Mac — sem fake settings |
+| No Mac | Coleta neste Mac (Música, Focus, Agenda, cotas Cursor/Claude/Codex). Cotas ↔ `show_aitokens_*` no painel (sync bidirecional) |
+| PCs | Perfis do **companion** neste/outros Macs (não inventário do painel). Cabo USB = quem manda agora |
+| Atividade | **Resumo** = feed amigável do log USB/painel (não clona Doctor). **Log** = linhas técnicas. Logs agentd humanizam valores (`estado=…`, `17:00 · título`) |
 | Doctor | Checklist saúde → CTAs |
-| Mais | Update, remover deste Mac |
+| Mais | **Atualizar sozinho** (self-update Auto — ver ADR `0003`), remover deste Mac |
+
+**Hide sticky:** `ensure_media_mac` / `ensure_calendar` no firmware são **one-shot** (`media_mac_restored` / `cal_restored` na NVS). Ocultar no portal/Agente deve persistir após reboot.
+
+**Self-update:** poll `https://gilsondev.github.io/Tessera/latest.json`; com toggle Auto ligado, baixa Release (agentd + Tessera.app), verifica SHA-256 e reinstala sem prompt. Spec site: `2026-10-25-tessera-site-branding-design.md`.
 
 ## Doctor
 
@@ -190,8 +195,8 @@ Calendário e mídia/Focus já contam como P0 se estiverem na paridade.
 Arquivo root `mise.toml`:
 
 - **Tools:** `rust`, `node` (UI), `python` (legacy + scripts até cutover), opcional `pnpm`/`cargo-binstall`.  
-- **Tasks:** `agentd-build`, `agentd-test`, `agentd-run`, `agent-ui-dev`, `agent-ui-build`, `agent-legacy-run`, `agent-pack-v2`, `doctor-smoke`.  
-- Makefile: targets finos podem delegar a `mise run …` sem duplicar versões.
+- **Tasks:** `agentd-build`, `agentd-test`, `agentd-run`, `agent-ui-dev`, `agent-ui-build`, `agent-install` (build + cutover local), `agent-legacy-run`, `agent-pack-v2`, `doctor-smoke`.  
+- Makefile: `make agent-install` / `pack-agentd` delegam a mise/scripts sem depender de agente de IA.
 
 Bootstrap: `mise trust` + `mise install` documentado em `docs/getting-started.md` (addendum no plano mise).
 

@@ -1,9 +1,9 @@
-# Tessara Agent
+# Tessera Agent
 
 > **Legado.** O produto atual é este pacote Python. O redesign (Rust agentd + Tauri) está em
 > `docs/superpowers/specs/2026-10-25-tessera-agent-v2-design.md`. Até o cutover, hotfix aqui; features novas no v2.
 
-Pacote Mac do monorepo Tessara (irmão do firmware em `../src`).
+Pacote Mac do monorepo Tessera (irmão do firmware em `../src`).
 
 Recursos via USB: **AI Tokens** (cotas), **Calendar** (Google, OAuth no Mac) e **MEDIA** (Agora tocando + play/pause/prev/next — Music/Spotify via AppleScript). Ver `capabilities/calendar/README.md`.
 
@@ -32,7 +32,7 @@ Uma linha `claude` no painel. O agente junta as duas superfícies da mesma conta
 2. Claude Desktop — cookies → `GET claude.ai/api/organizations/{org}/usage`
 3. Claude Code — `statusLine` → `~/.tessera/claude_status.json`
 
-A leitura mais recente com `%` válido vence (**% consumido**, não restante). Se a checagem não achar limite novo, mantém `~/.tessara/claude_usage_cache.json` (última cota). Requer Claude Desktop logado (e/ou Code com statusLine instalado pelo `install.command`).
+A leitura mais recente com `%` válido vence (**% consumido**, não restante). Se a checagem não achar limite novo, mantém `~/.tessera/claude_usage_cache.json` (última cota). Requer Claude Desktop logado (e/ou Code com statusLine instalado pelo `install.command`).
 
 ## Layout
 
@@ -71,21 +71,21 @@ PYTHONPATH=src .venv/bin/python -m agent
 
 `PUT /agent/agent.tgz` só aceita upload com a **janela armada**: USB `AGENT_PUSH`, `POST /api/agent/arm`, ou **janela de boot** (~3 min após reset — para `make flash-agent`). Depois do PUT 200 a janela fecha.
 
-Versão: fonte única em `agent/__init__.__version__`. O pack grava `VERSION` no tarball + `agent.version` sidecar; o painel guarda `/tessera/agent.version` (header `X-Tessara-Agent-Version`). `make push-agent` compara e **pula** se igual (`FORCE=1` força).
+Versão: fonte única em `agent/__init__.__version__`. O pack grava `VERSION` no tarball + `agent.version` sidecar; o painel guarda `/tessera/agent.version` (header `X-Tessera-Agent-Version`). `make push-agent` compara e **pula** se igual (`FORCE=1` força).
 
 Atualização no Mac (automática):
 - `make push-agent` / `flash-agent` após o PUT roda `tools/install_agent_mac.sh` (pule com `SKIP_MAC_INSTALL=1`).
-- O agente em `~/.tessera/agent` consulta `/api/state` ~2 min e, se a versão do painel diferir, baixa `install.command` e reinstala (desligue com `TESSARA_AGENT_NO_UPDATE=1`). Host: `TESSARA_HOST`.
+- O agente em `~/.tessera/agent` consulta `/api/state` ~2 min e, se a versão do painel diferir, baixa `install.command` e reinstala (desligue com `TESSERA_AGENT_NO_UPDATE=1`). Host: `TESSERA_HOST`.
 
 ```bash
 # Deploy automatizado (painel já no app, Wi-Fi + SD):
 make push-agent                 # pack + AGENT_PUSH + PUT
 # ou, após firmware:
 make flash-agent                # flash.sh → espera /api/state → push-agent
-# Host do painel: TESSARA_HOST=192.168.1.x make push-agent
+# Host do painel: TESSERA_HOST=192.168.1.x make push-agent
 
 # Manual: pack + portal
-./pack_sd.sh                    # → dist/sd/tessara/agent/agent.tgz
+./pack_sd.sh                    # → dist/sd/tessera/agent/agent.tgz
 # Portal → Agente → escolher agent.tgz → Enviar (arma e envia) → instalar no Mac
 ```
 
@@ -94,5 +94,5 @@ O `.command` o painel gera no `GET /agent/install.command` (download livre).
 Opcional (provisionamento único no Mac com cartão montado):
 
 ```bash
-./pack_sd.sh /Volumes/TESSARA   # grava /tessera/agent/… no cartão
+./pack_sd.sh /Volumes/TESSERA   # grava /tessera/agent/… no cartão
 ```

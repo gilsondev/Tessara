@@ -13,7 +13,7 @@ OAuth Google no Mac; o painel só recebe snapshot/catálogo USB.
 
 Formato esperado: o JSON baixado do Google (`installed` ou `web` com client_id/secret).
 
-3. Reinicie o Agente Tessara.
+3. Reinicie o Agente Tessera.
 4. No portal do painel → **Agenda** → **Adicionar conta** (abre o browser no Mac).
 5. Marque os calendários desejados.
 

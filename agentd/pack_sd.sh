@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Empacota Agent v2 (agentd + Tessara.app) para o cartão SD: /tessera/agentd/
+# Empacota Agent v2 (agentd + Tessera.app) para o cartão SD: /tessera/agentd/
 # Uso: ./pack_sd.sh [destino]
 #   destino = raiz do volume SD montado, ou pasta staging (default: ./dist/sd)
 #
@@ -45,16 +45,23 @@ resolve_agentd_bin() {
     printf '%s' "$AGENTD_BIN"
     return
   fi
-  local target_dir
+  local target_dir cand
   target_dir="$(cd "$ROOT" && cargo metadata --format-version=1 --no-deps 2>/dev/null \
     | python3 -c "import json,sys; print(json.load(sys.stdin)['target_directory'])")"
   if [ -z "$target_dir" ]; then
     target_dir="$ROOT/target"
   fi
-  printf '%s/release/agentd' "$target_dir"
+  # Prefer Tessera (TCC-friendly); fall back to legacy agentd binary name.
+  for cand in Tessera agentd; do
+    if [ -x "$target_dir/release/$cand" ]; then
+      printf '%s/release/%s' "$target_dir" "$cand"
+      return
+    fi
+  done
+  printf '%s/release/Tessera' "$target_dir"
 }
 
-TESSARA_APP="${TESSARA_APP:-$REPO/apps/agent-ui/src-tauri/target/release/bundle/macos/Tessara.app}"
+TESSERA_APP="${TESSERA_APP:-$REPO/apps/agent-ui/src-tauri/target/release/bundle/macos/Tessera.app}"
 
 if [ "${SKIP_BUILD:-0}" != 1 ]; then
   echo "pack_sd: cargo build --release …"
@@ -69,8 +76,8 @@ if [ ! -x "$AGENTD_BIN" ]; then
 fi
 
 if [ "${SKIP_APP:-0}" != 1 ]; then
-  if [ ! -d "$TESSARA_APP" ]; then
-    echo "pack_sd: Tessara.app ausente: $TESSARA_APP" >&2
+  if [ ! -d "$TESSERA_APP" ]; then
+    echo "pack_sd: Tessera.app ausente: $TESSERA_APP" >&2
     echo "  rode: mise run agent-ui-build   ou   SKIP_APP=1 (só agentd)" >&2
     exit 1
   fi
@@ -79,12 +86,13 @@ fi
 rm -rf "$STAGE"
 mkdir -p "$PKG/bin" "$OUT"
 
-cp "$AGENTD_BIN" "$PKG/bin/agentd"
-chmod +x "$PKG/bin/agentd"
+cp "$AGENTD_BIN" "$PKG/bin/Tessera"
+chmod +x "$PKG/bin/Tessera"
+ln -sfn Tessera "$PKG/bin/agentd"
 printf '%s\n' "$VERSION" > "$PKG/VERSION"
 
 if [ "${SKIP_APP:-0}" != 1 ]; then
-  cp -R "$TESSARA_APP" "$PKG/Tessara.app"
+  cp -R "$TESSERA_APP" "$PKG/Tessera.app"
 fi
 
 assert_no_secrets "$PKG"
@@ -94,12 +102,13 @@ printf '%s\n' "$VERSION" > "$OUT/agentd.version"
 
 cat > "$OUT/install.command" <<'EOF'
 #!/bin/bash
-# Tessara Agent v2 — bootstrap no Mac (duplo clique ou: bash install.command [http://painel])
+# Tessera Agent v2 — bootstrap no Mac (duplo clique ou: bash install.command [http://painel])
 set -euo pipefail
-PANEL="${1:-http://tessara.local}"
+PANEL="${1:-http://tessera.local}"
 HERE="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
 INSTALL_ROOT="$HOME/.tessera/agentd"
 BIN_DIR="$INSTALL_ROOT/bin"
+INSTALL_BIN_NAME=Tessera
 LABEL=com.tessera.agentd
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG_DIR="$HOME/.tessera"
@@ -117,14 +126,22 @@ fi
 rm -rf "$INSTALL_ROOT/staging"
 mkdir -p "$INSTALL_ROOT/staging"
 tar -C "$INSTALL_ROOT/staging" -xzf "$TGZ"
-install -m 755 "$INSTALL_ROOT/staging/bin/agentd" "$BIN_DIR/agentd"
-if [ -d "$INSTALL_ROOT/staging/Tessara.app" ]; then
-  rm -rf "/Applications/Tessara.app"
-  cp -R "$INSTALL_ROOT/staging/Tessara.app" /Applications/
+if [ -x "$INSTALL_ROOT/staging/bin/Tessera" ]; then
+  install -m 755 "$INSTALL_ROOT/staging/bin/Tessera" "$BIN_DIR/$INSTALL_BIN_NAME"
+elif [ -x "$INSTALL_ROOT/staging/bin/agentd" ]; then
+  install -m 755 "$INSTALL_ROOT/staging/bin/agentd" "$BIN_DIR/$INSTALL_BIN_NAME"
+else
+  echo "install: falta bin/Tessera no pacote" >&2
+  exit 1
+fi
+ln -sfn "$INSTALL_BIN_NAME" "$BIN_DIR/agentd"
+if [ -d "$INSTALL_ROOT/staging/Tessera.app" ]; then
+  rm -rf "/Applications/Tessera.app"
+  cp -R "$INSTALL_ROOT/staging/Tessera.app" /Applications/
 fi
 rm -rf "$INSTALL_ROOT/staging"
 
-AGENTD="$BIN_DIR/agentd"
+AGENTD="$BIN_DIR/$INSTALL_BIN_NAME"
 UID_NUM="$(id -u)"
 
 cat > "$PLIST" <<PLIST
@@ -156,10 +173,10 @@ launchctl bootout "gui/$UID_NUM/$LABEL" 2>/dev/null || true
 launchctl bootstrap "gui/$UID_NUM" "$PLIST"
 launchctl enable "gui/$UID_NUM/$LABEL" 2>/dev/null || true
 launchctl kickstart -k "gui/$UID_NUM/$LABEL" 2>/dev/null || true
-echo "Tessara agentd instalado → $INSTALL_ROOT"
+echo "Tessera agentd instalado → $INSTALL_ROOT"
 echo "log: $LOG"
-if [ -d /Applications/Tessara.app ]; then
-  open -a Tessara || true
+if [ -d /Applications/Tessera.app ]; then
+  open -a Tessera || true
 fi
 EOF
 chmod +x "$OUT/install.command"

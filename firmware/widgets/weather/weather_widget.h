@@ -1,9 +1,9 @@
 #pragma once
 
-#include "tessara/widget.h"
+#include "tessera/widget.h"
 #include "weather/cache.h"
 
-namespace tessara {
+namespace tessera {
 
 const char *weather_widget_id();
 TsWidget *create_weather_widget();
@@ -12,4 +12,4 @@ TsWidget *create_weather_widget();
 void weather_widget_paint(TsWidget *widget, const weather::View &view);
 void weather_widget_apply_theme(TsWidget *widget);
 
-}  // namespace tessara
+}  // namespace tessera

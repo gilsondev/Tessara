@@ -56,32 +56,12 @@ void format_duration(char *out, size_t n, int minutes) {
 
 void day_title(char *out, size_t n, int day_offset, int count) {
     if (!out || n == 0) return;
-    const char *head = "Hoje";
-    char head_buf[24];
-    if (day_offset == 1) {
-        head = "Amanhã";
-    } else if (day_offset > 1) {
-        snprintf(head_buf, sizeof(head_buf), "Em %d dias", day_offset);
-        head = head_buf;
-    }
-    if (count > 0) snprintf(out, n, "%s · %d", head, count);
-    else snprintf(out, n, "%s", head);
+    (void)day_offset;  // UI is today-only; keep signature for call sites.
+    if (count > 0) snprintf(out, n, "Hoje · %d", count);
+    else snprintf(out, n, "Hoje");
 }
 
-void enable_list_scroll(lv_obj_t *obj) {
-    if (!obj) return;
-    // kit::bare strips CLICKABLE — without it LVGL never feeds the drag to the scroller.
-    lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLL_MOMENTUM);
-    lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLL_ELASTIC);
-    lv_obj_set_scroll_dir(obj, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_ACTIVE);
-    lv_obj_set_scroll_snap_y(obj, LV_SCROLL_SNAP_NONE);
-    lv_obj_set_style_bg_color(obj, theme::muted(), LV_PART_SCROLLBAR);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_40, LV_PART_SCROLLBAR);
-    lv_obj_set_style_width(obj, 3, LV_PART_SCROLLBAR);
-}
+void enable_list_scroll(lv_obj_t *obj) { kit::enable_list_scroll(obj); }
 
 void add_centered_state(const lv_image_dsc_t *icon, const char *title, const char *hint, lv_color_t tone) {
     lv_obj_t *box = kit::bare(list);
@@ -119,7 +99,7 @@ void add_centered_state(const lv_image_dsc_t *icon, const char *title, const cha
 }
 
 void add_summary() {
-    // Next-up card — one glance at what matters first.
+    // Next-up among today's events only (Dia todo first in store order).
     const calendar::Event *next = nullptr;
     for (int i = 0; i < cached.event_count; ++i) {
         if (cached.events[i].day_offset == 0) {
@@ -127,7 +107,7 @@ void add_summary() {
             break;
         }
     }
-    if (!next && cached.event_count > 0) next = &cached.events[0];
+    if (!next) return;
 
     lv_obj_t *card = kit::bare(list);
     lv_obj_set_width(card, lv_pct(100));
@@ -143,11 +123,9 @@ void add_summary() {
     lv_obj_set_style_margin_bottom(card, 10, 0);
 
     lv_obj_t *eyebrow = lv_label_create(card);
-    lv_label_set_text(eyebrow, next && next->day_offset == 0 ? "Próximo hoje" : "Próximo");
+    lv_label_set_text(eyebrow, "Próximo hoje");
     lv_obj_set_style_text_font(eyebrow, &theme::small_font(), 0);
     lv_obj_set_style_text_color(eyebrow, theme::widget_calendar(), 0);
-
-    if (!next) return;
 
     char when[40];
     if (next->all_day) {
@@ -167,16 +145,8 @@ void add_summary() {
     lv_obj_set_style_text_font(title, &theme::body_font(), 0);
     lv_obj_set_style_text_color(title, theme::text_primary(), 0);
 
-    char meta[96];
-    if (next->day_offset == 0) {
-        snprintf(meta, sizeof(meta), "%s", when);
-    } else if (next->day_offset == 1) {
-        snprintf(meta, sizeof(meta), "Amanhã · %s", when);
-    } else {
-        snprintf(meta, sizeof(meta), "Em %d dias · %s", next->day_offset, when);
-    }
     lv_obj_t *sub = lv_label_create(card);
-    lv_label_set_text(sub, meta);
+    lv_label_set_text(sub, when);
     lv_obj_set_style_text_font(sub, &theme::small_font(), 0);
     lv_obj_set_style_text_color(sub, theme::text_secondary(), 0);
 }
@@ -253,8 +223,9 @@ void add_event_into(lv_obj_t *parent, const calendar::Event &event, bool last) {
     }
 }
 
-void add_day_card(int day_offset, int begin, int end) {
-    const int count = end - begin;
+void add_day_card_today(const int *indices, int count) {
+    if (!indices || count <= 0) return;
+
     lv_obj_t *card = kit::bare(list);
     lv_obj_set_width(card, lv_pct(100));
     lv_obj_set_height(card, LV_SIZE_CONTENT);
@@ -271,15 +242,33 @@ void add_day_card(int day_offset, int begin, int end) {
     lv_obj_set_style_margin_bottom(card, 10, 0);
 
     char head[40];
-    day_title(head, sizeof(head), day_offset, count);
+    day_title(head, sizeof(head), 0, count);
     lv_obj_t *label = lv_label_create(card);
     lv_label_set_text(label, head);
     lv_obj_set_style_text_font(label, &theme::label_font(), 0);
     lv_obj_set_style_text_color(label, theme::text_primary(), 0);
     lv_obj_set_style_pad_bottom(label, 4, 0);
 
-    for (int i = begin; i < end; ++i) {
-        add_event_into(card, cached.events[i], i + 1 == end);
+    // Dia todo first, then by start time.
+    int order[calendar::kMaxEvents];
+    for (int i = 0; i < count; ++i) order[i] = indices[i];
+    for (int i = 1; i < count; ++i) {
+        const int key = order[i];
+        int j = i - 1;
+        while (j >= 0) {
+            const calendar::Event &a = cached.events[order[j]];
+            const calendar::Event &b = cached.events[key];
+            const bool key_first =
+                (b.all_day && !a.all_day) ||
+                (b.all_day == a.all_day && b.start_min < a.start_min);
+            if (!key_first) break;
+            order[j + 1] = order[j];
+            --j;
+        }
+        order[j + 1] = key;
+    }
+    for (int k = 0; k < count; ++k) {
+        add_event_into(card, cached.events[order[k]], k + 1 == count);
     }
 }
 
@@ -313,21 +302,18 @@ void rebuild_body() {
         (void)spin;
         return;
     }
-    if (cached.event_count <= 0) {
-        add_centered_state(calendar_icons::busy(), "Agenda livre", "Nada nos próximos 7 dias.", theme::muted());
+    int today_idx[calendar::kMaxEvents];
+    int today_n = 0;
+    for (int i = 0; i < cached.event_count && today_n < calendar::kMaxEvents; ++i) {
+        if (cached.events[i].day_offset == 0) today_idx[today_n++] = i;
+    }
+    if (today_n <= 0) {
+        add_centered_state(calendar_icons::busy(), "Agenda livre", "Nada hoje.", theme::muted());
         return;
     }
 
     add_summary();
-
-    int i = 0;
-    while (i < cached.event_count) {
-        const int day = cached.events[i].day_offset;
-        int j = i + 1;
-        while (j < cached.event_count && cached.events[j].day_offset == day) ++j;
-        add_day_card(day, i, j);
-        i = j;
-    }
+    add_day_card_today(today_idx, today_n);
 
     lv_obj_t *spacer = kit::bare(list);
     lv_obj_set_width(spacer, lv_pct(100));
@@ -350,12 +336,16 @@ void update_status_line() {
         set_status("sem conexão");
         return;
     }
-    if (cached.event_count <= 0) {
+    int today_n = 0;
+    for (int i = 0; i < cached.event_count; ++i) {
+        if (cached.events[i].day_offset == 0) ++today_n;
+    }
+    if (today_n <= 0) {
         set_status("livre");
         return;
     }
     char buf[24];
-    snprintf(buf, sizeof(buf), "%d evento%s", cached.event_count, cached.event_count == 1 ? "" : "s");
+    snprintf(buf, sizeof(buf), "%d evento%s", today_n, today_n == 1 ? "" : "s");
     set_status(buf);
 }
 

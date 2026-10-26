@@ -1,0 +1,187 @@
+name: Agent release
+
+on:
+  push:
+    tags:
+      - "agent-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version sem tag prefix (ex. 0.1.1). Vazio = lê Cargo workspace."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-mac:
+    runs-on: macos-14
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            V="${{ inputs.version }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/agent-v* ]]; then
+            V="${GITHUB_REF#refs/tags/agent-v}"
+          else
+            V="$(python3 -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('agentd/Cargo.toml').read_text())['workspace']['package']['version'])")"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $V"
+
+      - name: Test agentd
+        working-directory: agentd
+        run: cargo test --workspace
+
+      - name: Build agentd (release)
+        working-directory: agentd
+        run: cargo build --release -p agentd
+
+      - name: Build Tessera.app
+        working-directory: apps/agent-ui
+        run: npm install && npm run tauri build
+
+      - name: Package artifacts
+        id: pack
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/tessera-release"
+          mkdir -p "$OUT/stage/bin"
+          AGENTD_BIN="agentd/target/release/Tessera"
+          if [ ! -x "$AGENTD_BIN" ]; then
+            echo "missing $AGENTD_BIN" >&2
+            exit 1
+          fi
+          # Re-build agentd after UI if UI overwrote the binary name collision
+          cargo build --release -p agentd --manifest-path agentd/Cargo.toml
+          install -m 755 agentd/target/release/Tessera "$OUT/stage/bin/Tessera"
+          ln -sfn Tessera "$OUT/stage/bin/agentd"
+
+          APP=""
+          for cand in \
+            "apps/agent-ui/src-tauri/target/release/bundle/macos/Tessera.app" \
+            "agentd/target/release/bundle/macos/Tessera.app"; do
+            if [ -d "$cand" ]; then APP="$cand"; break; fi
+          done
+          if [ -z "$APP" ]; then
+            echo "Tessera.app not found" >&2
+            find apps/agent-ui agentd -path '*/bundle/macos/*.app' 2>/dev/null | head
+            exit 1
+          fi
+          cp -R "$APP" "$OUT/stage/Tessera.app"
+
+          tar -C "$OUT/stage" -czf "$OUT/agentd.tgz" bin
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT/Tessera.app.zip"
+
+          shasum -a 256 "$OUT/agentd.tgz" | awk '{print $1}' > "$OUT/agentd.tgz.sha256"
+          shasum -a 256 "$OUT/Tessera.app.zip" | awk '{print $1}' > "$OUT/Tessera.app.zip.sha256"
+
+          echo "agentd_sha=$(cat "$OUT/agentd.tgz.sha256")" >> "$GITHUB_OUTPUT"
+          echo "app_sha=$(cat "$OUT/Tessera.app.zip.sha256")" >> "$GITHUB_OUTPUT"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+          ls -la "$OUT"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-mac-${{ steps.ver.outputs.version }}
+          path: |
+            ${{ steps.pack.outputs.out }}/agentd.tgz
+            ${{ steps.pack.outputs.out }}/agentd.tgz.sha256
+            ${{ steps.pack.outputs.out }}/Tessera.app.zip
+            ${{ steps.pack.outputs.out }}/Tessera.app.zip.sha256
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/agent-v') || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VER: ${{ steps.ver.outputs.version }}
+          OUT: ${{ steps.pack.outputs.out }}
+        run: |
+          TAG="agent-v${VER}"
+          DRAFT_FLAG=()
+          if [[ "${GITHUB_REF}" != refs/tags/agent-v* ]]; then
+            DRAFT_FLAG=(--draft)
+          fi
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Tessera Agent ${VER}" \
+              --notes "Agentd + Tessera.app ${VER}. Não notarizado (Gatekeeper: Privacidade e Segurança)." \
+              "${DRAFT_FLAG[@]}"
+          fi
+          gh release upload "$TAG" \
+            "$OUT/agentd.tgz" \
+            "$OUT/agentd.tgz.sha256" \
+            "$OUT/Tessera.app.zip" \
+            "$OUT/Tessera.app.zip.sha256" \
+            --clobber
+
+      - name: Write latest.json for Pages
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+          AGENTD_SHA: ${{ steps.pack.outputs.agentd_sha }}
+          APP_SHA: ${{ steps.pack.outputs.app_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json, os, datetime
+          ver = os.environ["VER"]
+          base = f"https://github.com/{os.environ['REPO']}/releases/download/agent-v{ver}"
+          doc = {
+            "version": ver,
+            "released_at": datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+            "agentd_url": f"{base}/agentd.tgz",
+            "app_url": f"{base}/Tessera.app.zip",
+            "sha256": {
+              "agentd": os.environ["AGENTD_SHA"],
+              "app": os.environ["APP_SHA"],
+            },
+          }
+          open("site/public/latest.json", "w", encoding="utf-8").write(json.dumps(doc, indent=2) + "\n")
+          print(json.dumps(doc, indent=2))
+          PY
+
+      - name: Upload latest.json artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: latest-json
+          path: site/public/latest.json
+
+  publish-manifest:
+    needs: build-mac
+    if: startsWith(github.ref, 'refs/tags/agent-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: latest-json
+          path: site/public
+      - name: Commit latest.json on release tag build
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/public/latest.json
+          if git diff --staged --quiet; then
+            echo "no change"
+          else
+            git commit -m "chore(site): latest.json for agent-v${{ needs.build-mac.outputs.version }}"
+            git push origin HEAD:main || git push origin HEAD:master || true
+          fi

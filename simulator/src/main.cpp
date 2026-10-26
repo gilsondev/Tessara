@@ -23,7 +23,7 @@ struct Args {
     std::string scenario = "normal";
     std::string fixtures_dir;
     std::string screenshot;
-    std::string settings_dir = "/tmp/tessara-sim-settings";
+    std::string settings_dir = "/tmp/tessera-sim-settings";
     std::string screen = "home";
     bool headless = false;
     int frames = 8;
@@ -138,7 +138,7 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "sim: lv_sdl_window_create failed\n");
         return 1;
     }
-    lv_sdl_window_set_title(disp, ("Tessara sim — " + scenario.name).c_str());
+    lv_sdl_window_set_title(disp, ("Tessera sim — " + scenario.name).c_str());
     lv_indev_t *mouse = lv_sdl_mouse_create();
     (void)mouse;
 

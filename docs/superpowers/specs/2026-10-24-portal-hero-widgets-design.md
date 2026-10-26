@@ -5,15 +5,15 @@
 
 ## Contexto
 
-Após o lift Tessara e a opção C (copy no pacote clock), o portal misturava hub/Geral (board de widgets sumia) e o hello era demo. Queremos allowlist real no hero e configs web/device mais claras.
+Após o lift Tessera e a opção C (copy no pacote clock), o portal misturava hub/Geral (board de widgets sumia) e o hello era demo. Queremos allowlist real no hero e configs web/device mais claras.
 
 ## Widgets
 
 | ID | Papel | Tile na grade | Detalhe |
 |----|--------|---------------|---------|
-| `org.tessara.greeting` | Saudação no hero | não | não |
-| `org.tessara.date` | Data curta no hero | não | não |
-| `org.tessara.clock` | Hora no hero | opcional | Relógio (hora + data longa + sync) |
+| `org.tessera.greeting` | Saudação no hero | não | não |
+| `org.tessera.date` | Data curta no hero | não | não |
+| `org.tessera.clock` | Hora no hero | opcional | Relógio (hora + data longa + sync) |
 | todoist / weather / aitokens | como hoje | sim | sim |
 
 - Remover hello do catálogo / registry (id legado pode existir só para CSV antigo ignorado).
@@ -27,17 +27,20 @@ Após o lift Tessara e a opção C (copy no pacote clock), o portal misturava hu
 - HTTP / time / settings só via `WidgetContext` (sem Arduino nos pacotes).
 - Shell compõe hero e grade; runtime ownership do mount exclusive no `detail_host`.
 
-## Portal (tessara.local)
+## Portal (tessera.local)
 
 1. Sidebar desktop: **Início** (hub + board “Na home”) + Geral / Agente / Todoist / Clima / AI Tokens.
 2. Geral **não** esconde o board — board só no Início.
 3. Descanso / tempo do relógio: `<input type="range">` + valor; snap no save pelos clamps existentes.
 4. Booleanos (ex.: som): toggle CSS, não chips.
-5. AI Tokens: última atualização + toggles Codex/Claude/Cursor (quais exibir). Sem clonar o detalhe.
+5. AI Tokens: última atualização + toggles Codex/Claude/Cursor (quais exibir) + ordem dos cards. Sem clonar o detalhe.
+6. Data: chips mostram **preview ao vivo** (`datePreview`), não só rótulos Curto/ISO.
+7. Clima: busca de cidade (Open-Meteo) no portal **e** no Agente (Widgets → Clima).
+8. Dashboard: restores one-shot `media_mac_restored` / `cal_restored` — ocultar widget no board é sticky após reboot.
 
 ## Device settings
 
-1. Página Todoist: accent verde Tessara (não vermelho da marca).
+1. Página Todoist: accent verde Tessera (não vermelho da marca).
 2. Página AI Tokens: última atualização + toggles de providers + “Pedir cotas” (sem cards-clone do detalhe).
 
 ## Persistência providers AI

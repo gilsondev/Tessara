@@ -1,19 +1,65 @@
-//! AITOKENS capability — local credential discovery and wire encoding.
-//!
-//! Credential discovery deliberately does not imply quota availability: until a
-//! provider usage request is implemented, a discovered Cursor/Codex session is
-//! reported as unavailable instead of fabricating a 100% quota.
+//! AITOKENS capability — credential discovery + live usage (Cursor/Codex) and
+//! Claude statusLine cache → USB wire line.
 
+mod codex_live;
+mod cursor_live;
+
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, OpenFlags};
 use serde::Deserialize;
 
 pub const AITOKENS_PUSH_INTERVAL_S: u64 = 30;
+/// How often to re-hit Cursor/Codex APIs (USB heartbeat is 30s).
+const USAGE_CACHE_TTL_S: u64 = 60;
+/// Keep last successful per-source numbers this long when live polls fail (spec: ~6h).
+pub const AITOKENS_LAST_GOOD_TTL_S: u64 = 6 * 60 * 60;
+
+#[derive(Debug, Clone)]
+struct LastGoodEntry {
+    source: AiTokenSource,
+    ok_at: Instant,
+}
+
+/// When a fresh poll is unavailable, reuse last-good values until `ttl` since last success.
+pub(crate) fn merge_last_good(
+    store: &mut HashMap<&'static str, LastGoodEntry>,
+    fresh: &[AiTokenSource],
+    now: Instant,
+    ttl: Duration,
+) -> Vec<AiTokenSource> {
+    let mut out = Vec::with_capacity(fresh.len());
+    for src in fresh {
+        if src.available {
+            store.insert(
+                src.id,
+                LastGoodEntry {
+                    source: src.clone(),
+                    ok_at: now,
+                },
+            );
+            out.push(src.clone());
+            continue;
+        }
+        let keep = store.get(src.id).and_then(|entry| {
+            now.checked_duration_since(entry.ok_at)
+                .filter(|age| *age < ttl)
+                .map(|_| entry.source.clone())
+        });
+        if let Some(cached) = keep {
+            out.push(cached);
+            continue;
+        }
+        store.remove(src.id);
+        out.push(src.clone());
+    }
+    out
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceKind {
@@ -152,46 +198,62 @@ impl CursorResolver {
         }
     }
 
-    /// Cursor order: state.vscdb → Keychain → auth.json → environment.
-    pub fn resolve(&self, env_credentials: CursorCredentials) -> Option<CursorSession> {
+    /// Cursor candidates in legacy order (sqlite → keychain → auth.json → env).
+    /// Callers should try each until usage succeeds — a free/stale sqlite ghost
+    /// must not block a working Keychain session.
+    pub fn resolve_all(&self, env_credentials: CursorCredentials) -> Vec<CursorSession> {
+        let mut sessions = Vec::new();
         if let Some(session) = self.read_state_db() {
-            return Some(session);
+            sessions.push(session);
         }
         if self.read_keychain {
             if let Some(session) = self.read_keychain() {
-                return Some(session);
+                sessions.push(session);
             }
         }
         if let Some(session) = self.read_auth_json() {
-            return Some(session);
+            sessions.push(session);
         }
         if env_credentials
             .api_key
             .as_deref()
             .is_some_and(|key| key.starts_with("crsr_"))
         {
-            return Some(CursorSession {
-                access: env_credentials.api_key,
+            sessions.push(CursorSession {
+                access: env_credentials.api_key.clone(),
                 refresh: None,
                 source: CursorSource::ApiKeyEnv,
             });
         }
-        env_credentials
+        if let Some(access) = env_credentials
             .token
             .filter(|token| !token.trim().is_empty())
-            .map(|access| CursorSession {
+        {
+            sessions.push(CursorSession {
                 access: Some(access),
                 refresh: None,
                 source: CursorSource::TokenEnv,
-            })
+            });
+        }
+        sessions
+    }
+
+    /// Cursor order: state.vscdb → Keychain → auth.json → environment.
+    pub fn resolve(&self, env_credentials: CursorCredentials) -> Option<CursorSession> {
+        self.resolve_all(env_credentials).into_iter().next()
     }
 
     fn read_state_db(&self) -> Option<CursorSession> {
         if !self.state_db.is_file() {
             return None;
         }
-        let db =
-            Connection::open_with_flags(&self.state_db, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+        // URI + READONLY matches the Python collector and plays nicer with WAL.
+        let uri = format!("file:{}?mode=ro", self.state_db.display());
+        let db = Connection::open_with_flags(
+            &uri,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+        )
+        .ok()?;
         let access = db_value(&db, "cursorAuth/accessToken");
         let refresh = db_value(&db, "cursorAuth/refreshToken");
         (access.is_some() || refresh.is_some()).then_some(CursorSession {
@@ -314,45 +376,37 @@ pub fn read_claude_status(tessera_home: &Path) -> AiTokenSource {
     AiTokenSource::unavailable("claude")
 }
 
-/// Detects Codex authentication without calling ChatGPT. A detected token
-/// remains unavailable until the WHAM usage client is ported.
+/// Codex auth → ChatGPT WHAM usage (same shape as the legacy Python collector).
 pub fn read_codex_auth(home: &Path) -> AiTokenSource {
-    let path = home.join(".codex/auth.json");
-    let Ok(raw) = fs::read_to_string(path) else {
-        return AiTokenSource::unavailable("codex");
-    };
-    let has_access = serde_json::from_str::<serde_json::Value>(&raw)
-        .ok()
-        .is_some_and(|json| {
-            json.pointer("/tokens/access_token")
-                .and_then(serde_json::Value::as_str)
-                .is_some_and(|token| !token.is_empty())
-        });
-    let _detected = has_access;
-    AiTokenSource::unavailable("codex")
+    codex_live::read_codex(home)
 }
 
-/// Reports a resolved Cursor session without fabricating a quota.
-///
-/// Python resolves a session and then asks Cursor for its live plan usage.
-/// Until that request is ported, expose the same useful failure mode in the
-/// wire line: authentication was found, but no current quota is available.
+/// Resolves Cursor session candidates and fetches live plan usage percentages.
 pub fn read_cursor(resolver: &CursorResolver, env_credentials: CursorCredentials) -> AiTokenSource {
-    match resolver.resolve(env_credentials) {
-        Some(session) => {
-            let source = match session.source {
-                CursorSource::StateDb => "Cursor",
-                CursorSource::Keychain => "Keychain",
-                CursorSource::AuthJson => "auth.json",
-                CursorSource::TokenEnv => "CURSOR_TOKEN",
-                CursorSource::ApiKeyEnv => "CURSOR_API_KEY",
-            };
-            let mut out = AiTokenSource::unavailable("cursor");
-            out.display = format!("{source}: cota indisponível");
-            out
-        }
-        None => AiTokenSource::unavailable("cursor"),
+    let sessions = resolver.resolve_all(env_credentials);
+    if sessions.is_empty() {
+        return AiTokenSource::unavailable("cursor");
     }
+    let mut last = AiTokenSource::unavailable("cursor");
+    for mut session in sessions {
+        if session.source == CursorSource::ApiKeyEnv {
+            if let Some(key) = session.access.clone().filter(|k| k.starts_with("crsr_")) {
+                match cursor_live::exchange_api_key(&key) {
+                    Some(exchanged) => session = exchanged,
+                    None => {
+                        last.display = "CURSOR_API_KEY: exchange falhou".into();
+                        continue;
+                    }
+                }
+            }
+        }
+        let result = cursor_live::fetch_usage(session);
+        if result.available {
+            return result;
+        }
+        last = result;
+    }
+    last
 }
 
 /// Builds the fixed legacy order: Codex, Claude, Cursor.
@@ -368,13 +422,43 @@ fn collect_sources_with_cursor(
     ]
 }
 
+/// Which providers to include in the USB line (agent collect toggles).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AiTokensFilter {
+    pub cursor: bool,
+    pub claude: bool,
+    pub codex: bool,
+}
+
+impl Default for AiTokensFilter {
+    fn default() -> Self {
+        Self {
+            cursor: true,
+            claude: true,
+            codex: true,
+        }
+    }
+}
+
 pub fn collect_sources() -> Vec<AiTokenSource> {
+    collect_sources_filtered(AiTokensFilter::default())
+}
+
+pub fn collect_sources_filtered(filter: AiTokensFilter) -> Vec<AiTokenSource> {
     let home = home_dir();
     let cursor_env = CursorCredentials {
         token: env::var("CURSOR_TOKEN").ok(),
         api_key: env::var("CURSOR_API_KEY").ok(),
     };
-    collect_sources_with_cursor(&home, &CursorResolver::default_home(), cursor_env)
+    let all = collect_sources_with_cursor(&home, &CursorResolver::default_home(), cursor_env);
+    all.into_iter()
+        .filter(|s| match s.id {
+            "cursor" => filter.cursor,
+            "claude" => filter.claude,
+            "codex" => filter.codex,
+            _ => true,
+        })
+        .collect()
 }
 
 fn home_dir() -> PathBuf {
@@ -392,15 +476,66 @@ fn now_s() -> f64 {
 
 pub struct AiTokensCapability {
     last_pushed: Option<String>,
+    cached_line: Option<String>,
+    cached_at: Instant,
+    last_good: HashMap<&'static str, LastGoodEntry>,
+    filter: AiTokensFilter,
 }
 
 impl AiTokensCapability {
     pub fn new() -> Self {
-        Self { last_pushed: None }
+        Self::with_filter(AiTokensFilter::default())
     }
 
-    pub fn build_line(&self) -> String {
-        encode_aitokens_line(&collect_sources())
+    pub fn with_filter(filter: AiTokensFilter) -> Self {
+        Self {
+            last_pushed: None,
+            cached_line: None,
+            cached_at: Instant::now()
+                .checked_sub(Duration::from_secs(USAGE_CACHE_TTL_S))
+                .unwrap_or_else(Instant::now),
+            last_good: HashMap::new(),
+            filter,
+        }
+    }
+
+    pub fn set_filter(&mut self, filter: AiTokensFilter) {
+        if self.filter != filter {
+            self.filter = filter;
+            // Force refresh on next build so toggles apply immediately.
+            self.cached_line = None;
+        }
+    }
+
+    pub fn build_line(&mut self) -> String {
+        if let Some(line) = &self.cached_line {
+            if self.cached_at.elapsed() < Duration::from_secs(USAGE_CACHE_TTL_S) {
+                return line.clone();
+            }
+        }
+        let fresh = collect_sources_filtered(self.filter);
+        let now = Instant::now();
+        let sources = merge_last_good(
+            &mut self.last_good,
+            &fresh,
+            now,
+            Duration::from_secs(AITOKENS_LAST_GOOD_TTL_S),
+        );
+        let line = encode_aitokens_line(&sources);
+        let summary: Vec<String> = sources
+            .iter()
+            .map(|s| {
+                if s.available {
+                    format!("{}={}", s.id, s.display)
+                } else {
+                    format!("{}=—", s.id)
+                }
+            })
+            .collect();
+        eprintln!("Tessera: aitokens refresh ({})", summary.join(", "));
+        self.cached_line = Some(line.clone());
+        self.cached_at = now;
+        line
     }
 
     pub fn last_pushed_line(&self) -> Option<&str> {
@@ -411,7 +546,7 @@ impl AiTokensCapability {
         self.last_pushed = Some(line.to_string());
     }
 
-    pub fn handle_line(&self, text: &str) -> Vec<String> {
+    pub fn handle_line(&mut self, text: &str) -> Vec<String> {
         (text.trim() == "AITOKENS?")
             .then(|| vec![self.build_line()])
             .unwrap_or_default()
@@ -429,7 +564,60 @@ mod tests {
     use super::*;
 
     #[test]
-    fn collect_sources_includes_cursor_auth_json_without_live_quota() {
+    fn preserves_last_good_values_when_next_poll_unavailable() {
+        let good = AiTokenSource::available("cursor", SourceKind::Pct, 80, "10% · 20%", "01 jan");
+        let bad = AiTokenSource::unavailable("cursor");
+        let mut store = HashMap::new();
+        let now = Instant::now();
+        store.insert(
+            "cursor",
+            LastGoodEntry {
+                source: good.clone(),
+                ok_at: now,
+            },
+        );
+        let merged = merge_last_good(
+            &mut store,
+            &[bad],
+            now,
+            Duration::from_secs(AITOKENS_LAST_GOOD_TTL_S),
+        );
+        let c = merged.iter().find(|s| s.id == "cursor").unwrap();
+        assert!(c.available, "must keep serving numbers, not empty");
+        assert_eq!(c.display, "10% · 20%");
+        assert_eq!(c.value, 80);
+    }
+
+    #[test]
+    fn clears_last_good_after_ttl_hours() {
+        let good = AiTokenSource::available("cursor", SourceKind::Pct, 80, "10% · 20%", "01 jan");
+        let bad = AiTokenSource::unavailable("cursor");
+        let now = Instant::now();
+        let ok_at = now
+            .checked_sub(Duration::from_secs(AITOKENS_LAST_GOOD_TTL_S + 60))
+            .expect("instant supports 6h subtract");
+        let mut store = HashMap::new();
+        store.insert(
+            "cursor",
+            LastGoodEntry {
+                source: good,
+                ok_at,
+            },
+        );
+        let merged = merge_last_good(
+            &mut store,
+            std::slice::from_ref(&bad),
+            now,
+            Duration::from_secs(AITOKENS_LAST_GOOD_TTL_S),
+        );
+        let c = merged.iter().find(|s| s.id == "cursor").unwrap();
+        assert!(!c.available);
+        assert_ne!(c.display, "10% · 20%");
+        assert!(!store.contains_key("cursor"));
+    }
+
+    #[test]
+    fn collect_sources_includes_cursor_slot_when_auth_json_present() {
         let temp = tempfile::tempdir().unwrap();
         let auth = temp.path().join("auth.json");
         fs::write(&auth, r#"{"accessToken":"test-access"}"#).unwrap();
@@ -443,9 +631,26 @@ mod tests {
             .expect("Cursor source");
 
         assert_eq!(source.id, "cursor");
+        // Live API will fail with a fake token; still report the cursor slot.
         assert!(!source.available);
-        assert_eq!(source.kind, SourceKind::None);
-        assert_eq!(source.value, 0);
-        assert_eq!(source.display, "auth.json: cota indisponível");
+        assert!(
+            source.display.contains("401")
+                || source.display.contains("refresh")
+                || source.display == "—",
+            "display={}",
+            source.display
+        );
+    }
+
+    #[test]
+    #[ignore = "hits live Cursor/Codex APIs"]
+    fn live_collect_sources_prints_wire_line() {
+        let line = encode_aitokens_line(&collect_sources());
+        eprintln!("live AITOKENS line: {line}");
+        assert!(line.starts_with("AITOKENS\tv1\t"));
+        assert!(
+            line.contains("\tcursor\t1\t") || line.contains("\tcodex\t1\t"),
+            "expected at least one live source: {line}"
+        );
     }
 }

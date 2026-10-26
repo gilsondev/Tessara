@@ -423,10 +423,37 @@ void set_block_visible(Block &block, bool show) {
     else lv_obj_add_flag(block.box, LV_OBJ_FLAG_HIDDEN);
 }
 
+void paint_offline(Block &block, const aitokens::Source *src, bool ready) {
+    set_block_visible(block, true);
+    const char *msg = !ready ? "…" : (src && src->display[0] && strcmp(src->display, "—") != 0) ? src->display
+                                                                                                  : "offline";
+    set_if(block.value, msg);
+    set_if(block.sub, "sem cotas agora");
+    style_block_alert(block, 100, false);
+    if (block.dual) {
+        if (block.row1_label) set_if(block.row1_label, "—");
+        if (block.row2_label) set_if(block.row2_label, "—");
+        if (block.dual_used) {
+            set_bar_used(block, block.bar, block.stripes, &block.last_fill, 0, false);
+            if (block.bar2) {
+                anim_bar(block.bar2, block.stripes2, &block.last_fill2, 0, false, theme::muted(), false);
+            }
+        } else {
+            set_bar_remaining(block, 0, false);
+            if (block.bar2) {
+                anim_bar(block.bar2, block.stripes2, &block.last_fill2, 0, false, theme::muted(), false);
+            }
+        }
+    } else {
+        set_bar_remaining(block, 0, false);
+    }
+}
+
 void paint_source(Block &block, const aitokens::Source *src, bool ready) {
     if (!block.value || !block.sub) return;
     if (!source_ok(src, ready)) {
-        set_block_visible(block, false);
+        // Enabled path calls paint_source only when show_* is on — keep block visible.
+        paint_offline(block, src, ready);
         return;
     }
     set_block_visible(block, true);
@@ -673,16 +700,19 @@ void aitokens_page::paint(const aitokens::View &view) {
     if (device.show_aitokens_cursor) paint_source(cursor_block, aitokens::find(view, "cursor"), view.ready);
     else set_block_visible(cursor_block, false);
 
-    const bool any = (device.show_aitokens_codex && source_ok(aitokens::find(view, "codex"), view.ready)) ||
-                     (device.show_aitokens_claude && source_ok(aitokens::find(view, "claude"), view.ready)) ||
-                     (device.show_aitokens_cursor && source_ok(aitokens::find(view, "cursor"), view.ready));
+    const bool any_ok = (device.show_aitokens_codex && source_ok(aitokens::find(view, "codex"), view.ready)) ||
+                        (device.show_aitokens_claude && source_ok(aitokens::find(view, "claude"), view.ready)) ||
+                        (device.show_aitokens_cursor && source_ok(aitokens::find(view, "cursor"), view.ready));
+    const bool any_shown =
+        device.show_aitokens_codex || device.show_aitokens_claude || device.show_aitokens_cursor;
     if (awaiting_refresh) {
         set_status("atualizando…");
         return;
     }
     const char *status = "";
     if (!view.ready) status = "ligar Bridge";
-    else if (!any) status = "nenhuma fonte";
+    else if (!any_shown) status = "nenhuma fonte";
+    else if (!any_ok) status = "sem cotas agora";
     else if (view.stale) status = "desatualizado";
     set_status(status);
 }

@@ -6,6 +6,9 @@ include/secrets.h
 simulator/build/
 agent/dist/
 agentd/dist/
+agentd/target/
+apps/agent-ui/src-tauri/target/
+apps/agent-ui/src-tauri/src-tauri/
 agent/.venv/
 tmp/
 *.ppm

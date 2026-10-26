@@ -1,11 +1,11 @@
 [package]
-name = "tessara-caps-focus"
+name = "tessera-caps-focus"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
-tessara-protocol = { path = "../protocol" }
+tessera-protocol = { path = "../protocol" }
 
 [dev-dependencies]

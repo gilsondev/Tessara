@@ -1,9 +1,11 @@
 [package]
-name = "tessara-caps-media"
+name = "tessera-caps-media"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-tessara-protocol = { path = "../protocol" }
+tessera-protocol = { path = "../protocol" }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+ureq = { version = "2.12", default-features = false, features = ["tls"] }
 
 [dev-dependencies]

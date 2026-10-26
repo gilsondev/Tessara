@@ -1,5 +1,5 @@
 [package]
-name = "tessara-usb"
+name = "tessera-usb"
 version.workspace = true
 edition.workspace = true
 
@@ -8,4 +8,4 @@ serialport = "4"
 thiserror.workspace = true
 
 [dev-dependencies]
-tessara-protocol = { path = "../protocol" }
+tessera-protocol = { path = "../protocol" }

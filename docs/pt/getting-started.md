@@ -62,7 +62,7 @@ make finish-host
 make sim
 ```
 
-Artefatos E2E: `/tmp/tessara-sim-out/` (ou `$SIM_OUT`).
+Artefatos E2E: `/tmp/tessera-sim-out/` (ou `$SIM_OUT`).
 
 ## Placa (opcional)
 

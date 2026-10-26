@@ -7,26 +7,17 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use tessara_protocol::focus_line;
+use tessera_protocol::focus_line;
 
 pub const FOCUS_PUSH_INTERVAL_S: u64 = 10;
-pub const FOCUS_POLL_INTERVAL_S: u64 = 2;
+/// Safety-net poll; Focus wakes come from DNC + Assertions mtime on mac_events.
+pub const FOCUS_POLL_INTERVAL_S: u64 = 8;
 
 const ID_MAX: usize = 63;
 const NAME_MAX: usize = 40;
 
 static SHORTCUT_NAMES: OnceLock<Mutex<(Instant, std::collections::HashSet<String>)>> =
     OnceLock::new();
-
-const CONTROL_CENTER_FALLBACK: &[(&str, &str)] = &[
-    ("nao-perturbe", "Não Perturbe"),
-    ("pessoal", "Pessoal"),
-    ("trabalho", "Trabalho"),
-    ("sono", "Sono"),
-    ("menos-interrupcoes", "Menos Interrupções"),
-    ("exercicio", "Exercício"),
-    ("estudos", "Estudos"),
-];
 
 const SLUG_TO_APPLE: &[(&str, &str)] = &[
     ("nao-perturbe", "com.apple.donotdisturb.mode.default"),
@@ -41,21 +32,21 @@ const SLUG_TO_APPLE: &[(&str, &str)] = &[
 const SILENT_ON: &[(&str, &[&str])] = &[
     (
         "nao-perturbe",
-        &["Tessara Focus Não Perturbe", "Definir Não Perturbe"],
+        &["Tessera Focus Não Perturbe", "Definir Não Perturbe"],
     ),
-    ("pessoal", &["Tessara Focus Pessoal"]),
-    ("trabalho", &["Tessara Focus Trabalho"]),
-    ("sono", &["Tessara Focus Sono"]),
+    ("pessoal", &["Tessera Focus Pessoal"]),
+    ("trabalho", &["Tessera Focus Trabalho"]),
+    ("sono", &["Tessera Focus Sono"]),
     (
         "menos-interrupcoes",
-        &["Tessara Focus Menos Interrupções"],
+        &["Tessera Focus Menos Interrupções"],
     ),
-    ("exercicio", &["Tessara Focus Exercício"]),
-    ("estudos", &["Tessara Focus Estudos"]),
+    ("exercicio", &["Tessera Focus Exercício"]),
+    ("estudos", &["Tessera Focus Estudos"]),
 ];
 
 const SILENT_OFF: &[&str] = &[
-    "Tessara Focus Off",
+    "Tessera Focus Off",
     "Desativar Não Perturbe",
     "Interromper Foco no Trabalho",
     "Interromper Foco nos Estudos",
@@ -258,17 +249,8 @@ fn modes_from_db() -> Vec<FocusMode> {
 }
 
 fn list_modes() -> Vec<FocusMode> {
-    let from_db = modes_from_db();
-    if !from_db.is_empty() {
-        return from_db;
-    }
-    CONTROL_CENTER_FALLBACK
-        .iter()
-        .map(|(id, name)| FocusMode {
-            id: (*id).to_string(),
-            name: (*name).to_string(),
-        })
-        .collect()
+    // Only modes configured on this Mac — never invent Control Center defaults.
+    modes_from_db()
 }
 
 fn active_from_assertions(modes: &[FocusMode]) -> (String, String) {
@@ -474,7 +456,7 @@ fn shortcut_on_candidates(mid: &str, name: &str) -> Vec<String> {
         }
     }
     let display = display_name(mid, name);
-    out.push(format!("Tessara Focus {display}"));
+    out.push(format!("Tessera Focus {display}"));
     if slug_key == "nao-perturbe" {
         out.push(MUTABLE_ON_SHORTCUT.to_string());
     }
@@ -482,6 +464,128 @@ fn shortcut_on_candidates(mid: &str, name: &str) -> Vec<String> {
     out.into_iter()
         .filter(|l| seen.insert(l.clone()))
         .collect()
+}
+
+fn apple_epoch_now() -> f64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs_f64() - 978_307_200.0)
+        .unwrap_or(0.0)
+}
+
+fn resolve_apple_mode_id(mode_id: &str, modes: &[FocusMode]) -> String {
+    let target = mode_id.trim();
+    if target.is_empty() {
+        return String::new();
+    }
+    if let Some(row) = row_for_id(target, modes) {
+        // Prefer real Apple identifiers from ModeConfigurations.
+        if row.id.contains('.') {
+            return row.id;
+        }
+        let slug_key = focus_slug(&row.id, &row.name);
+        for (s, apple) in SLUG_TO_APPLE {
+            if *s == slug_key.as_str() {
+                return (*apple).to_string();
+            }
+        }
+        return row.id;
+    }
+    let slug_key = focus_slug(target, target);
+    for (s, apple) in SLUG_TO_APPLE {
+        if *s == slug_key.as_str() || *apple == target {
+            return (*apple).to_string();
+        }
+    }
+    target.to_string()
+}
+
+fn notify_focus_changed(_enabled: bool) {
+    // Restart DND daemon so Control Center re-reads Assertions.json.
+    if let Ok(uid) = Command::new("id").arg("-u").output() {
+        let uid = String::from_utf8_lossy(&uid.stdout).trim().to_string();
+        for svc in [
+            format!("gui/{uid}/com.apple.donotdisturbd"),
+            format!("gui/{uid}/com.apple.donotdisturb.private.donotdisturbd"),
+        ] {
+            let _ = Command::new("launchctl")
+                .args(["kickstart", "-k", &svc])
+                .output();
+        }
+    }
+}
+
+/// Write Focus assertion directly (works without Tessera Shortcuts installed).
+fn apply_focus_via_assertions(apple_mode_id: Option<&str>) -> bool {
+    let path = assertions_db_path();
+    let mut root = match load_plist_json(&path) {
+        Some(v) => v,
+        None => {
+            // Minimal envelope if file missing.
+            serde_json::json!({
+                "header": {"version": 8, "timestamp": apple_epoch_now()},
+                "data": [{
+                    "storeInvalidationRecords": [],
+                    "storeInvalidationRequestRecords": [],
+                    "storeAssertionRecords": []
+                }]
+            })
+        }
+    };
+    let now = apple_epoch_now();
+    if let Some(header) = root.get_mut("header").and_then(|h| h.as_object_mut()) {
+        header.insert("timestamp".into(), serde_json::json!(now));
+    }
+    let Some(data) = root.get_mut("data").and_then(|d| d.as_array_mut()) else {
+        return false;
+    };
+    if data.is_empty() {
+        data.push(serde_json::json!({
+            "storeInvalidationRecords": [],
+            "storeInvalidationRequestRecords": [],
+            "storeAssertionRecords": []
+        }));
+    }
+    let Some(block) = data.get_mut(0).and_then(|b| b.as_object_mut()) else {
+        return false;
+    };
+    let records = match apple_mode_id {
+        Some(mid) if !mid.is_empty() => {
+            let uuid = format!(
+                "{:08X}-{:04X}-{:04X}-{:04X}-{:012X}",
+                (now as u64) & 0xFFFF_FFFF,
+                ((now as u64) >> 16) & 0xFFFF,
+                0x4000 | (((now as u64) >> 32) & 0x0FFF),
+                0x8000 | (((now as u64) >> 40) & 0x3FFF),
+                (now as u64).wrapping_mul(0x9E37) & 0xFFFF_FFFF_FFFF
+            );
+            serde_json::json!([{
+                "assertionUUID": uuid,
+                "assertionSource": {
+                    "assertionClientIdentifier": "dev.tessera.agentd",
+                    "assertionSourceDeviceIdentifier": "local"
+                },
+                "assertionStartDateTimestamp": now,
+                "assertionDetails": {
+                    "assertionDetailsIdentifier": "dev.tessera.agentd.focus",
+                    "assertionDetailsModeIdentifier": mid,
+                    "assertionDetailsReason": "user-action"
+                }
+            }])
+        }
+        _ => serde_json::json!([]),
+    };
+    block.insert("storeAssertionRecords".into(), records);
+    let Ok(text) = serde_json::to_string_pretty(&root) else {
+        return false;
+    };
+    if std::fs::write(&path, text).is_err() {
+        eprintln!("agentd: focus assertions write falhou em {}", path.display());
+        return false;
+    }
+    notify_focus_changed(apple_mode_id.is_some());
+    true
 }
 
 pub fn set_focus(mode_id: &str, modes: &[FocusMode]) -> bool {
@@ -510,6 +614,12 @@ pub fn set_focus(mode_id: &str, modes: &[FocusMode]) -> bool {
             return true;
         }
     }
+
+    let apple = resolve_apple_mode_id(target, modes);
+    if apply_focus_via_assertions(Some(&apple)) {
+        eprintln!("agentd: focus ON {name:?} via Assertions.json ({apple})");
+        return true;
+    }
     eprintln!("agentd: focus SET falhou para {name:?}");
     false
 }
@@ -520,6 +630,10 @@ pub fn clear_focus() -> bool {
             eprintln!("agentd: focus OFF via {name:?}");
             return true;
         }
+    }
+    if apply_focus_via_assertions(None) {
+        eprintln!("agentd: focus OFF via Assertions.json");
+        return true;
     }
     eprintln!("agentd: focus OFF falhou");
     false

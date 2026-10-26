@@ -1,4 +1,4 @@
-use tessara_caps_aitokens::{encode_aitokens_line, AiTokenSource, SourceKind};
+use tessera_caps_aitokens::{encode_aitokens_line, AiTokenSource, SourceKind};
 
 #[test]
 fn golden_mixed_sources_matches_python_wire_format() {

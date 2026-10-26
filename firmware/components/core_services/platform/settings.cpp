@@ -3,6 +3,8 @@
 #include "hal/board.h"
 #include "services/text.h"
 
+#include <cstring>
+
 #if __has_include("secrets.h")
 #include "secrets.h"
 #endif
@@ -176,12 +178,28 @@ dashboard::Layout settings::load_dashboard() {
     const bool has_tiles = dashboard::is_enabled(layout, dashboard::id_todoist()) ||
                            dashboard::is_enabled(layout, dashboard::id_weather()) ||
                            dashboard::is_enabled(layout, dashboard::id_aitokens());
+    bool dirty = false;
     if (has_tiles && !has_hero) {
         dashboard::set_enabled(layout, dashboard::id_greeting(), true);
         dashboard::set_enabled(layout, dashboard::id_date(), true);
         dashboard::set_enabled(layout, dashboard::id_clock(), true);
-        save_dashboard(layout);
+        dirty = true;
     }
+    // Stage tiles (Música + Mac/Focus) landed after many devices already saved a CSV.
+    // One-shot only — later intentional hides in the portal/agent must stick.
+    if (!get_bool("media_mac_restored", false)) {
+        if (dashboard::ensure_media_mac(layout)) dirty = true;
+        if (auto *s = store()) s->set_bool(kNamespace, "media_mac_restored", true);
+    }
+    // Brand rename org.tessara→org.tessera dropped Agenda from some NVS CSVs (then
+    // rewrote defaults without it). Restore once; later intentional hides stick.
+    if (!get_bool("cal_restored", false)) {
+        if (dashboard::ensure_calendar(layout)) dirty = true;
+        if (auto *s = store()) s->set_bool(kNamespace, "cal_restored", true);
+    }
+    // Persist rewritten org.tessera.* ids even when nothing else changed.
+    if (csv[0] && std::strstr(csv, "org.tessara.")) dirty = true;
+    if (dirty) save_dashboard(layout);
     return layout;
 }
 

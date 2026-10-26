@@ -1,4 +1,4 @@
-use tessara_caps_calendar::{encode_calendar_line, CalendarEvent};
+use tessera_caps_calendar::{encode_calendar_line, CalendarEvent};
 
 #[test]
 fn main_event_line_matches_golden() {

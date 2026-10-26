@@ -1,4 +1,4 @@
-# Tessara Agent UI
+# Tessera Agent UI
 
 Companion do Agent v2. Protótipo de referência: `docs/prototypes/agent-ui/`.
 
@@ -6,4 +6,4 @@ Companion do Agent v2. Protótipo de referência: `docs/prototypes/agent-ui/`.
 mise run agent-ui-dev
 ```
 
-Requer agentd para dados vivos (`TESSARA_AGENTD_IPC_PORT`, default 19792).
+Requer agentd para dados vivos (`TESSERA_AGENTD_IPC_PORT`, default 19792).

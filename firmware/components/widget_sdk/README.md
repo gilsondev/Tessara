@@ -1,6 +1,6 @@
 # widget_sdk
 
-Tessara Widget SDK v0. Headers under `tessara/`.
+Tessera Widget SDK v0. Headers under `tessera/`.
 
 - `widget.h` — `TsWidget`, `WidgetManifest`, `WidgetContext`
 - `services.h` — `ITime`, `ISettings`, `IHttp`, `IScheduler`, `ILogger`, `HostServices`

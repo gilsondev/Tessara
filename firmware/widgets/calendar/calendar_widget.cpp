@@ -6,21 +6,22 @@
 
 namespace {
 
-const tessara::WidgetManifest kManifest = {
-    "org.tessara.calendar",
+const tessera::WidgetManifest kManifest = {
+    "org.tessera.calendar",
     "Calendário",
     160,
     120,
     false,
-    tessara::HomeTile::Calendar,
+    tessera::HomeTile::Calendar,
     0x1A73E8,
+    true,  // supports_home_tile_size
 };
 
-class CalendarWidget final : public tessara::TsWidget {
+class CalendarWidget final : public tessera::TsWidget {
 public:
-    const tessara::WidgetManifest &manifest() const override { return kManifest; }
+    const tessera::WidgetManifest &manifest() const override { return kManifest; }
 
-    void mount(tessara::WidgetContext &context) override {
+    void mount(tessera::WidgetContext &context) override {
         generation_ = context.generation();
         if (context.logger()) context.logger()->info("calendar.mount");
         auto *parent = static_cast<lv_obj_t *>(context.ui_parent());
@@ -53,16 +54,16 @@ private:
 
 }  // namespace
 
-const char *tessara::calendar_widget_id() { return kManifest.id; }
+const char *tessera::calendar_widget_id() { return kManifest.id; }
 
-tessara::TsWidget *tessara::create_calendar_widget() { return new CalendarWidget(); }
+tessera::TsWidget *tessera::create_calendar_widget() { return new CalendarWidget(); }
 
-void tessara::calendar_widget_paint(TsWidget *widget, const calendar::View &view) {
+void tessera::calendar_widget_paint(TsWidget *widget, const calendar::View &view) {
     if (!widget) return;
     static_cast<CalendarWidget *>(widget)->paint(view);
 }
 
-void tessara::calendar_widget_apply_theme(TsWidget *widget) {
+void tessera::calendar_widget_apply_theme(TsWidget *widget) {
     if (!widget) return;
     static_cast<CalendarWidget *>(widget)->apply_theme();
 }

@@ -37,7 +37,7 @@
           },
           {
             "id": "7003",
-            "content": "Atualizar Tessara docs",
+            "content": "Atualizar Tessera docs",
             "priority": 2,
             "meta": "amanhã"
           }
@@ -71,8 +71,8 @@
     "pack_on_sd": false
   },
   "dashboard": [
-    "org.tessara.todoist",
-    "org.tessara.weather",
-    "org.tessara.aitokens"
+    "org.tessera.todoist",
+    "org.tessera.weather",
+    "org.tessera.aitokens"
   ]
 }

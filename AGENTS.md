@@ -1,4 +1,4 @@
-# Tessara — agent harness
+# Tessera — agent harness
 
 This repository is the product trunk for firmware / simulator / agent / portal.
 
@@ -20,7 +20,7 @@ Todoist is not product MVP acceptance; it is a mutable widget pattern.
 After any implementation (`make help`):
 
 1. **`make test`** — PlatformIO `native`
-2. **`make e2e`** — simulator; inspect `$SIM_OUT` (default `/tmp/tessara-sim-out/`)
+2. **`make e2e`** — simulator; inspect `$SIM_OUT` (default `/tmp/tessera-sim-out/`)
 3. **`make flash`** — only when 1 and 2 are green
 4. **`make device`** — USB monitor / manual check on JC3248
 

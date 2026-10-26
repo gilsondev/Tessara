@@ -1,11 +1,11 @@
 # Repository structure
 
-Aligned with the product architecture (see [`guides/architecture.md`](guides/architecture.md)). Product name: **Tessara**.
+Aligned with the product architecture (see [`guides/architecture.md`](guides/architecture.md)). Product name: **Tessera**.
 
 ## Tree
 
 ```text
-Tessara/
+Tessera/
   firmware/                       # ESP32 app (PlatformIO src_dir)
     main.cpp
     components/

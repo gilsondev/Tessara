@@ -1,13 +1,20 @@
 //! CALENDAR capability — Google OAuth data stays on the Mac; only snapshots
 //! and calendar catalog metadata are sent to the panel over USB.
 
+mod fetch;
+
 use std::fs;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
-const EVENT_LIMIT: usize = 12;
+pub(crate) const EVENT_LIMIT: usize = 12;
 const TITLE_LIMIT: usize = 47;
 const LOCATION_LIMIT: usize = 31;
 const STATUS_LIMIT: usize = 40;
+/// How often to refresh events from Google (in-process, no external scripts).
+pub const CALENDAR_REFRESH_INTERVAL_S: u64 = 120;
+/// USB heartbeat for calendar snapshot (panel drops stale views).
+pub const CALENDAR_PUSH_INTERVAL_S: u64 = 30;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CalendarEvent {
@@ -69,7 +76,7 @@ pub fn encode_calendar_line(linked: bool, events: &[CalendarEvent]) -> String {
     }
     for event in events
         .iter()
-        .filter(|event| event.day_offset <= 6)
+        .filter(|event| event.day_offset == 0)
         .take(EVENT_LIMIT)
     {
         let (start, end, all_day) = if event.all_day {
@@ -121,6 +128,10 @@ impl CalendarPaths {
     pub fn selection_json(&self) -> PathBuf {
         self.root.join("selection.json")
     }
+
+    pub fn events_cache_json(&self) -> PathBuf {
+        self.root.join("events_cache.json")
+    }
 }
 
 pub struct CalendarCapability {
@@ -128,6 +139,7 @@ pub struct CalendarCapability {
     selected: Vec<String>,
     last_pushed: Option<String>,
     auth_status: String,
+    last_refresh: Instant,
 }
 
 impl CalendarCapability {
@@ -141,6 +153,9 @@ impl CalendarCapability {
             selected,
             last_pushed: None,
             auth_status: String::new(),
+            last_refresh: Instant::now()
+                .checked_sub(Duration::from_secs(CALENDAR_REFRESH_INTERVAL_S))
+                .unwrap_or_else(Instant::now),
         }
     }
 
@@ -173,22 +188,86 @@ impl CalendarCapability {
         self.has_account()
     }
 
-    pub fn build_events_line(&self) -> String {
-        // OAuth refresh / Google API fetching is deliberately not ported yet.
-        // An existing local token still reports as linked without exposing it.
-        encode_calendar_line(self.linked(), &[])
+    fn load_cached_events(&self) -> Vec<CalendarEvent> {
+        let Ok(raw) = fs::read_to_string(self.paths.events_cache_json()) else {
+            return Vec::new();
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            return Vec::new();
+        };
+        let Some(items) = value.get("events").and_then(|v| v.as_array()) else {
+            return Vec::new();
+        };
+        items
+            .iter()
+            .filter_map(|item| {
+                Some(CalendarEvent {
+                    start_hhmm: item.get("start_hhmm")?.as_str()?.to_string(),
+                    end_hhmm: item.get("end_hhmm")?.as_str()?.to_string(),
+                    all_day: item.get("all_day").and_then(|v| v.as_bool()).unwrap_or(false),
+                    title: item.get("title")?.as_str()?.to_string(),
+                    location: item
+                        .get("location")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    duration_min: item
+                        .get("duration_min")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as u32,
+                    color: item
+                        .get("color")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("1A73E8")
+                        .to_string(),
+                    day_offset: item
+                        .get("day_offset")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as u8,
+                })
+            })
+            // Stale cache may still hold tomorrow+ from older agentd builds.
+            .filter(|e| e.day_offset == 0)
+            .take(EVENT_LIMIT)
+            .collect()
+    }
+
+    /// Refresh Google Calendar events in-process (no external scripts).
+    pub fn refresh_cache_if_due(&mut self) {
+        if self.last_refresh.elapsed() < Duration::from_secs(CALENDAR_REFRESH_INTERVAL_S) {
+            return;
+        }
+        self.last_refresh = Instant::now();
+        if !self.has_account() {
+            return;
+        }
+        match fetch::refresh_events_cache(&self.paths, &self.selected) {
+            Ok(n) => eprintln!("Tessera: calendar refresh ok ({n} eventos)"),
+            Err(err) => eprintln!("Tessera: calendar refresh: {err}"),
+        }
+    }
+
+    pub fn build_events_line(&mut self) -> String {
+        self.refresh_cache_if_due();
+        encode_calendar_line(self.linked(), &self.load_cached_events())
     }
 
     pub fn build_catalog_lines(&self) -> Vec<String> {
         let status = if self.has_account() {
-            "catálogo indisponível"
+            if self.paths.events_cache_json().is_file() {
+                "ok"
+            } else {
+                "conta ok · sincronizando"
+            }
         } else if self.paths.client_json().is_file() {
             "sem conta"
         } else {
             "configure client.json"
         };
+        let ok = self.has_account();
         vec![format!(
-            "CALENDAR_CATALOG\tv1\t0\t{}",
+            "CALENDAR_CATALOG\tv1\t{}\t{}",
+            if ok { "1" } else { "0" },
             wire_field(status, STATUS_LIMIT)
         )]
     }
@@ -223,7 +302,14 @@ impl CalendarCapability {
                     self.build_catalog_lines().remove(0),
                 ];
             }
-            self.auth_status = "OAuth ainda não implementado".to_string();
+            if self.has_account() {
+                self.auth_status = "conta ligada".to_string();
+                return vec![
+                    self.auth_line(false, &self.auth_status),
+                    self.build_catalog_lines().remove(0),
+                ];
+            }
+            self.auth_status = "adicione a conta no portal".to_string();
             return vec![self.auth_line(false, &self.auth_status)];
         }
         if raw.starts_with("CALENDAR_CATALOG?") {
@@ -238,6 +324,9 @@ impl CalendarCapability {
                     .map(ToOwned::to_owned)
                     .collect(),
             );
+            self.last_refresh = Instant::now()
+                .checked_sub(Duration::from_secs(CALENDAR_REFRESH_INTERVAL_S))
+                .unwrap_or_else(Instant::now);
             let mut reply = vec![self.build_events_line()];
             reply.extend(self.build_catalog_lines());
             return reply;
@@ -260,6 +349,37 @@ impl Default for CalendarCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encode_drops_tomorrow_events() {
+        let line = encode_calendar_line(
+            true,
+            &[
+                CalendarEvent {
+                    start_hhmm: "0900".into(),
+                    end_hhmm: "1000".into(),
+                    all_day: false,
+                    title: "Hoje".into(),
+                    location: "".into(),
+                    duration_min: 60,
+                    color: "1A73E8".into(),
+                    day_offset: 0,
+                },
+                CalendarEvent {
+                    start_hhmm: "1100".into(),
+                    end_hhmm: "1200".into(),
+                    all_day: false,
+                    title: "Amanhã".into(),
+                    location: "".into(),
+                    duration_min: 60,
+                    color: "1A73E8".into(),
+                    day_offset: 1,
+                },
+            ],
+        );
+        assert!(line.contains("Hoje"));
+        assert!(!line.contains("Amanhã"));
+    }
 
     #[test]
     fn encodes_main_event_line_like_python() {

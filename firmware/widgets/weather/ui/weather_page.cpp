@@ -237,12 +237,7 @@ void build_into(lv_obj_t *parent) {
     lv_obj_set_style_pad_hor(list, theme::kListPad, 0);
     lv_obj_set_style_pad_bottom(list, theme::kListPad, 0);
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_scroll_dir(list, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_ACTIVE);
-    lv_obj_set_style_bg_color(list, theme::muted(), LV_PART_SCROLLBAR);
-    lv_obj_set_style_bg_opa(list, LV_OPA_40, LV_PART_SCROLLBAR);
-    lv_obj_set_style_width(list, 3, LV_PART_SCROLLBAR);
+    kit::enable_list_scroll(list);
 }
 
 }  // namespace

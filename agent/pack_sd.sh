@@ -1,5 +1,5 @@
 #!/bin/sh
-# Empacota o Tessara Agent para o cartão SD do painel: /tessera/agent/
+# Empacota o Tessera Agent para o cartão SD do painel: /tessera/agent/
 # Uso: ./pack_sd.sh [destino]
 #   destino = raiz do volume SD montado, ou pasta staging (default: ./dist/sd)
 set -e
@@ -19,9 +19,9 @@ tar -C "$STAGE/pkg" -czf "$OUT/agent.tgz" .
 
 cat > "$OUT/install.command" <<'EOF'
 #!/bin/bash
-# Tessara Agent — bootstrap no Mac (duplo clique ou: bash install.command [http://painel])
+# Tessera Agent — bootstrap no Mac (duplo clique ou: bash install.command [http://painel])
 set -euo pipefail
-PANEL="${1:-http://tessara.local}"
+PANEL="${1:-http://tessera.local}"
 HERE="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
 INSTALL_ROOT="$HOME/.tessera/agent"
 LABEL=com.tessera.agent
@@ -105,7 +105,7 @@ PLIST
 launchctl bootstrap "gui/$UID_NUM" "$PLIST"
 launchctl enable "gui/$UID_NUM/$LABEL" 2>/dev/null || true
 launchctl kickstart -k "gui/$UID_NUM/$LABEL" 2>/dev/null || true
-echo "Tessara Agent instalado → $INSTALL_ROOT"
+echo "Tessera Agent instalado → $INSTALL_ROOT"
 echo "log: $LOG"
 EOF
 chmod +x "$OUT/install.command"

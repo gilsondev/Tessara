@@ -1,4 +1,4 @@
-//! USB line codec — Tessara agent ↔ panel.
+//! USB line codec — Tessera agent ↔ panel.
 //!
 //! Field layout matches `agent/src/agent/protocol.py` and capability encoders.
 

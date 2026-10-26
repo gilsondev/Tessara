@@ -1,10 +1,10 @@
 #pragma once
 
-#include "tessara/widget.h"
+#include "tessera/widget.h"
 
-namespace tessara {
+namespace tessera {
 
 const char *date_widget_id();
 TsWidget *create_date_widget();
 
-}  // namespace tessara
+}  // namespace tessera

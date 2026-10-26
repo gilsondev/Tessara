@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use tessara_caps_aitokens::{CursorCredentials, CursorResolver};
-use tessara_caps_calendar::CalendarPaths;
+use tessera_caps_aitokens::{CursorCredentials, CursorResolver};
+use tessera_caps_calendar::CalendarPaths;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -43,13 +43,17 @@ pub struct ScanResult {
 #[derive(Debug, Clone)]
 pub struct ScanRoots {
     pub home: PathBuf,
+    /// `~/Applications` (per-user installs).
     pub applications: PathBuf,
+    /// `/Applications` (system installs — Spotify, Cursor, Claude, …).
+    pub system_applications: PathBuf,
 }
 
 impl ScanRoots {
     pub fn from_home(home: PathBuf) -> Self {
         Self {
             applications: home.join("Applications"),
+            system_applications: PathBuf::from("/Applications"),
             home,
         }
     }
@@ -59,6 +63,12 @@ impl ScanRoots {
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
         Self::from_home(home)
+    }
+
+    /// True if `Name.app` exists in user or system Applications.
+    pub fn has_app(&self, bundle_name: &str) -> bool {
+        self.applications.join(bundle_name).is_dir()
+            || self.system_applications.join(bundle_name).is_dir()
     }
 }
 
@@ -101,7 +111,6 @@ impl ScanConfigEnabled {
 }
 
 fn detect_cursor(roots: &ScanRoots, enabled: bool) -> ScanItem {
-    let app = roots.applications.join("Cursor.app");
     let state_db = roots
         .home
         .join("Library/Application Support/Cursor/User/globalStorage/state.vscdb");
@@ -110,7 +119,7 @@ fn detect_cursor(roots: &ScanRoots, enabled: bool) -> ScanItem {
         state_db.clone(),
         vec![auth.clone(), roots.home.join(".config/cursor/auth.json")],
     );
-    let has_install = app.is_dir() || state_db.is_file() || auth.is_file();
+    let has_install = roots.has_app("Cursor.app") || state_db.is_file() || auth.is_file();
     let state = if !has_install {
         ScanState::Missing
     } else if resolver.resolve(CursorCredentials::default()).is_some() {
@@ -126,8 +135,7 @@ fn detect_cursor(roots: &ScanRoots, enabled: bool) -> ScanItem {
 }
 
 fn detect_claude(roots: &ScanRoots, enabled: bool) -> ScanItem {
-    let app = roots.applications.join("Claude.app");
-    let has_app = app.is_dir();
+    let has_app = roots.has_app("Claude.app");
     let tessera = roots.home.join(".tessera");
     let status_ok = tessera.join("claude_status.json").is_file()
         || tessera.join("claude_usage_cache.json").is_file();
@@ -176,9 +184,7 @@ fn auth_has_access_token(path: &Path) -> bool {
 }
 
 fn detect_media(roots: &ScanRoots, enabled: bool) -> ScanItem {
-    let spotify = roots.applications.join("Spotify.app");
-    let music = PathBuf::from("/Applications/Music.app");
-    let state = if spotify.is_dir() || music.is_dir() {
+    let state = if roots.has_app("Spotify.app") || roots.has_app("Music.app") {
         ScanState::Ready
     } else {
         ScanState::Missing
@@ -257,7 +263,10 @@ mod tests {
     use std::fs;
 
     fn roots(temp: &tempfile::TempDir) -> ScanRoots {
-        ScanRoots::from_home(temp.path().to_path_buf())
+        let mut r = ScanRoots::from_home(temp.path().to_path_buf());
+        // Isolate from the real /Applications so host Spotify/Music don't leak into tests.
+        r.system_applications = temp.path().join("SystemApplications");
+        r
     }
 
     #[test]
@@ -297,6 +306,24 @@ mod tests {
             },
         );
         let media = r.found.iter().find(|i| i.id == "media").unwrap();
+        assert_eq!(media.state, ScanState::Ready);
+    }
+
+    #[test]
+    fn media_ready_when_system_spotify_present() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut r = roots(&temp);
+        let sys = temp.path().join("SystemApps");
+        fs::create_dir_all(sys.join("Spotify.app")).unwrap();
+        r.system_applications = sys;
+        let result = run_scan(
+            &r,
+            ScanConfigEnabled {
+                media: true,
+                ..Default::default()
+            },
+        );
+        let media = result.found.iter().find(|i| i.id == "media").unwrap();
         assert_eq!(media.state, ScanState::Ready);
     }
 

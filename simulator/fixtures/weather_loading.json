@@ -43,8 +43,8 @@
     "pack_on_sd": true
   },
   "dashboard": [
-    "org.tessara.todoist",
-    "org.tessara.weather",
-    "org.tessara.aitokens"
+    "org.tessera.todoist",
+    "org.tessera.weather",
+    "org.tessera.aitokens"
   ]
 }

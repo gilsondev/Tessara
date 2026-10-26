@@ -1,12 +1,12 @@
-# Tessara Agent (MVP) — settings, install, AI Tokens como 1º recurso
+# Tessera Agent (MVP) — settings, install, AI Tokens como 1º recurso
 
-**Grilling:** Q1=Agente Tessara · Q2=AI Tokens configs = resumo das fontes · Q3/Q3b=web baixa `.command` · Q4=bootstrap em `~/.tessera/` · SD guarda o pacote · Abordagem A.
+**Grilling:** Q1=Agente Tessera · Q2=AI Tokens configs = resumo das fontes · Q3/Q3b=web baixa `.command` · Q4=bootstrap em `~/.tessera/` · SD guarda o pacote · Abordagem A.
 
 **Relacionado:** `2026-10-24-ai-tokens-design.md` (cotas/USB `AITOKENS`). Este spec **substitui** a parte “Configurações / Bridge no hub de AI Tokens” daquele doc. Glossário: Bridge = transporte USB do agente (termo legado na docs técnicas).
 
 ## Visão
 
-O **Tessara Agent** é o processo no Mac que fala com o painel. O antigo “AI Tokens Bridge” é o embrião desse agente. **AI Tokens (cotas)** é o **primeiro recurso**; depois entram outros sinais/comandos no mesmo agente e na mesma seção de configurações.
+O **Tessera Agent** é o processo no Mac que fala com o painel. O antigo “AI Tokens Bridge” é o embrião desse agente. **AI Tokens (cotas)** é o **primeiro recurso**; depois entram outros sinais/comandos no mesmo agente e na mesma seção de configurações.
 
 ## O que a pessoa vê
 
@@ -14,19 +14,19 @@ O **Tessara Agent** é o processo no Mac que fala com o painel. O antigo “AI T
 
 | Entrada | Papel |
 |---|---|
-| **Agente Tessara** | Status e instalação; hub futuro do agente |
+| **Agente Tessera** | Status e instalação; hub futuro do agente |
 | **AI Tokens** | Resumo visual das fontes (cards); **sem** instalação |
 
 Subtítulo do hub Agente: algo como `USB · status e instalação`.
 
-### Página Agente Tessara — aparelho
+### Página Agente Tessera — aparelho
 
 - Status claro: Off / Ok / Falha / Desatualizado (+ motivo curto).
 - Nota: instalar pelo site no notebook (não roda `install` no ESP).
 - Sem pedido de cotas aqui (fica em AI Tokens).
 - Sem toggles de fontes nesta entrega.
 
-### Página Agente Tessara — web (notebook)
+### Página Agente Tessera — web (notebook)
 
 - Mesmo status (lido do painel).
 - **Baixar instalador** → serve arquivo do **cartão SD** (não da flash).
@@ -37,7 +37,7 @@ Subtítulo do hub Agente: algo como `USB · status e instalação`.
 
 - Três cards compactos (Codex / Claude / Cursor): valor, barra, reset — alinhados ao visual da tela do widget.
 - Botão / ação **Pedir cotas** → `AITOKENS?` (1º recurso do agente; disparado daqui, não da página Agente).
-- Rodapé fino: “Cotas via Agente Tessara”.
+- Rodapé fino: “Cotas via Agente Tessera”.
 - Sem bloco de Bridge/instalação.
 
 ### AI Tokens — web
@@ -89,7 +89,7 @@ AGENT\tv1\t0\t<motivo_curto>
 
 ## Critério de pronto
 
-- Hub mostra **Agente Tessara** e **AI Tokens** separados (aparelho + web).
+- Hub mostra **Agente Tessera** e **AI Tokens** separados (aparelho + web).
 - Download do instalador só via SD; flash do firmware não cresce com o tarball.
 - Após `.command`, painel mostra Ok (ou Falha com motivo) via `AGENT`.
 - AI Tokens nas configs = cards das fontes, sem instalação.

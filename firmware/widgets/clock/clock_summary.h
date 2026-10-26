@@ -1,6 +1,6 @@
 #pragma once
 
-#include "tessara/services.h"
+#include "tessera/services.h"
 
 #include <stdint.h>
 
@@ -33,7 +33,7 @@ struct Summary {
 
 Summary from_parts(int hour, int minute, int wday, int day, int month, int year, bool synced,
                    Options opts = {});
-Summary from_snapshot(const tessara::TimeSnapshot &snap, Options opts = {});
+Summary from_snapshot(const tessera::TimeSnapshot &snap, Options opts = {});
 
 TimeFormat parse_time_format(const char *value);
 DateFormat parse_date_format(const char *value);

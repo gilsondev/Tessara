@@ -9,7 +9,7 @@ void test_open_todoist_and_back(void) {
     nav::State state;
     nav::open_todoist(state);
     TEST_ASSERT_EQUAL(int(nav::Screen::Detail), int(state.screen));
-    TEST_ASSERT_EQUAL_STRING("org.tessara.todoist", state.widget_id);
+    TEST_ASSERT_EQUAL_STRING("org.tessera.todoist", state.widget_id);
     TEST_ASSERT_FALSE(state.wants_fetch);
     nav::back(state);
     TEST_ASSERT_EQUAL(int(nav::Screen::Home), int(state.screen));
@@ -21,15 +21,15 @@ void test_open_clock(void) {
     nav::State state;
     nav::open_clock(state);
     TEST_ASSERT_EQUAL(int(nav::Screen::Detail), int(state.screen));
-    TEST_ASSERT_EQUAL_STRING("org.tessara.clock", state.widget_id);
+    TEST_ASSERT_EQUAL_STRING("org.tessera.clock", state.widget_id);
     TEST_ASSERT_FALSE(state.wants_fetch);
 }
 
 void test_open_detail_generic(void) {
     nav::State state;
-    nav::open_detail(state, "org.tessara.weather");
+    nav::open_detail(state, "org.tessera.weather");
     TEST_ASSERT_EQUAL(int(nav::Screen::Detail), int(state.screen));
-    TEST_ASSERT_EQUAL_STRING("org.tessara.weather", state.widget_id);
+    TEST_ASSERT_EQUAL_STRING("org.tessera.weather", state.widget_id);
 }
 
 void test_open_settings_does_not_fetch(void) {

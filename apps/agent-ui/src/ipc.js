@@ -1,6 +1,6 @@
 import { DOCTOR_FIXTURE, LOGS_FIXTURE_LINES } from "./fixtures.js";
 
-/** agentd localhost IPC (TESSARA_AGENTD_IPC_PORT / VITE_AGENTD_PORT, default 19792). */
+/** agentd localhost IPC (TESSERA_AGENTD_IPC_PORT / VITE_AGENTD_PORT, default 19792). */
 export const AGENTD_PORT = Number(
   (typeof import.meta !== "undefined" &&
     import.meta.env &&
@@ -98,6 +98,180 @@ export async function fetchLogs(tail = 200) {
   } catch {
     return { lines: LOGS_FIXTURE_LINES, demo: true };
   }
+}
+
+/** @returns {Promise<object>} */
+export async function fetchPanelState() {
+  const r = await fetch(agentdUrl("/v1/panel/state"), {
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 3),
+  });
+  if (!r.ok) throw new Error(`panel/state ${r.status}`);
+  return r.json();
+}
+
+/** @param {object} patch */
+export async function postPanelSettings(patch) {
+  const r = await fetch(agentdUrl("/v1/panel/settings"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 3),
+  });
+  if (!r.ok) throw new Error(`panel/settings ${r.status}`);
+  return r.json();
+}
+
+/**
+ * Namespaced widget setting on the device (portal `/api/widget_settings`).
+ * @param {string} id widget id e.g. org.tessera.calendar
+ * @param {string} key e.g. home_tile_size
+ * @param {string|number|boolean} value
+ */
+export async function postWidgetSettings(id, key, value) {
+  const r = await fetch(agentdUrl("/v1/panel/widget_settings"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, key, value }),
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 3),
+  });
+  if (!r.ok) throw new Error(`panel/widget_settings ${r.status}`);
+  return r.json();
+}
+
+/**
+ * Show/hide widgets on the panel home (portal `/api/dashboard`).
+ * @param {{ id: string, title?: string, shown: boolean }[]} widgets
+ */
+export async function postPanelDashboard(widgets) {
+  const r = await fetch(agentdUrl("/v1/panel/dashboard"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ widgets }),
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 3),
+  });
+  if (!r.ok) throw new Error(`panel/dashboard ${r.status}`);
+  return r.json();
+}
+
+export async function postPanelRefresh() {
+  const r = await fetch(agentdUrl("/v1/panel/refresh"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 3),
+  });
+  if (!r.ok) throw new Error(`panel/refresh ${r.status}`);
+  return r.json();
+}
+
+/** @param {string} token */
+export async function postPanelToken(token) {
+  const r = await fetch(agentdUrl("/v1/panel/token"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 4),
+  });
+  if (!r.ok) throw new Error(`panel/token ${r.status}`);
+  return r.json();
+}
+
+/** @param {object} body city | {name,latitude,longitude} */
+export async function postPanelWeather(body) {
+  const r = await fetch(agentdUrl("/v1/panel/weather"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 4),
+  });
+  if (!r.ok) throw new Error(`panel/weather ${r.status}`);
+  return r.json();
+}
+
+/** @param {string} selection comma-separated calendar ids */
+export async function postCalendarSelection(selection) {
+  const r = await fetch(agentdUrl("/v1/panel/calendar/selection"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ selection }),
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 4),
+  });
+  if (!r.ok) throw new Error(`panel/calendar/selection ${r.status}`);
+  return r.json();
+}
+
+export async function postCalendarAddAccount() {
+  const r = await fetch(agentdUrl("/v1/panel/calendar/add_account"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 4),
+  });
+  if (!r.ok) throw new Error(`panel/calendar/add_account ${r.status}`);
+  return r.json();
+}
+
+/** @returns {Promise<object>} */
+export async function fetchUpdate() {
+  const r = await fetch(agentdUrl("/v1/update"), {
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 2),
+  });
+  if (!r.ok) throw new Error(`update ${r.status}`);
+  return r.json();
+}
+
+/**
+ * @param {{ auto_update?: boolean, check?: boolean }} body
+ * @returns {Promise<object>}
+ */
+export async function postUpdate(body = {}) {
+  const r = await fetch(agentdUrl("/v1/update"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 30),
+  });
+  if (!r.ok) throw new Error(`update ${r.status}`);
+  return r.json();
+}
+
+/**
+ * Register Tessera in the TCC list for `pane`, return deep-link + hint.
+ * @param {string} pane full_disk_access | automation | login_items | calendar
+ * @returns {Promise<{ ok: boolean, pane: string, settings_url: string, binary_path: string, hint: string }>}
+ */
+export async function preparePermission(pane) {
+  const r = await fetch(agentdUrl("/v1/permissions/prepare"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pane }),
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 2),
+  });
+  if (!r.ok) throw new Error(`permissions/prepare ${r.status}`);
+  return r.json();
+}
+
+/**
+ * Open System Settings to the privacy pane (Tauri) or fallback `window.open`.
+ * @param {string} pane
+ */
+export async function openPrivacySettings(pane) {
+  const prep = await preparePermission(pane);
+  // Reveal Tessera.app (brand icon) in Finder for FDA — never a Terminal binary.
+  const reveal =
+    pane === "full_disk_access" || pane === "automation"
+      ? prep.binary_path || null
+      : null;
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (typeof invoke === "function") {
+    await invoke("open_privacy_settings", {
+      url: prep.settings_url,
+      revealPath: reveal,
+    });
+  } else {
+    window.open(prep.settings_url, "_blank");
+  }
+  return prep;
 }
 
 /** agentd reachable and healthy (`ok: true` in /v1/status). */

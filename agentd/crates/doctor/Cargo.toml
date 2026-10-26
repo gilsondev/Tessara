@@ -1,13 +1,13 @@
 [package]
-name = "tessara-doctor"
+name = "tessera-doctor"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
-tessara-caps-media = { path = "../caps-media" }
-tessara-profile = { path = "../profile" }
-tessara-scan = { path = "../scan" }
+tessera-caps-media = { path = "../caps-media" }
+tessera-profile = { path = "../profile" }
+tessera-scan = { path = "../scan" }
 
 [dev-dependencies]
 serde_json.workspace = true

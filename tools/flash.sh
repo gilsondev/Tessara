@@ -2,6 +2,11 @@
 # Build, reboot the board into the ROM bootloader over USB and flash it.
 set -e
 cd "$(dirname "$0")/.."
+# agentd KeepAlive holds the serial port — pause it for the 1200-baud reclaim.
+UID_NUM="$(id -u)"
+launchctl bootout "gui/$UID_NUM/com.tessera.agentd" 2>/dev/null || true
+pkill -f '/.tessera/agentd/bin/' 2>/dev/null || true
+sleep 0.5
 .venv/bin/pio run -e jc3248w535
 .venv/bin/python - <<'PY'
 import glob, time, serial
@@ -33,3 +38,8 @@ else:
     raise SystemExit("bootloader nao apareceu")
 PY
 .venv/bin/pio run -t upload --upload-port /dev/cu.usbmodem1401
+# Resume agentd if the LaunchAgent plist is present.
+if [ -f "$HOME/Library/LaunchAgents/com.tessera.agentd.plist" ]; then
+  launchctl bootstrap "gui/$UID_NUM" "$HOME/Library/LaunchAgents/com.tessera.agentd.plist" 2>/dev/null || true
+  launchctl kickstart -k "gui/$UID_NUM/com.tessera.agentd" 2>/dev/null || true
+fi

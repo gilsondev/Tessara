@@ -23,13 +23,13 @@ void test_summary_pending_when_a_visible_list_has_no_cache(void) {
     TEST_ASSERT_TRUE(summary.pending);
 }
 
-void test_home_count_stays_loading_while_lists_warm(void) {
+void test_home_count_shows_partial_while_lists_warm(void) {
     todoist::Summary summary = {};
     summary.total = 3;
     summary.pending = true;
     char text[16];
     todoist::format_home_count(summary, text, sizeof(text));
-    TEST_ASSERT_EQUAL_STRING("…", text);
+    TEST_ASSERT_EQUAL_STRING("3", text);
 }
 
 void test_home_count_ellipsis_only_when_nothing_ready(void) {

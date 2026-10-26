@@ -17,8 +17,8 @@ Hardware is **optional** for most firmware work. Prefer `make finish-host` first
 ## 1. Clone
 
 ```bash
-git clone <your-fork-or-url> Tessara
-cd Tessara
+git clone <your-fork-or-url> Tessera
+cd Tessera
 ```
 
 Product specs may also exist in a sibling `Terrara` docs tree used by the owner. This repository’s guides under `docs/` are enough to build, test, and author widgets.
@@ -96,7 +96,7 @@ This runs:
 1. `pio test -e native` — domain, allowlist, compose, weather parse, …
 2. Simulator build + headless screenshots for many fixtures
 
-Artifacts land in `/tmp/tessara-sim-out/` (override with `SIM_OUT=…`). Inspect PNGs/BMPs when UI changes.
+Artifacts land in `/tmp/tessera-sim-out/` (override with `SIM_OUT=…`). Inspect PNGs/BMPs when UI changes.
 
 Interactive window:
 

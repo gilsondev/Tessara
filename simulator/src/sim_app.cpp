@@ -22,7 +22,7 @@ sim_app::State *g_app = nullptr;
 
 DeviceInfo device_info_from(const Scenario &s) {
     DeviceInfo info = {};
-    std::snprintf(info.host, sizeof(info.host), "tessara.local");
+    std::snprintf(info.host, sizeof(info.host), "tessera.local");
     if (s.wifi_online && !s.wifi_ip.empty()) {
         std::snprintf(info.ip, sizeof(info.ip), "%s", s.wifi_ip.c_str());
     }

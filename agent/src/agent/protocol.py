@@ -1,4 +1,4 @@
-"""Linhas USB Tessara (tab-separadas, \\n)."""
+"""Linhas USB Tessera (tab-separadas, \\n)."""
 
 from __future__ import annotations
 

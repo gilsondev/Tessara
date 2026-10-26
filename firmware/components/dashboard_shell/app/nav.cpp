@@ -19,13 +19,13 @@ void set_detail(nav::State &state, const char *widget_id) {
 
 void nav::open_detail(State &state, const char *widget_id) { set_detail(state, widget_id); }
 
-void nav::open_todoist(State &state) { set_detail(state, "org.tessara.todoist"); }
+void nav::open_todoist(State &state) { set_detail(state, "org.tessera.todoist"); }
 
-void nav::open_weather(State &state) { set_detail(state, "org.tessara.weather"); }
+void nav::open_weather(State &state) { set_detail(state, "org.tessera.weather"); }
 
-void nav::open_aitokens(State &state) { set_detail(state, "org.tessara.aitokens"); }
+void nav::open_aitokens(State &state) { set_detail(state, "org.tessera.aitokens"); }
 
-void nav::open_clock(State &state) { set_detail(state, "org.tessara.clock"); }
+void nav::open_clock(State &state) { set_detail(state, "org.tessera.clock"); }
 
 void nav::open_settings(State &state) {
     state.screen = Screen::Settings;

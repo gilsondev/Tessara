@@ -3,9 +3,9 @@
 #include "platform/daytime.h"
 #include "platform/device_http.h"
 #include "platform/widget_settings.h"
-#include "tessara/host_clock.h"
-#include "tessara/memory_services.h"
-#include "tessara/runtime.h"
+#include "tessera/host_clock.h"
+#include "tessera/memory_services.h"
+#include "tessera/runtime.h"
 
 #include <Arduino.h>
 #include <cstdio>
@@ -13,15 +13,15 @@
 
 namespace {
 
-tessara::MemoryTime g_time;
-tessara::MemoryScheduler g_scheduler;
-tessara::MemoryLogger g_logger;
-tessara::HostServices g_bag;
+tessera::MemoryTime g_time;
+tessera::MemoryScheduler g_scheduler;
+tessera::MemoryLogger g_logger;
+tessera::HostServices g_bag;
 
-class DaytimeBridge final : public tessara::ITime {
+class DaytimeBridge final : public tessera::ITime {
 public:
-    tessara::TimeSnapshot now() const override {
-        tessara::TimeSnapshot snap = g_time.snap;
+    tessera::TimeSnapshot now() const override {
+        tessera::TimeSnapshot snap = g_time.snap;
         int hour = 0, minute = 0, second = 0, wday = 0, day = 1, month = 0, year = 0;
         if (daytime::local(hour, minute, second, wday, day, month, year)) {
             snap.hour = hour;
@@ -40,7 +40,7 @@ public:
 };
 
 // ISettings keys arrive as "<instance_id>/<key>" from WidgetContext.
-class NvsWidgetSettings final : public tessara::ISettings {
+class NvsWidgetSettings final : public tessera::ISettings {
 public:
     bool get(const char *key, char *out, size_t out_len) const override {
         char id[64] = {}, leaf[32] = {};
@@ -74,9 +74,9 @@ bool g_bound = false;
 
 }  // namespace
 
-tessara::HostServices &tessara::host_services() { return g_bag; }
+tessera::HostServices &tessera::host_services() { return g_bag; }
 
-void tessara::bind_host_services() {
+void tessera::bind_host_services() {
     if (!g_bound) {
         g_bag.time = &g_daytime;
         g_bag.settings = &g_settings;

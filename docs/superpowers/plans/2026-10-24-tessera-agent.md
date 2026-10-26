@@ -1,8 +1,8 @@
-# Tessara Agent MVP Implementation Plan
+# Tessera Agent MVP Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Separar **Agente Tessara** (status + instalação via SD/web) de **AI Tokens** (cards + Pedir cotas) no aparelho e no portal, com handshake `AGENT` e bootstrap em `~/.tessera/agent/`.
+**Goal:** Separar **Agente Tessera** (status + instalação via SD/web) de **AI Tokens** (cards + Pedir cotas) no aparelho e no portal, com handshake `AGENT` e bootstrap em `~/.tessera/agent/`.
 
 **Architecture:** Domínio `agent::` (RAM) parseia `AGENT\tv1\t…`. Settings ganha `Page::Agent`. Portal serve `/agent/install.command` e `/agent/agent.tgz` **streamando do SD** (`/tessera/agent/…`), sem embutir na flash. Mac: evoluir `tools/aitokens_bridge` → `tools/tessera_agent` (launchd `com.tessera.agent`, envia `AGENT` no connect + mantém `AITOKENS`).
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Nome de UI: **Agente Tessara** (não “Bridge” no hub).
+- Nome de UI: **Agente Tessera** (não “Bridge” no hub).
 - Pacote do instalador só no **SD** (`/tessera/agent/`); flash não cresce com tarball.
 - **Pedir cotas** (`AITOKENS?`) só na página AI Tokens das configs (não na página Agente).
 - Cotas USB continuam `AITOKENS` / `AITOKENS?` (compatível).
@@ -31,7 +31,7 @@
 | `src/ui/settings_panel.*` | `Page::Agent` + AI Tokens cards + Pedir cotas |
 | `src/ui/shell.cpp` / `ui.h` | Wire `show_agent` / refresh cotas a partir de settings |
 | `src/services/web_portal.*` / `web_page.h` | `agent` no `/api/state`; stream SD; página Agente |
-| `agent/` (monorepo sibling) | Mac Tessara Agent + pack_sd |
+| `agent/` (monorepo sibling) | Mac Tessera Agent + pack_sd |
 | `tools/aitokens_bridge/*` | Legado → aponta para `agent/` |
 
 ---
@@ -144,7 +144,7 @@ Preencher em `publish` a partir do controller. Em `state()` JSON:
 
 **Comportamento:**
 - `enum class Page`: adicionar `Agent` (manter `AiTokens`).
-- Hub: `link_row` **Agente Tessara** (tom distinto, ex. `palette::primary()` ou novo `widget_agent`) detalhe = Off / Ok / Falha / desatualizado; **AI Tokens** detalhe = resumo curto das fontes (não mais “Bridge ok”).
+- Hub: `link_row` **Agente Tessera** (tom distinto, ex. `palette::primary()` ou novo `widget_agent`) detalhe = Off / Ok / Falha / desatualizado; **AI Tokens** detalhe = resumo curto das fontes (não mais “Bridge ok”).
 - `Page::Agent` (`fill_agent_status`):
   - Título status + motivo
   - Nota install via web
@@ -152,7 +152,7 @@ Preencher em `publish` a partir do controller. Em `state()` JSON:
 - `Page::AiTokens` (`fill_aitokens_status` redesign):
   - Três cards compactos (nome, display, barra simples se pct, reset)
   - Botão **Pedir cotas** → callback `on_request_aitokens` (shell/controller manda `AITOKENS?`)
-  - Rodapé: “Cotas via Agente Tessara”
+  - Rodapé: “Cotas via Agente Tessera”
   - Remover texto de install/launchd
 
 **Interfaces:**
@@ -169,7 +169,7 @@ void show_agent(const agent::View &view);
 
 - [ ] **Step 3:** Flash + abrir Configurações: duas entradas; Agente sem cotas; AI Tokens com botão.
 
-- [ ] **Step 4: Commit** `feat(settings): Agente Tessara page; AI Tokens cards + pedir cotas`
+- [ ] **Step 4: Commit** `feat(settings): Agente Tessera page; AI Tokens cards + pedir cotas`
 
 ---
 
@@ -248,7 +248,7 @@ Documentar no card: após baixar, no Terminal: `bash install-….command http://
 
 Adicionar em Snapshot/state: `"agent_pack": true` se ambos os arquivos existem.
 
-- [ ] **Step 4: Commit** `feat(web): Agente Tessara page and SD-streamed installer`
+- [ ] **Step 4: Commit** `feat(web): Agente Tessera page and SD-streamed installer`
 
 ---
 
@@ -292,7 +292,7 @@ No `main`, após `ser.open`: `ser.write(agent_hello(True))` (ou False se sources
 
 - [ ] **Step 4:** Atualizar `docs/superpowers/specs/2026-10-24-ai-tokens-design.md` (settings Bridge → “ver tessera-agent-design”).
 
-- [ ] **Step 5: Commit** `docs: point AI Tokens settings at Tessara Agent spec`
+- [ ] **Step 5: Commit** `docs: point AI Tokens settings at Tessera Agent spec`
 
 ---
 

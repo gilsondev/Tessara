@@ -1,6 +1,6 @@
 # Parity Task 4 — CALENDAR
 
-- Added `tessara-caps-calendar` with `CALENDAR\tv1` event encoder and golden.
+- Added `tessera-caps-calendar` with `CALENDAR\tv1` event encoder and golden.
 - USB loop now routes `CALENDAR?`, catalog, selection, and auth commands.
 - Selection remains local; no OAuth tokens leave the Mac.
 - Missing `~/.tessera/calendar/client.json` returns clear non-fatal status lines.

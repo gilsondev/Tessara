@@ -1,4 +1,4 @@
-# Tessara documentation
+# Tessera documentation
 
 **Default language: English.** Portuguese alternatives: [`pt/`](pt/).
 

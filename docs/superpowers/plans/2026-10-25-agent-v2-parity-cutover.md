@@ -235,7 +235,7 @@ EOF
 - Optional: move `agent/` → `archive/agent-python/` **somente após gate**
 
 **Interfaces:**
-- Cutover: para `com.tessera.agent`, instala `com.tessera.agentd` + copia app para `/Applications/Tessara.app`, marca `setup_completed` se legacy tinha config
+- Cutover: para `com.tessera.agent`, instala `com.tessera.agentd` + copia app para `/Applications/Tessera.app`, marca `setup_completed` se legacy tinha config
 - Gate checklist obrigatório antes do delete
 
 - [ ] **Step 1: `pack_sd.sh` gera `dist/sd/tessera/agentd/` com version sidecar**
@@ -248,7 +248,7 @@ set -euo pipefail
 # 1. brew/mise build already done
 # 2. launchctl bootout legacy if loaded
 # 3. install agentd LaunchAgent
-# 4. open Tessara.app
+# 4. open Tessera.app
 # 5. curl doctor until summary ok|warn
 ```
 
@@ -282,7 +282,7 @@ EOF
 
 ```bash
 git commit -m "$(cat <<'EOF'
-chore: retire Python Tessara agent after v2 cutover gate
+chore: retire Python Tessera agent after v2 cutover gate
 
 EOF
 )"

@@ -33,8 +33,13 @@ struct Perf {
     uint64_t tick_max;
     uint64_t since;
     int64_t refr_start;
+    uint32_t slides;
+    uint64_t slide_us;
     bool pushed;
 } perf;
+
+bool slide_active = false;
+display_host::SlideSpec slide = {};
 
 lv_display_rotation_t to_lvgl(hal::Rotation rotation) {
     switch (rotation) {
@@ -187,6 +192,94 @@ void display_host::capture(Print &out) {
     logger::unlock();
 }
 
+bool display_host::slide_begin(const SlideSpec &spec) {
+    if (!display || !frames[0] || !frames[1] || !front) return false;
+    if (!spec.left.buf || !spec.right.buf || !spec.left.buf->data || !spec.right.buf->data) return false;
+    int32_t stride_px = logical_width();
+    int32_t rows = logical_height();
+    int32_t vw = lv_area_get_width(&spec.viewport);
+    int32_t vh = lv_area_get_height(&spec.viewport);
+    // step may be shorter than the viewport: the halves then overlap by the page margin, and the
+    // right one owns the overlap just as the later LVGL child does.
+    if (vw <= 0 || vh <= 0 || spec.step <= 0) return false;
+    if (spec.viewport.x1 < 0 || spec.viewport.y1 < 0) return false;
+    if (spec.viewport.x1 + vw > stride_px || spec.viewport.y1 + vh > rows) return false;
+    if (static_cast<int32_t>(spec.left.buf->header.w) < vw) return false;
+    if (static_cast<int32_t>(spec.right.buf->header.w) < vw) return false;
+
+    // The spare frame is not being pushed, so this needs no wait. Copy only what slide_frame()
+    // will not rewrite: the bands above and below the viewport, plus any columns beside it.
+    uint16_t *spare = front == frames[0] ? frames[1] : frames[0];
+    const uint16_t *live = front;
+    int32_t y2 = spec.viewport.y1 + vh - 1;
+    int32_t x2 = spec.viewport.x1 + vw - 1;
+    for (int32_t y = 0; y < rows; ++y) {
+        uint16_t *dst = spare + y * stride_px;
+        const uint16_t *src = live + y * stride_px;
+        if (y < spec.viewport.y1 || y > y2) {
+            memcpy(dst, src, static_cast<size_t>(stride_px) * sizeof(uint16_t));
+            continue;
+        }
+        if (spec.viewport.x1 > 0) memcpy(dst, src, static_cast<size_t>(spec.viewport.x1) * sizeof(uint16_t));
+        if (x2 + 1 < stride_px) {
+            memcpy(dst + x2 + 1, src + x2 + 1, static_cast<size_t>(stride_px - x2 - 1) * sizeof(uint16_t));
+        }
+    }
+    slide = spec;
+    slide_active = true;
+    return true;
+}
+
+void display_host::slide_frame(int32_t strip_x) {
+    if (!slide_active) return;
+    int64_t compose_start = esp_timer_get_time();
+    int32_t stride_px = logical_width();
+    int32_t vw = lv_area_get_width(&slide.viewport);
+    int32_t vh = lv_area_get_height(&slide.viewport);
+    int32_t span = slide.step + vw;  // strip columns the two halves cover
+    if (strip_x < 0) strip_x = 0;
+    if (strip_x > span - vw) strip_x = span - vw;
+
+    uint16_t *next = front == frames[0] ? frames[1] : frames[0];
+    for (int32_t y = 0; y < vh; ++y) {
+        uint16_t *dst = next + (slide.viewport.y1 + y) * stride_px + slide.viewport.x1;
+        int32_t column = strip_x;
+        int32_t done = 0;
+        while (done < vw) {
+            bool on_left = column < slide.step;
+            const SlideHalf &half = on_left ? slide.left : slide.right;
+            int32_t half_x1 = on_left ? 0 : slide.step;
+            int32_t run = (on_left ? slide.step : span) - column;
+            if (run > vw - done) run = vw - done;
+            int32_t source_y = y - half.y_at;
+            if (source_y >= 0 && source_y < static_cast<int32_t>(half.buf->header.h)) {
+                const auto *rows = static_cast<const uint8_t *>(half.buf->data);
+                const auto *src = reinterpret_cast<const uint16_t *>(rows + source_y * half.buf->header.stride);
+                memcpy(dst + done, src + (column - half_x1), static_cast<size_t>(run) * sizeof(uint16_t));
+            } else {
+                for (int32_t i = 0; i < run; ++i) dst[done + i] = slide.fill;
+            }
+            done += run;
+            column += run;
+        }
+    }
+    perf.slides++;
+    perf.slide_us += static_cast<uint64_t>(esp_timer_get_time() - compose_start);
+    xSemaphoreTake(push_idle, portMAX_DELAY);
+    front = next;
+    push_rotation = current;
+    xTaskNotifyGive(push_task);
+}
+
+void display_host::slide_end() {
+    if (!slide_active) return;
+    slide_active = false;
+    wait_push();
+    // LVGL still believes its frames hold what it drew last. Only the viewport changed under it,
+    // so a full-screen invalidate would repaint the header and chips for nothing.
+    if (display) lv_obj_invalidate_area(lv_screen_active(), &slide.viewport);
+}
+
 void display_host::tick() {
     int64_t start = esp_timer_get_time();
     lv_timer_handler();
@@ -199,10 +292,12 @@ void display_host::report(Print &out) {
     uint64_t span = now - perf.since;
     uint32_t frames_n = perf.frames ? perf.frames : 1;
     out.printf("PERF reset=%d frames=%u fps=%.1f refr_avg=%.1fms refr_max=%.1fms tick_max=%.1fms push_avg=%.1fms "
-               "heap_int=%u psram=%u\n",
+               "slides=%u slide_avg=%.1fms heap_int=%u psram=%u\n",
                static_cast<int>(esp_reset_reason()), static_cast<unsigned>(perf.frames),
                span ? perf.frames * 1e6 / span : 0.0, perf.refr_us / 1000.0 / frames_n, perf.refr_max / 1000.0,
-               perf.tick_max / 1000.0, perf.push_us / 1000.0 / frames_n, static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+               perf.tick_max / 1000.0, perf.push_us / 1000.0 / frames_n, static_cast<unsigned>(perf.slides),
+               perf.slide_us / 1000.0 / (perf.slides ? perf.slides : 1),
+               static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
     perf = Perf{};
     perf.since = now;

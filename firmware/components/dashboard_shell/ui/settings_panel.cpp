@@ -1,10 +1,13 @@
 #include "ui/settings_panel.h"
 
 #include "domain/dashboard_layout.h"
+#include "domain/home_tile_size.h"
 #include "platform/device_resources.h"
+#include "platform/widget_settings.h"
 #include "services/text.h"
 #include "ui/kit.h"
 #include "ui/palette.h"
+#include "ui/tessera_mark_icon.h"
 #include "ui/theme.h"
 #include "ui/ts_kit.h"
 
@@ -31,8 +34,8 @@ enum class Field : uint8_t {
     AiClaude,
     AiCursor,
 };
-enum class FaceField : uint8_t { Timezone, TimeFormat, DateFormat };
-enum class Page : uint8_t { Hub, General, Resources, DateTime, Todoist, Weather, AiTokens, Agent };
+enum class FaceField : uint8_t { Timezone, TimeFormat, DateFormat, CalTileSize };
+enum class Page : uint8_t { Hub, General, Resources, DateTime, Todoist, Weather, AiTokens, Agent, Calendar };
 
 struct Choice {
     Field field;
@@ -71,6 +74,13 @@ constexpr FaceChoice kDateFormat[] = {
     {FaceField::DateFormat, "mdy"},      {FaceField::DateFormat, "long_pt"},
 };
 constexpr const char *kDateFormatText[] = {"Curto", "DD/MM", "ISO", "US", "Longo"};
+constexpr FaceChoice kCalTileSize[] = {
+    {FaceField::CalTileSize, "S"},
+    {FaceField::CalTileSize, "M"},
+    {FaceField::CalTileSize, "L"},
+    {FaceField::CalTileSize, "XL"},
+};
+constexpr const char *kCalTileSizeText[] = {"S", "M", "L", "XL"};
 
 lv_obj_t *root = nullptr;
 lv_obj_t *body = nullptr;
@@ -86,6 +96,7 @@ Page page = Page::Hub;
 char face_timezone[24] = "sao_paulo";
 char face_time_format[12] = "hm";
 char face_date_format[16] = "short_pt";
+char cal_home_tile_size[8] = "M";
 
 void release_qr_pixels() {
     if (!qr_pixels) return;
@@ -130,6 +141,7 @@ DeviceInfo info = {};
 aitokens::View aitokens_view = {};
 agent::View agent_view = {};
 bool agent_pack_on_sd = false;
+char agent_pack_version[24] = {};
 
 void on_pedir_cotas(lv_event_t *) {
     if (on_request_aitokens) on_request_aitokens();
@@ -147,8 +159,14 @@ void fill_agent_status() {
     lv_obj_set_style_text_color(status, theme::text_primary(), 0);
 
     lv_obj_t *pack = lv_label_create(content);
-    lv_label_set_text(pack, agent_pack_on_sd ? "Pacote no SD: pronto (agent.tgz)."
-                                             : "Pacote no SD: ausente — envie agent.tgz pelo site.");
+    if (agent_pack_on_sd && agent_pack_version[0]) {
+        char line[96];
+        std::snprintf(line, sizeof(line), "Pacote no SD: pronto (agent.tgz) — %s.", agent_pack_version);
+        lv_label_set_text(pack, line);
+    } else {
+        lv_label_set_text(pack, agent_pack_on_sd ? "Pacote no SD: pronto (agent.tgz)."
+                                                 : "Pacote no SD: ausente — envie agent.tgz pelo site.");
+    }
     lv_obj_set_width(pack, lv_pct(100));
     lv_label_set_long_mode(pack, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_font(pack, &theme::body_font(), 0);
@@ -188,8 +206,18 @@ const char *face_current(FaceField field) {
         case FaceField::Timezone: return face_timezone;
         case FaceField::TimeFormat: return face_time_format;
         case FaceField::DateFormat: return face_date_format;
+        case FaceField::CalTileSize: return cal_home_tile_size;
     }
     return "";
+}
+
+void reload_cal_tile_size() {
+    char buf[8] = {};
+    if (widget_settings::get(dashboard::id_calendar(), home_tile::kSettingKey, buf, sizeof(buf)) && buf[0]) {
+        text::copy(cal_home_tile_size, sizeof(cal_home_tile_size), home_tile::to_string(home_tile::parse(buf)));
+    } else {
+        text::copy(cal_home_tile_size, sizeof(cal_home_tile_size), "M");
+    }
 }
 
 void on_face_choice(lv_event_t *event) {
@@ -212,6 +240,12 @@ void on_face_choice(lv_event_t *event) {
             text::copy(face_date_format, sizeof(face_date_format), choice->value);
             widget_id = dashboard::id_date();
             key = "date_format";
+            break;
+        case FaceField::CalTileSize:
+            text::copy(cal_home_tile_size, sizeof(cal_home_tile_size),
+                       home_tile::to_string(home_tile::parse(choice->value)));
+            widget_id = dashboard::id_calendar();
+            key = home_tile::kSettingKey;
             break;
     }
     lv_async_call([](void *) { fill(); }, nullptr);
@@ -372,10 +406,10 @@ void fill_chips(lv_obj_t *row, const Choice (&options)[N], const char *const (&t
     }
     for (size_t i = 0; i < N; ++i) {
         lv_obj_t *chip =
-            tessara::ui::TsChip(row, texts[i], static_cast<int>(i) == best, on_choice, const_cast<Choice *>(&options[i]));
+            tessera::ui::TsChip(row, texts[i], static_cast<int>(i) == best, on_choice, const_cast<Choice *>(&options[i]));
         if (tone) {
-            tessara::ui::TsSetChipTone(chip, tone);
-            tessara::ui::TsSetChipSelected(chip, static_cast<int>(i) == best);
+            tessera::ui::TsSetChipTone(chip, tone);
+            tessera::ui::TsSetChipSelected(chip, static_cast<int>(i) == best);
         }
     }
 }
@@ -396,7 +430,7 @@ void fill_face_chips(lv_obj_t *row, const FaceChoice (&options)[N], const char *
         }
     }
     for (size_t i = 0; i < N; ++i) {
-        tessara::ui::TsChip(row, texts[i], static_cast<int>(i) == best, on_face_choice,
+        tessera::ui::TsChip(row, texts[i], static_cast<int>(i) == best, on_face_choice,
                             const_cast<FaceChoice *>(&options[i]));
     }
 }
@@ -683,7 +717,7 @@ void connection_card() {
     }
 }
 
-void link_row(const char *symbol, uint32_t tone, const char *name, Page dest) {
+void link_row(const char *symbol, uint32_t tone, const char *name, Page dest, bool tessera_mark = false) {
     lv_obj_t *row = kit::bare(content);
     lv_obj_set_width(row, lv_pct(100));
     lv_obj_set_height(row, 48);
@@ -700,10 +734,16 @@ void link_row(const char *symbol, uint32_t tone, const char *name, Page dest) {
     lv_obj_add_flag(row, LV_OBJ_FLAG_SCROLL_CHAIN);
     lv_obj_add_event_cb(row, on_nav, LV_EVENT_CLICKED, reinterpret_cast<void *>(static_cast<intptr_t>(dest)));
 
-    lv_obj_t *glyph = lv_label_create(row);
-    lv_label_set_text(glyph, symbol);
-    lv_obj_set_style_text_font(glyph, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(glyph, lv_color_hex(tone), 0);
+    if (tessera_mark) {
+        lv_obj_t *mark = lv_image_create(row);
+        lv_image_set_src(mark, &tessera_mark_icon());
+        lv_obj_set_size(mark, 24, 24);
+    } else {
+        lv_obj_t *glyph = lv_label_create(row);
+        lv_label_set_text(glyph, symbol);
+        lv_obj_set_style_text_font(glyph, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_color(glyph, lv_color_hex(tone), 0);
+    }
 
     lv_obj_t *title = lv_label_create(row);
     lv_label_set_text(title, name);
@@ -732,7 +772,7 @@ void fill() {
         else if (page == Page::Todoist) heading = "Todoist";
         else if (page == Page::Weather) heading = "Clima";
         else if (page == Page::AiTokens) heading = "AI Tokens";
-        else if (page == Page::Agent) heading = "Agente Tessara";
+        else if (page == Page::Agent) heading = "Agente Tessera";
         lv_label_set_text(title, heading);
         lv_obj_set_style_text_color(title, theme::text_primary(), 0);
     }
@@ -762,10 +802,11 @@ void fill() {
         link_row(LV_SYMBOL_SETTINGS, palette::primary(), "Geral", Page::General);
         link_row(LV_SYMBOL_SD_CARD, palette::primary(), "Memória e armazenamento", Page::Resources);
         link_row(LV_SYMBOL_GPS, palette::primary(), "Data e hora", Page::DateTime);
-        link_row(LV_SYMBOL_USB, palette::primary(), "Agente Tessara", Page::Agent);
+        link_row(nullptr, palette::primary(), "Agente Tessera", Page::Agent, true);
         link_row(LV_SYMBOL_LIST, palette::widget_todoist(), "Todoist", Page::Todoist);
         link_row(LV_SYMBOL_TINT, palette::widget_weather(), "Clima", Page::Weather);
         link_row(LV_SYMBOL_CHARGE, palette::widget_aitokens(), "AI Tokens", Page::AiTokens);
+        link_row(LV_SYMBOL_DIRECTORY, palette::widget_calendar(), "Calendário", Page::Calendar);
         return;
     }
     if (page == Page::General) {
@@ -805,7 +846,19 @@ void fill() {
         kit::action_button(content, info.ip[0] ? "QR Code" : "Sem rede", on_qr);
         return;
     }
-    // Verde Tessara nas configs — o vermelho da marca fica só no widget/home.
+    if (page == Page::Calendar) {
+        reload_cal_tile_size();
+        face_choices("Altura do tile", kCalTileSize, kCalTileSizeText);
+        lv_obj_t *note = lv_label_create(content);
+        lv_label_set_text(note, "S=1 evento · M=2 · L=3 · XL=4. Contas Google ficam no portal Agenda.");
+        lv_obj_set_width(note, lv_pct(100));
+        lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_font(note, &theme::small_font(), 0);
+        lv_obj_set_style_text_color(note, theme::text_secondary(), 0);
+        kit::action_button(content, info.ip[0] ? "QR Code" : "Sem rede", on_qr);
+        return;
+    }
+    // Verde Tessera nas configs — o vermelho da marca fica só no widget/home.
     choices("Atualizar listas a cada", kSync, kSyncText, palette::primary());
     lv_obj_t *note = lv_label_create(content);
     lv_label_set_text(note, "Listas e token deste widget ficam na página do celular.");
@@ -879,9 +932,14 @@ void settings_panel::show_aitokens(const aitokens::View &view) {
     if (root && (page == Page::AiTokens || page == Page::Hub || page == Page::Agent)) fill();
 }
 
-void settings_panel::show_agent(const agent::View &view, bool pack_on_sd) {
+void settings_panel::show_agent(const agent::View &view, bool pack_on_sd, const char *pack_version) {
     agent_view = view;
     agent_pack_on_sd = pack_on_sd;
+    if (pack_version && pack_version[0]) {
+        std::snprintf(agent_pack_version, sizeof(agent_pack_version), "%s", pack_version);
+    } else {
+        agent_pack_version[0] = '\0';
+    }
     if (root && (page == Page::Agent || page == Page::Hub)) fill();
 }
 

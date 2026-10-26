@@ -2,6 +2,8 @@
 
 #include "hal/board.h"
 
+#include <lvgl.h>
+
 class Print;
 
 // Owns LVGL's display: two PSRAM frames rendered in DIRECT mode while a core-0 task pushes the finished one.
@@ -20,5 +22,26 @@ void capture(Print &out);
 // Runs LVGL's timers (input, animations, rendering) and records how long the UI thread was busy.
 void tick();
 void report(Print &out);
+
+// Slide fast path. A horizontal page slide is a rigid translation of two pre-rendered viewports,
+// so a frame is a row copy instead of a redraw: LVGL's software renderer needs ~0.4 us/px on this
+// board (~16 fps for a full viewport) while a PSRAM row copy runs ~20x faster.
+// The two halves sit side by side in a virtual strip: `left` at column 0, `right` at `step`.
+struct SlideHalf {
+    const lv_draw_buf_t *buf;
+    int32_t y_at;  // strip row where source row 0 lands (negative when the page is scrolled)
+};
+struct SlideSpec {
+    lv_area_t viewport;  // screen area the slide owns; everything else stays put
+    int32_t step;
+    SlideHalf left;
+    SlideHalf right;
+    uint16_t fill;  // rows a half does not cover (page shorter than the viewport)
+};
+// slide_begin() gives both frames the parts of the screen that stay put; every slide_frame()
+// rewrites the viewport from strip column `strip_x` and pushes. See ui/bitmaps.h.
+bool slide_begin(const SlideSpec &spec);
+void slide_frame(int32_t strip_x);
+void slide_end();
 
 }  // namespace display_host

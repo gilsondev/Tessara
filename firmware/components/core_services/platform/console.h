@@ -25,7 +25,11 @@ public:
     virtual void on_aitokens(const char *line) = 0;
     virtual void on_agent(const char *line) = 0;
     virtual void on_calendar(const char *line) = 0;
+    virtual void on_todoist(const char *line) = 0;
     virtual void on_media(const char *line) = 0;
+    virtual void on_focus(const char *line) = 0;
+    // macOS appearance: THEME\tv1\t1\tdark|light (Agente).
+    virtual void on_theme(const char *line) = 0;
     // Screen rest test: "", "wake", "saver", "fade", "off".
     virtual void on_rest(const char *arg) = 0;
 };

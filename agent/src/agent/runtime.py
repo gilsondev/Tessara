@@ -73,14 +73,14 @@ def main() -> int:
     last_media = 0.0
     last_update_check = [0.0]
     buf = bytearray()
-    print("tessara-agent: aguardando painel USB…", flush=True)
+    print("tessera-agent: aguardando painel USB…", flush=True)
     while True:
         if ser is None or not ser.is_open:
             ser, port = open_serial()
             if ser is None:
                 time.sleep(RETRY_S)
                 continue
-            print(f"tessara-agent: conectado em {port}", flush=True)
+            print(f"tessera-agent: conectado em {port}", flush=True)
             try:
                 ser.write(agent_hello(True).encode())
                 ser.flush()
@@ -105,7 +105,7 @@ def main() -> int:
                         last_push = time.time()
                     elif text.startswith("MEDIA"):
                         if "\t" in text and not text.endswith("?"):
-                            print(f"tessara-agent: media ← {text}", flush=True)
+                            print(f"tessera-agent: media ← {text}", flush=True)
                         replies = media.handle_line(text)
                         if replies:
                             write_lines(ser, replies)
@@ -116,7 +116,7 @@ def main() -> int:
                             write_lines(ser, replies)
                             last_cal = time.time()
                         elif text.startswith("CALENDAR?"):
-                            print("tessara-agent: calendar ← ?", flush=True)
+                            print("tessera-agent: calendar ← ?", flush=True)
             now = time.time()
             if maybe_self_update(last_check=last_update_check):
                 return 0
@@ -134,7 +134,7 @@ def main() -> int:
                 ser.flush()
                 last_push = now
         except (OSError, serial.SerialException) as exc:
-            print(f"tessara-agent: porta liberada ({exc})", flush=True)
+            print(f"tessera-agent: porta liberada ({exc})", flush=True)
             try:
                 ser.close()
             except Exception:

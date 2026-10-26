@@ -1,5 +1,5 @@
 [package]
-name = "tessara-logbuf"
+name = "tessera-logbuf"
 version.workspace = true
 edition.workspace = true
 

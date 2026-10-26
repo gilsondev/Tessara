@@ -1,5 +1,5 @@
 [package]
-name = "tessara-profile"
+name = "tessera-profile"
 version.workspace = true
 edition.workspace = true
 

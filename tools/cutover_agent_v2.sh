@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cutover local: legacy Python (com.tessera.agent) → agentd + Tessara.app
+# Cutover local: legacy Python (com.tessera.agent) → agentd + Tessera.app
 #
 # Pré-req: mise run agentd-build && mise run agent-ui-build (ou binários via env)
 #
@@ -14,11 +14,21 @@ ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 if [ -z "${AGENTD_BIN:-}" ]; then
   target_dir="$(cd "$ROOT/agentd" && cargo metadata --format-version=1 --no-deps 2>/dev/null \
     | python3 -c "import json,sys; print(json.load(sys.stdin)['target_directory'])")"
-  AGENTD_BIN="${target_dir:-$ROOT/agentd/target}/release/agentd"
+  # Prefer user-facing binary name (macOS TCC shows this in permission dialogs).
+  for cand in Tessera agentd; do
+    if [ -x "${target_dir:-$ROOT/agentd/target}/release/$cand" ]; then
+      AGENTD_BIN="${target_dir:-$ROOT/agentd/target}/release/$cand"
+      break
+    fi
+  done
+  AGENTD_BIN="${AGENTD_BIN:-${target_dir:-$ROOT/agentd/target}/release/Tessera}"
 fi
-TESSARA_APP="${TESSARA_APP:-$ROOT/apps/agent-ui/src-tauri/target/release/bundle/macos/Tessara.app}"
-IPC_PORT="${TESSARA_AGENTD_IPC_PORT:-19792}"
-BOOTOUT_LEGACY="${BOOTOUT_LEGACY:-0}"
+TESSERA_APP="${TESSERA_APP:-$ROOT/apps/agent-ui/src-tauri/target/release/bundle/macos/Tessera.app}"
+IPC_PORT="${TESSERA_AGENTD_IPC_PORT:-19792}"
+# Default: legacy Python off so only Tessera owns the USB port.
+BOOTOUT_LEGACY="${BOOTOUT_LEGACY:-1}"
+# Installed process name — never "agentd" in FDA/TCC prompts
+INSTALL_BIN_NAME="${INSTALL_BIN_NAME:-Tessera}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -41,13 +51,18 @@ fi
 
 INSTALL_ROOT="$HOME/.tessera/agentd"
 BIN_DIR="$INSTALL_ROOT/bin"
+# App bundle so Privacy / FDA shows the Tessera icon (not a bare Terminal-like binary).
+AGENTD_APP="$INSTALL_ROOT/Tessera.app"
+AGENTD_MACOS="$AGENTD_APP/Contents/MacOS"
+AGENTD_RES="$AGENTD_APP/Contents/Resources"
 LABEL=com.tessera.agentd
 LEGACY_LABEL=com.tessera.agent
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$HOME/.tessera/agentd.log"
 UID_NUM="$(id -u)"
+ICNS_SRC="${ICNS_SRC:-$ROOT/apps/agent-ui/src-tauri/icons/icon.icns}"
 
-mkdir -p "$BIN_DIR" "$HOME/Library/LaunchAgents" "$HOME/.tessera"
+mkdir -p "$BIN_DIR" "$AGENTD_MACOS" "$AGENTD_RES" "$HOME/Library/LaunchAgents" "$HOME/.tessera"
 
 legacy_had_config() {
   [ -x "$HOME/.tessera/agent/.venv/bin/python" ] \
@@ -99,7 +114,43 @@ else
   echo "cutover: legacy não alterado (use --bootout-legacy no cutover final)"
 fi
 
-install -m 755 "$AGENTD_BIN" "$BIN_DIR/agentd"
+install -m 755 "$AGENTD_BIN" "$AGENTD_MACOS/$INSTALL_BIN_NAME"
+# Compat: bin/Tessera → app executable (scripts / old docs)
+ln -sfn "../Tessera.app/Contents/MacOS/$INSTALL_BIN_NAME" "$BIN_DIR/$INSTALL_BIN_NAME"
+ln -sfn "$INSTALL_BIN_NAME" "$BIN_DIR/agentd"
+if [ -f "$ICNS_SRC" ]; then
+  cp -f "$ICNS_SRC" "$AGENTD_RES/AppIcon.icns"
+else
+  echo "cutover: aviso — sem $ICNS_SRC (ícone FDA pode ficar genérico)" >&2
+fi
+cat > "$AGENTD_APP/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>pt_BR</string>
+  <key>CFBundleExecutable</key><string>Tessera</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleIdentifier</key><string>com.tessera.agentd</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>Tessera</string>
+  <key>CFBundleDisplayName</key><string>Tessera</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>12.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>O Tessera ajusta o painel na sua rede Wi‑Fi (tessera.local).</string>
+  <key>NSBonjourServices</key>
+  <array>
+    <string>_http._tcp.</string>
+  </array>
+</dict>
+</plist>
+PLIST
+# Refresh LaunchServices icon cache for this bundle
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$AGENTD_APP" 2>/dev/null || true
 migrate_setup_completed
 
 cat > "$PLIST" <<PLIST
@@ -110,7 +161,7 @@ cat > "$PLIST" <<PLIST
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$BIN_DIR/agentd</string>
+    <string>$AGENTD_MACOS/$INSTALL_BIN_NAME</string>
   </array>
   <key>WorkingDirectory</key><string>$INSTALL_ROOT</string>
   <key>RunAtLoad</key><true/>
@@ -120,29 +171,52 @@ cat > "$PLIST" <<PLIST
   <key>StandardErrorPath</key><string>$LOG</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/sbin</string>
     <key>HOME</key><string>$HOME</string>
+PLIST
+# Optional: pin panel portal IP (reqwest falha em *.local / mDNS)
+PANEL_IP="$(/sbin/ping -c 1 -t 2 tessera.local 2>/dev/null | sed -n 's/.*(\([0-9.]*\)).*/\1/p' | head -1 || true)"
+if [ -n "${PANEL_IP:-}" ]; then
+  cat >> "$PLIST" <<PLIST
+    <key>TESSERA_PANEL_URL</key><string>http://$PANEL_IP</string>
+PLIST
+  mkdir -p "$INSTALL_ROOT"
+  printf 'http://%s\n' "$PANEL_IP" > "$INSTALL_ROOT/panel_base_url"
+fi
+cat >> "$PLIST" <<'PLIST'
   </dict>
 </dict>
 </plist>
 PLIST
 
 launchctl bootout "gui/$UID_NUM/$LABEL" 2>/dev/null || true
-launchctl bootstrap "gui/$UID_NUM" "$PLIST"
+sleep 1
+if ! launchctl bootstrap "gui/$UID_NUM" "$PLIST" 2>/tmp/tessera-bootstrap.err; then
+  echo "cutover: bootstrap falhou — tentando de novo…" >&2
+  cat /tmp/tessera-bootstrap.err >&2 || true
+  sleep 2
+  launchctl bootout "gui/$UID_NUM/$LABEL" 2>/dev/null || true
+  launchctl bootstrap "gui/$UID_NUM" "$PLIST"
+fi
 launchctl enable "gui/$UID_NUM/$LABEL" 2>/dev/null || true
-launchctl kickstart -k "gui/$UID_NUM/$LABEL" 2>/dev/null || true
+# Soft kickstart first; -k if the job never came up
+launchctl kickstart "gui/$UID_NUM/$LABEL" 2>/dev/null || true
+sleep 1
+if ! curl -sf "http://127.0.0.1:${IPC_PORT}/v1/status" >/dev/null 2>&1; then
+  launchctl kickstart -k "gui/$UID_NUM/$LABEL" 2>/dev/null || true
+fi
 echo "cutover: LaunchAgent $LABEL instalado"
 
-if [ -d "$TESSARA_APP" ]; then
-  rm -rf "/Applications/Tessara.app"
-  cp -R "$TESSARA_APP" /Applications/
-  echo "cutover: Tessara.app → /Applications/Tessara.app"
+if [ -d "$TESSERA_APP" ]; then
+  rm -rf "/Applications/Tessera.app"
+  cp -R "$TESSERA_APP" /Applications/
+  echo "cutover: Tessera.app → /Applications/Tessera.app"
 else
-  echo "cutover: aviso — Tessara.app não encontrado em $TESSARA_APP" >&2
+  echo "cutover: aviso — Tessera.app não encontrado em $TESSERA_APP" >&2
 fi
 
-if [ -d /Applications/Tessara.app ]; then
-  open -a Tessara || true
+if [ -d /Applications/Tessera.app ]; then
+  open -a Tessera || true
 fi
 
 echo "cutover: aguardando Doctor (127.0.0.1:$IPC_PORT) …"

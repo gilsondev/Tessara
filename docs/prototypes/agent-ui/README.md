@@ -1,4 +1,4 @@
-# Tessara Agent — protótipos de UI
+# Tessera Agent — protótipos de UI
 
 Protótipo HTML do companion no computador (menu + janela). Linguagem simples, contraste reforçado, **vários Macs** e **controle do painel** na mesma app.
 
@@ -26,7 +26,7 @@ open docs/prototypes/agent-ui/index.html
 
 ## Fluxo multi-notebook
 
-1. Instalar o Tessara em cada Mac (trabalho, pessoal…).
+1. Instalar o Tessera em cada Mac (trabalho, pessoal…).
 2. **Varrer** — detecta fornecedores de IA (Cursor, Claude, Codex…) e permissões.
 3. Confirmar o que vai ao painel; resolver autorizações só do que falta.
 4. Plugar o cabo: aquele Mac vira o **ativo**. Os outros ficam prontos sem desinstalar.
@@ -48,6 +48,13 @@ Nada da varredura sobe para a nuvem no protótipo — é local, para você confi
 - Painel remoto só com cabo; Wi‑Fi/Todoist/clima apontam para o site.
 - Perfil por computador; cabo define quem manda no painel.
 
+## Config de widgets (portal + Agente)
+
+O portal web já edita widgets no aparelho. O Agente deve oferecer o **mesmo** onde fizer sentido no dia a dia (com painel online):
+
+- Fontes AI Tokens / o que monitorar neste Mac  
+- **Altura do tile** (`home_tile_size` S–XL) para widgets que optarem — ver `docs/superpowers/specs/2026-10-26-home-tile-size-calendar-cache-design.md`
+
 ## Fora deste protótipo (de propósito)
 
-Token Todoist, cidade do clima e lista de widgets da home — ficam no portal web (já existe). O agent foca no dia a dia + sync Mac↔painel + multi-PC.
+Token Todoist e cidade do clima — ficam no portal web (já existe). Lista de widgets da home e altura/toggles podem espelhar no Agente quando o painel responde.

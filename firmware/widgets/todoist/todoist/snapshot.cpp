@@ -18,8 +18,9 @@ todoist::Summary todoist::summarize(const ListTally *rows, int count) {
 
 void todoist::format_home_count(const Summary &summary, char *out, size_t cap) {
     if (!out || cap == 0) return;
-    // Keep the card in the loading state until every visible list has a cache — no partial totals.
-    if (summary.pending) {
+    // Only show "…" when nothing is Ready yet. Partial totals beat an empty tile
+    // while one list is still warming (agent USB / Wi‑Fi).
+    if (summary.pending && summary.total <= 0) {
         snprintf(out, cap, "…");
         return;
     }

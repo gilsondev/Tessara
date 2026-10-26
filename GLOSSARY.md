@@ -1,4 +1,4 @@
-# Tessara
+# Tessera
 
 Painel de parede com home de widgets e telas de detalhe por subsistema.
 
@@ -37,7 +37,7 @@ Não há previsão para mostrar (sem Local, ou Local sem nenhum cache ainda e a 
 _Avoid_: Erro (a pessoa não precisa ver código HTTP)
 
 **AI Tokens**:
-Subsistema do painel: cartão na home mais a tela de detalhe. Mostra uso e cotas locais de agentes de IA no computador ligado ao Tessara (MVP: Codex e Claude Code).
+Subsistema do painel: cartão na home mais a tela de detalhe. Mostra uso e cotas locais de agentes de IA no computador ligado ao Tessera (MVP: Codex e Claude Code).
 _Avoid_: TokenMeter (nome do projeto de inspiração), Consumo, Cotas (sozinhas — cobrem só metade do significado)
 
 **Cartão de AI Tokens**:
@@ -48,15 +48,15 @@ _Avoid_: Widget de tokens
 Detalhe do AI Tokens: um bloco por Fonte com uso, cota/% e reset quando a Fonte expõe.
 _Avoid_: Página de tokens (reserve “página” para o ajuste no celular)
 
-**Agente Tessara** (antes: Bridge):
+**Agente Tessera** (antes: Bridge):
 Programa no Mac que fala com o painel pela USB. Produto atual: Python em `agent/`. Redesign (**Agent v2**): **agentd** (Rust) + app companion — `docs/superpowers/specs/2026-10-25-tessera-agent-v2-design.md`. Até o cutover, labels/paths distintos.
 _Avoid_: Servidor, API gateway, proxy de nuvem. Em docs técnicas antigas, “Bridge” = mesmo processo.
 
 **agentd**:
-Daemon Rust do Agent v2 (USB, Doctor, perfis). Distinto do agent Python legado (`com.tessera.agent`). Pack SD: `agentd/pack_sd.sh` → `/tessera/agentd/` (`agentd.tgz`, `agentd.version`, `install.command`); sem OAuth/tokens no cartão.
+Daemon Rust do Agent v2 (USB, Doctor, perfis). Distinto do agent Python legado (`com.tessera.agent`). Pack SD: `agentd/pack_sd.sh` → `/tessera/agentd/` (`agentd.tgz`, `agentd.version`, `install.command`); sem OAuth/tokens no cartão. O binário instalado (e o nome nos diálogos TCC/FDA) é **Tessera**; `agentd` fica como crate/label interno (`com.tessera.agentd`).
 
 **Bridge**:
-Nome legado do Agente Tessara (só transporte USB de cotas). Preferir **Agente Tessara** na UI.
+Nome legado do Agente Tessera (só transporte USB de cotas). Preferir **Agente Tessera** na UI.
 _Avoid_ na UI nova.
 
 **Fonte**:
@@ -64,15 +64,15 @@ Um provedor ou ferramenta cuja cota/uso o Bridge consegue ler no Mac (MVP: Codex
 _Avoid_: Provider (só no código se precisar), conta
 
 **Mac** (subsistema):
-Companion de sistema: tile **Mac** (Focus) + Tela Mac, separado do tile **Música**. USB via Agente Tessara.
+Companion de sistema: tile **Mac** (Focus) + Tela Mac, separado do tile **Música**. USB via Agente Tessera.
 _Avoid_: Notebook (colide com a página do celular), Host (só no código se precisar), Controle remoto, Remote desktop
 
 **Música** (tile):
-Half-tile na home (`org.tessara.media`): faixa/artista do Agora tocando. Toque → Tela Música (capa + metadados, só leitura).
+Half-tile na home (`org.tessera.media`): faixa/artista do Agora tocando. Toque → Tela Música (capa + metadados, só leitura).
 _Avoid_: Cartão Mac (mídia)
 
 **Cartão / tile Mac**:
-Half-tile (`org.tessara.mac`): Focus ativo (“Nenhum” / offline). Toque → Tela Mac.
+Half-tile (`org.tessera.mac`): Focus ativo (“Nenhum” / offline). Toque → Tela Mac.
 _Avoid_: Widget do Mac
 
 **Tela Música**:
