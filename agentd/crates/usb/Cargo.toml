@@ -1,0 +1,6 @@
+[package]
+name = "tessara-usb"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

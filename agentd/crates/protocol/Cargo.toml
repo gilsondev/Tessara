@@ -1,0 +1,6 @@
+[package]
+name = "tessara-protocol"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

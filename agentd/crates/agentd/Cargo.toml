@@ -1,0 +1,12 @@
+[package]
+name = "agentd"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "agentd"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tessara-protocol = { path = "../protocol" }
