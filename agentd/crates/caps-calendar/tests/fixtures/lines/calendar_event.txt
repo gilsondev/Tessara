@@ -1,0 +1,1 @@
+CALENDAR	v1	1	1	0930	1015	0	Daily standup	Sala Azul	45	1A73E8	0

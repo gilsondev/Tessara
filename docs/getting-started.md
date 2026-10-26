@@ -17,8 +17,8 @@ Hardware is **optional** for most firmware work. Prefer `make finish-host` first
 ## 1. Clone
 
 ```bash
-git clone <your-fork-or-url> Tessara
-cd Tessara
+git clone <your-fork-or-url> Tessera
+cd Tessera
 ```
 
 Product specs may also exist in a sibling `Terrara` docs tree used by the owner. This repository’s guides under `docs/` are enough to build, test, and author widgets.
@@ -96,7 +96,7 @@ This runs:
 1. `pio test -e native` — domain, allowlist, compose, weather parse, …
 2. Simulator build + headless screenshots for many fixtures
 
-Artifacts land in `/tmp/tessara-sim-out/` (override with `SIM_OUT=…`). Inspect PNGs/BMPs when UI changes.
+Artifacts land in `/tmp/tessera-sim-out/` (override with `SIM_OUT=…`). Inspect PNGs/BMPs when UI changes.
 
 Interactive window:
 
@@ -138,6 +138,14 @@ cp include/secrets.example.h include/secrets.h
 | Headless E2E needs display libs | SDL2 must still be installed; `SDL_VIDEODRIVER=dummy` is set by `verify_all` |
 | Linux permission denied on serial | `sudo usermod -aG dialout $USER` then re-login |
 | Wrong upload port | List ports (`ls /dev/cu.usb*`, `ls /dev/ttyACM*`) and update `platformio.ini` |
+
+## Agent (Mac)
+
+- **Mac novo / uso normal:** [gilsondev.github.io/Tessera](https://gilsondev.github.io/Tessera/)  
+  ou `curl -fsSL https://gilsondev.github.io/Tessera/install.command | bash`  
+  (artefato construído no CI · tag `agent-v*`)
+- Dev neste repo: [guides/agent-v2-dev.md](guides/agent-v2-dev.md) — `mise install` · `make agent-install`
+- Offline / SD (opcional): `make pack-agentd` → `tessera/agentd.tgz`
 
 ## Next
 

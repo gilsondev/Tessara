@@ -79,7 +79,7 @@ bool load_scenario(const std::string &path, Scenario &out) {
     }
     if (out.lists.empty() && out.tasks.empty() && out.todoist_total > 0 && !out.todoist_pending) {
         // Minimal stand-in when a scenario only sets a home total (no detail lists).
-        const char *defaults[] = {"Revisar PRs do painel", "Comprar café", "Atualizar Tessara docs"};
+        const char *defaults[] = {"Revisar PRs do painel", "Comprar café", "Atualizar Tessera docs"};
         const char *metas[] = {"hoje", "amanhã", "26 out"};
         const int prios[] = {4, 1, 2};
         int n = out.todoist_total < 3 ? out.todoist_total : 3;

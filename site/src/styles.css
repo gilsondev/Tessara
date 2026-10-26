@@ -1,0 +1,162 @@
+:root {
+  --ink: #1a2332;
+  --muted: #5c6b7a;
+  --teal: #0d9488;
+  --sand: #e8dfd0;
+  --slate: #2c3a4a;
+  --wash: #f4f1ea;
+  --line: #d5d0c6;
+  --card: #fffefb;
+  font-family: "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--wash);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, color-mix(in srgb, var(--teal) 18%, transparent), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 0%, color-mix(in srgb, var(--sand) 80%, transparent), transparent),
+    var(--wash);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 28px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--ink);
+  font-weight: 800;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+}
+
+.ghost {
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 28px 80px;
+}
+
+.hero {
+  padding: 48px 0 32px;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--teal);
+  margin: 0 0 8px;
+}
+
+h1 {
+  font-size: clamp(2.8rem, 8vw, 4.2rem);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  margin: 0 0 16px;
+  color: var(--slate);
+}
+
+.lede {
+  font-size: 1.2rem;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0 0 28px;
+  max-width: 36ch;
+}
+
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 20px;
+  margin-bottom: 16px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 22px;
+  border-radius: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+}
+
+.btn.primary {
+  background: var(--teal);
+  color: #fff;
+}
+
+.meta {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.note {
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.45;
+  max-width: 48ch;
+}
+
+.block {
+  margin-top: 48px;
+  padding: 24px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.block h2 {
+  margin: 0 0 12px;
+  font-size: 1.15rem;
+}
+
+.block ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+footer {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 28px 40px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+footer a {
+  color: var(--teal);
+  text-decoration: none;
+  font-weight: 600;
+}

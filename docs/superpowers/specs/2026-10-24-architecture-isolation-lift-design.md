@@ -15,7 +15,7 @@ Dependências apontam para **interfaces**, nunca para implementações de placa.
 |-----------|----------|--------------------|
 | Widgets | `firmware/widgets/*` | Sem mudança de pasta; manifests com flags (`hero_only`) |
 | Widget SDK | `widget_sdk` + `widget_runtime` | Registry expõe flags; shell abre detalhe só se `!hero_only` |
-| Ts UI Kit | `ui_kit` (`kit::`) | Aliases `tessara::ui::Ts*` em cima de `kit::` |
+| Ts UI Kit | `ui_kit` (`kit::`) | Aliases `tessera::ui::Ts*` em cima de `kit::` |
 | Application Core | `dashboard_shell` (nav, home, controller) | Nav genérico `Detail` + `widget_id`; controller sem switch de IDs |
 | Ports | `hal::DisplayPort` / `TouchPort` / … | + Backlight, Power, Capabilities, Storage; Input = Touch |
 | Boards | `boards/jc3248w535` | Adapter implementa os ports; único lugar com pinagem |
@@ -34,7 +34,7 @@ Dependências apontam para **interfaces**, nunca para implementações de placa.
 - `list_prefs` / `pending_closes` via `StoragePort`.
 - Portal: settings de widget namespaced (`widget_settings` + `/api/widget_settings`).
 - Todoist/AI Tokens: rebuild puro no slot (attach reconstrói; sem park/reparent longo).
-- `tessara::ui::Ts*` no settings hub e na home.
+- `tessera::ui::Ts*` no settings hub e na home.
 
 ## Produto discovery ainda não no lab
 

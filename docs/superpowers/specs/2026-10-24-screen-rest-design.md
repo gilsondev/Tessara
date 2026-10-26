@@ -2,7 +2,7 @@
 
 **Decisões:** ocioso configurável → **flip clock NeXtime** (1 min) → **fade do brilho** → backlight off; 1º toque só acorda (não clica); 2º toque usa a UI. Relógio **centralizado** (sem drift).
 
-O Tessara fica ligado por horas na mesma imagem. LCD IPS sofre image retention. O descanso primeiro **anima** (relógio flip), depois **diminui o brilho até apagar**; rede/Bridge seguem.
+O Tessera fica ligado por horas na mesma imagem. LCD IPS sofre image retention. O descanso primeiro **anima** (relógio flip), depois **diminui o brilho até apagar**; rede/Bridge seguem.
 
 ## Fluxo
 

@@ -1,5 +1,6 @@
 #include "services/web_portal.h"
 
+#include "platform/agent_push.h"
 #include "platform/log.h"
 #include "platform/sd_host.h"
 #include "services/text.h"
@@ -60,8 +61,8 @@ struct Slot {
     bool used;
 };
 
-char hostname[32] = "tessara";
-char host_local[40] = "tessara.local";
+char hostname[32] = "tessera";
+char host_local[40] = "tessera.local";
 WiFiServer server(80);
 Slot slots[kSlots];
 TaskHandle_t task = nullptr;
@@ -106,6 +107,9 @@ Reply state() {
     clock_w["time_format"] = snapshot.clock_time_format[0] ? snapshot.clock_time_format : "hm";
     JsonObject date_w = wset[dashboard::id_date()].to<JsonObject>();
     date_w["date_format"] = snapshot.date_format[0] ? snapshot.date_format : "short_pt";
+    JsonObject calendar_w = wset[dashboard::id_calendar()].to<JsonObject>();
+    calendar_w["home_tile_size"] =
+        snapshot.calendar_home_tile_size[0] ? snapshot.calendar_home_tile_size : "M";
     JsonObject info = doc["info"].to<JsonObject>();
     info["host"] = snapshot.info.host;
     info["ip"] = snapshot.info.ip;
@@ -143,6 +147,8 @@ Reply state() {
     agent["ok"] = snapshot.agent.ok;
     agent["detail"] = snapshot.agent.detail;
     doc["agent_pack"] = snapshot.agent_pack;
+    doc["agent_push_armed"] = agent_push::armed();
+    doc["agent_pack_version"] = snapshot.agent_pack_version;
     JsonObject aitokens = doc["aitokens"].to<JsonObject>();
     aitokens["ready"] = snapshot.aitokens_ready;
     aitokens["stale"] = snapshot.aitokens_stale;
@@ -169,8 +175,9 @@ Reply state() {
     JsonArray widgets = doc["widgets"].to<JsonArray>();
     const char *catalog[] = {dashboard::id_greeting(), dashboard::id_date(),    dashboard::id_clock(),
                              dashboard::id_todoist(),  dashboard::id_weather(), dashboard::id_aitokens(),
-                             dashboard::id_calendar()};
-    const char *titles[] = {"Saudação", "Data", "Relógio", "Tarefas", "Clima", "AI Tokens", "Calendário"};
+                             dashboard::id_calendar(), dashboard::id_media(),   dashboard::id_mac()};
+    const char *titles[] = {"Saudação", "Data", "Relógio", "Tarefas", "Clima", "AI Tokens", "Calendário",
+                            "Música",   "Mac"};
     static_assert(sizeof(catalog) / sizeof(catalog[0]) == sizeof(titles) / sizeof(titles[0]), "catalog/titles");
     for (size_t i = 0; i < sizeof(catalog) / sizeof(catalog[0]); ++i) {
         JsonObject item = widgets.add<JsonObject>();
@@ -384,6 +391,14 @@ Reply route(const String &method, const String &path, const char *body) {
         text::copy(request.calendar_selection, sizeof(request.calendar_selection), sel);
         return accept(request);
     }
+    if (path == "/api/agent/arm") {
+        if (doc["off"] | false) {
+            agent_push::disarm();
+            return text_reply(200, "off");
+        }
+        agent_push::arm();
+        return text_reply(200, "armado");
+    }
     return text_reply(404, "nada aqui");
 }
 
@@ -420,14 +435,48 @@ bool send_sd_file(WiFiClient &client, const char *sd_path, const char *content_t
     return true;
 }
 
+void read_agent_pack_version(char *dest, size_t cap) {
+    if (!dest || cap == 0) return;
+    dest[0] = '\0';
+    size_t n = 0;
+    uint8_t *raw = sd_host::read_file("/tessera/agentd.version", &n);
+    if (!raw || n == 0) {
+        sd_host::free_buf(raw);
+        return;
+    }
+    size_t len = n < cap - 1 ? n : cap - 1;
+    while (len > 0 && (raw[len - 1] == '\n' || raw[len - 1] == '\r' || raw[len - 1] == ' ')) --len;
+    std::memcpy(dest, raw, len);
+    dest[len] = '\0';
+    sd_host::free_buf(raw);
+}
+
 void refresh_agent_pack_flag() {
     xSemaphoreTake(guard, portMAX_DELAY);
-    snapshot.agent_pack = sd_host::ready() && sd_host::exists("/tessera/agent.tgz");
+    snapshot.agent_pack = sd_host::ready() && sd_host::exists("/tessera/agentd.tgz");
+    read_agent_pack_version(snapshot.agent_pack_version, sizeof(snapshot.agent_pack_version));
     xSemaphoreGive(guard);
 }
 
+bool write_agent_pack_version(const char *version) {
+    if (!version || !version[0]) return false;
+    char clean[24] = {};
+    size_t n = 0;
+    for (const char *p = version; *p && n + 1 < sizeof(clean); ++p) {
+        const char c = *p;
+        if (c == '\r' || c == '\n') break;
+        if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '.' || c == '-' ||
+            c == '_') {
+            clean[n++] = c;
+        }
+    }
+    if (!n) return false;
+    clean[n++] = '\n';
+    return sd_host::write_file("/tessera/agentd.version", reinterpret_cast<const uint8_t *>(clean), n);
+}
+
 bool send_install_command(WiFiClient &client) {
-    if (!sd_host::ready() || !sd_host::exists("/tessera/agent.tgz")) {
+    if (!sd_host::ready() || !sd_host::exists("/tessera/agentd.tgz")) {
         send(client, text_reply(404, "pacote do Agente ausente no SD"));
         return true;
     }
@@ -443,70 +492,65 @@ bool send_install_command(WiFiClient &client) {
             snprintf(panel, sizeof(panel), "http://%s", snapshot.info.host);
         }
     } else {
-        snprintf(panel, sizeof(panel), "http://tessara.local");
+        snprintf(panel, sizeof(panel), "http://tessera.local");
     }
     xSemaphoreGive(guard);
 
+    // Same shape as agentd/pack_sd.sh install.command — binary Tessera + LaunchAgent agentd.
     String body;
-    body.reserve(3200);
+    body.reserve(2800);
     body += "#!/bin/bash\n";
-    body += "# Tessara Agent — gerado pelo painel\n";
-    body += "# Uso: curl -fsSL http://painel/agent/install.command | bash\n";
+    body += "# Tessera Agent — gerado pelo painel (agentd)\n";
+    body += "# Uso: curl -fsSL http://painel/agentd/install.command | bash\n";
     body += "#  ou: bash install-tessera-agent.command   (não use duplo clique: Downloads sem +x)\n";
     body += "set -euo pipefail\n";
     body += "PANEL=\"${1:-";
     body += panel;
     body += "}\"\n";
-    // Com curl|bash, $0/`BASH_SOURCE` não apontam para um arquivo — só use HERE se for path.
     body += "SRC=\"${BASH_SOURCE[0]:-$0}\"\n";
     body += "HERE=\"\"\n";
     body += "case \"$SRC\" in\n";
     body += "  */*) HERE=\"$(CDPATH= cd -- \"$(dirname \"$SRC\")\" && pwd)\" ;;\n";
     body += "esac\n";
-    body += "INSTALL_ROOT=\"$HOME/.tessera/agent\"\n";
-    body += "LABEL=com.tessera.agent\n";
-    body += "OLD_LABEL=com.tessera.aitokens-bridge\n";
+    body += "INSTALL_ROOT=\"$HOME/.tessera/agentd\"\n";
+    body += "BIN_DIR=\"$INSTALL_ROOT/bin\"\n";
+    body += "INSTALL_BIN_NAME=Tessera\n";
+    body += "LABEL=com.tessera.agentd\n";
+    body += "LEGACY_LABEL=com.tessera.agent\n";
     body += "PLIST=\"$HOME/Library/LaunchAgents/$LABEL.plist\"\n";
     body += "LOG_DIR=\"$HOME/.tessera\"\n";
-    body += "LOG=\"$LOG_DIR/agent.log\"\n";
-    body += "mkdir -p \"$INSTALL_ROOT\" \"$LOG_DIR\" \"$HOME/Library/LaunchAgents\"\n";
-    body += "if [ -n \"$HERE\" ] && [ -f \"$HERE/agent.tgz\" ]; then TGZ=\"$HERE/agent.tgz\"; else\n";
-    body += "  echo \"baixando agent.tgz de $PANEL …\"\n";
-    body += "  curl -fsSL \"$PANEL/agent/agent.tgz\" -o /tmp/tessera-agent.tgz\n";
-    body += "  TGZ=/tmp/tessera-agent.tgz\nfi\n";
-    body += "find \"$INSTALL_ROOT\" -mindepth 1 -maxdepth 1 ! -name '.venv' -exec rm -rf {} +\n";
-    body += "tar -C \"$INSTALL_ROOT\" -xzf \"$TGZ\"\n";
-    body += "chmod +x \"$INSTALL_ROOT/scripts/statusline_claude.sh\" 2>/dev/null || true\n";
-    body += "PY=\"$INSTALL_ROOT/.venv/bin/python\"\n";
-    body += "if [ ! -x \"$PY\" ]; then\n";
-    body += "  python3 -m venv \"$INSTALL_ROOT/.venv\"\nfi\n";
-    body += "echo \"deps…\"\n";
-    body += "\"$INSTALL_ROOT/.venv/bin/pip\" install -q -r \"$INSTALL_ROOT/requirements.txt\"\n";
-    body += "STATUSLINE=\"$INSTALL_ROOT/scripts/statusline_claude.sh\"\n";
-    body += "CLAUDE_SETTINGS=\"$HOME/.claude/settings.json\"\n";
-    body += "if [ -x \"$STATUSLINE\" ]; then\n";
-    body += "  mkdir -p \"$HOME/.claude\"\n";
-    body += "  if [ ! -f \"$CLAUDE_SETTINGS\" ]; then\n";
-    body += "    printf '{\\n  \"statusLine\": { \"type\": \"command\", \"command\": \"%s\" }\\n}\\n' \"$STATUSLINE\" > \"$CLAUDE_SETTINGS\"\n";
-    body += "  else\n";
-    body += "    python3 - \"$CLAUDE_SETTINGS\" \"$STATUSLINE\" <<'PY'\n";
-    body += "import json, sys\nfrom pathlib import Path\n";
-    body += "path, cmd = Path(sys.argv[1]), sys.argv[2]\n";
-    body += "data = json.loads(path.read_text(encoding=\"utf-8\")) if path.is_file() else {}\n";
-    body += "data[\"statusLine\"] = {\"type\": \"command\", \"command\": cmd}\n";
-    body += "path.write_text(json.dumps(data, indent=2) + \"\\n\", encoding=\"utf-8\")\n";
-    body += "PY\n  fi\nfi\n";
+    body += "LOG=\"$LOG_DIR/agentd.log\"\n";
+    body += "mkdir -p \"$BIN_DIR\" \"$LOG_DIR\" \"$HOME/Library/LaunchAgents\"\n";
+    body += "if [ -n \"$HERE\" ] && [ -f \"$HERE/agentd.tgz\" ]; then TGZ=\"$HERE/agentd.tgz\"; else\n";
+    body += "  echo \"baixando agentd.tgz de $PANEL …\"\n";
+    body += "  curl -fsSL \"$PANEL/agentd/agentd.tgz\" -o /tmp/tessera-agentd.tgz\n";
+    body += "  TGZ=/tmp/tessera-agentd.tgz\nfi\n";
+    body += "rm -rf \"$INSTALL_ROOT/staging\"\n";
+    body += "mkdir -p \"$INSTALL_ROOT/staging\"\n";
+    body += "tar -C \"$INSTALL_ROOT/staging\" -xzf \"$TGZ\"\n";
+    body += "if [ -x \"$INSTALL_ROOT/staging/bin/Tessera\" ]; then\n";
+    body += "  install -m 755 \"$INSTALL_ROOT/staging/bin/Tessera\" \"$BIN_DIR/$INSTALL_BIN_NAME\"\n";
+    body += "elif [ -x \"$INSTALL_ROOT/staging/bin/agentd\" ]; then\n";
+    body += "  install -m 755 \"$INSTALL_ROOT/staging/bin/agentd\" \"$BIN_DIR/$INSTALL_BIN_NAME\"\n";
+    body += "else\n";
+    body += "  echo \"install: falta bin/Tessera no pacote\" >&2\n";
+    body += "  exit 1\nfi\n";
+    body += "ln -sfn \"$INSTALL_BIN_NAME\" \"$BIN_DIR/agentd\"\n";
+    body += "if [ -d \"$INSTALL_ROOT/staging/Tessera.app\" ]; then\n";
+    body += "  rm -rf \"/Applications/Tessera.app\"\n";
+    body += "  cp -R \"$INSTALL_ROOT/staging/Tessera.app\" /Applications/\nfi\n";
+    body += "rm -rf \"$INSTALL_ROOT/staging\"\n";
+    body += "AGENTD=\"$BIN_DIR/$INSTALL_BIN_NAME\"\n";
     body += "UID_NUM=\"$(id -u)\"\n";
-    body += "launchctl bootout \"gui/$UID_NUM/$OLD_LABEL\" 2>/dev/null || true\n";
-    body += "launchctl bootout \"gui/$UID_NUM/$LABEL\" 2>/dev/null || true\n";
-    body += "rm -f \"$HOME/Library/LaunchAgents/$OLD_LABEL.plist\"\n";
+    body += "launchctl bootout \"gui/$UID_NUM/$LEGACY_LABEL\" 2>/dev/null || true\n";
+    body += "rm -f \"$HOME/Library/LaunchAgents/$LEGACY_LABEL.plist\"\n";
     body += "cat > \"$PLIST\" <<PLIST\n";
     body += "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
     body += "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n";
     body += "<plist version=\"1.0\">\n<dict>\n";
     body += "  <key>Label</key><string>$LABEL</string>\n";
     body += "  <key>ProgramArguments</key>\n  <array>\n";
-    body += "    <string>$PY</string>\n    <string>-m</string>\n    <string>agent</string>\n  </array>\n";
+    body += "    <string>$AGENTD</string>\n  </array>\n";
     body += "  <key>WorkingDirectory</key><string>$INSTALL_ROOT</string>\n";
     body += "  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n";
     body += "  <key>ThrottleInterval</key><integer>5</integer>\n";
@@ -515,13 +559,14 @@ bool send_install_command(WiFiClient &client) {
     body += "  <key>EnvironmentVariables</key>\n  <dict>\n";
     body += "    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>\n";
     body += "    <key>HOME</key><string>$HOME</string>\n";
-    body += "    <key>PYTHONPATH</key><string>$INSTALL_ROOT/src</string>\n";
     body += "  </dict>\n</dict>\n</plist>\nPLIST\n";
+    body += "launchctl bootout \"gui/$UID_NUM/$LABEL\" 2>/dev/null || true\n";
     body += "launchctl bootstrap \"gui/$UID_NUM\" \"$PLIST\"\n";
     body += "launchctl enable \"gui/$UID_NUM/$LABEL\" 2>/dev/null || true\n";
     body += "launchctl kickstart -k \"gui/$UID_NUM/$LABEL\" 2>/dev/null || true\n";
-    body += "echo \"Tessara Agent instalado → $INSTALL_ROOT\"\n";
+    body += "echo \"Tessera agentd instalado → $INSTALL_ROOT\"\n";
     body += "echo \"log: $LOG\"\n";
+    body += "if [ -d /Applications/Tessera.app ]; then open -a Tessera || true; fi\n";
 
     client.printf("HTTP/1.1 200 OK\r\nContent-Type: application/x-sh\r\nContent-Length: %u\r\n"
                   "Content-Disposition: attachment; filename=\"install-tessera-agent.command\"\r\n"
@@ -533,7 +578,7 @@ bool send_install_command(WiFiClient &client) {
 }
 
 // PUT body streamado para o SD (não cabe em kMaxRequest).
-bool put_agent_file(Slot &slot, int head_end, int length, const char *sd_path) {
+bool put_agent_file(Slot &slot, int head_end, int length, const char *sd_path, const char *version) {
     // ensure: tenta montar sem derrubar um mount saudável (remount destrutivo era a falha).
     if (!sd_host::ensure()) {
         send(slot.client, text_reply(503, "storage indisponivel"));
@@ -607,6 +652,9 @@ bool put_agent_file(Slot &slot, int head_end, int length, const char *sd_path) {
         send(slot.client, text_reply(500, "gravacao incompleta no SD"));
         return true;
     }
+    if (version && version[0]) write_agent_pack_version(version);
+    else sd_host::remove_file("/tessera/agentd.version");  // portal upload without header → force next push
+    agent_push::disarm();
     refresh_agent_pack_flag();
     send(slot.client, text_reply(200, "ok"));
     return true;
@@ -631,8 +679,26 @@ bool serve(Slot &slot) {
     int field = head.indexOf("\r\ncontent-length:");
     if (field >= 0) length = head.substring(field + 17).toInt();
 
-    if (method == "PUT" && path == "/agent/agent.tgz") {
-        return put_agent_file(slot, head_end, length, "/tessera/agent.tgz");
+    if (method == "PUT" && (path == "/agentd/agentd.tgz" || path == "/agent/agent.tgz")) {
+        if (!agent_push::armed()) {
+            send(slot.client, text_reply(403, "push nao armado"));
+            return true;
+        }
+        char version[24] = {};
+        int vf = head.indexOf("\r\nx-tessera-agentd-version:");
+        int skip = 27;  // strlen("\r\nx-tessera-agentd-version:")
+        if (vf < 0) {
+            vf = head.indexOf("\r\nx-tessera-agent-version:");
+            skip = 26;
+        }
+        if (vf >= 0) {
+            String v = head.substring(vf + skip);
+            int end = v.indexOf("\r\n");
+            if (end >= 0) v = v.substring(0, end);
+            v.trim();
+            text::copy(version, sizeof(version), v.c_str());
+        }
+        return put_agent_file(slot, head_end, length, "/tessera/agentd.tgz", version);
     }
 
     if (length < 0 || head_end + 4 + length > static_cast<int>(kMaxRequest)) {
@@ -640,11 +706,12 @@ bool serve(Slot &slot) {
         return true;
     }
     if (static_cast<int>(slot.raw.length()) < head_end + 4 + length) return false;
-    if (method == "GET" && path == "/agent/install.command") {
+    if (method == "GET" &&
+        (path == "/agentd/install.command" || path == "/agent/install.command")) {
         return send_install_command(slot.client);
     }
-    if (method == "GET" && path == "/agent/agent.tgz") {
-        return send_sd_file(slot.client, "/tessera/agent.tgz", "application/gzip", "agent.tgz");
+    if (method == "GET" && (path == "/agentd/agentd.tgz" || path == "/agent/agent.tgz")) {
+        return send_sd_file(slot.client, "/tessera/agentd.tgz", "application/gzip", "agentd.tgz");
     }
     String body = slot.raw.substring(head_end + 4, head_end + 4 + length);
     Reply reply = route(method, path, body.c_str());
@@ -860,7 +927,7 @@ bool web_portal::begin(const char *name) {
     return task != nullptr;
 }
 
-const char *web_portal::setup_ap() { return "Tessara"; }
+const char *web_portal::setup_ap() { return "Tessera"; }
 
 const char *web_portal::setup_url() { return "http://192.168.4.1/"; }
 

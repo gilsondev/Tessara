@@ -33,7 +33,7 @@
 - [x] `list_prefs` / `pending_closes` via `StoragePort`
 - [x] Portal settings namespaced por widget
 - [x] Todoist/AI Tokens rebuild no slot
-- [x] Settings panel começa a usar `tessara::ui::Ts*` (+ home)
+- [x] Settings panel começa a usar `tessera::ui::Ts*` (+ home)
 
 ## Task 5: Ports HAL
 
@@ -44,7 +44,7 @@
 
 ## Task 6: Ts UI Kit aliases
 
-- [x] `ui/ts_kit.h` — `tessara::ui::TsCard` etc. wrapping `kit::`
+- [x] `ui/ts_kit.h` — `tessera::ui::TsCard` etc. wrapping `kit::`
 
 ## Task 7: Shell
 

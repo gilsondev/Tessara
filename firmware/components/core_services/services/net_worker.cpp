@@ -31,7 +31,7 @@ bool connect() {
     if (!ssid[0]) return false;
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
-    WiFi.setHostname("tessara");
+    WiFi.setHostname("tessera");
     WiFi.begin(ssid, pass);
     uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < kConnectTimeoutMs) delay(20);
@@ -61,15 +61,19 @@ void run() {
             if (!result.ok) text::copy(result.error, sizeof(result.error), ssid[0] ? "wi-fi falhou" : "falta o wi-fi");
             break;
         case net_worker::Kind::Views:
+            // Yield briefly so the UI/LVGL core can release transient internal DRAM before TLS.
+            delay(30);
             result.count = todoist::load_views(views, kMaxViews);
             result.views = views;
             result.ok = result.count > 0;
             break;
         case net_worker::Kind::Tasks:
+            delay(30);
             result.ok = todoist::load_tasks(job.query, tasks, &result.count, result.error, sizeof(result.error));
             result.tasks = tasks;
             break;
         case net_worker::Kind::Close:
+            delay(20);
             result.ok = todoist::close_task(job.id, result.error, sizeof(result.error), &result.status);
             break;
         case net_worker::Kind::WeatherGeocode:

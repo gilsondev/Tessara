@@ -1,11 +1,11 @@
 #pragma once
 
-#include "tessara/services.h"
+#include "tessera/services.h"
 
 // Binds daytime / settings / log adapters into the global Widget Runtime.
-namespace tessara {
+namespace tessera {
 
 void bind_host_services();
 HostServices &host_services();
 
-}  // namespace tessara
+}  // namespace tessera

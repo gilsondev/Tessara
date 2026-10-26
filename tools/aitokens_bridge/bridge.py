@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tessara AI Tokens Bridge: push Codex/Claude snapshots over USB serial."""
+"""Tessera AI Tokens Bridge: push Codex/Claude snapshots over USB serial."""
 
 from __future__ import annotations
 

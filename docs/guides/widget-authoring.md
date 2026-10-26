@@ -1,6 +1,6 @@
 # Authoring a widget
 
-How to add a new Tessara widget package with the same rules as **clock** and **weather**.
+How to add a new Tessera widget package with the same rules as **clock** and **weather**.
 
 Prerequisites: [`getting-started.md`](../getting-started.md), [`architecture.md`](architecture.md).
 
@@ -34,9 +34,10 @@ Use `firmware/widgets/clock/` or `firmware/widgets/weather/` as the template. Co
 
 ### 1. Manifest
 
-- Stable id, e.g. `org.tessara.mywidget`
+- Stable id, e.g. `org.tessera.mywidget`
 - Title, size hints, `accent_rgb` if needed
 - `home_tile` vs `hero_only` (heroes like greeting/date do not open detail)
+- Optional `supports_home_tile_size` + namespaced `home_tile_size` (`S`/`M`/`L`/`XL`) for taller home tiles — see `domain/home_tile_size.h`
 - Settings schema for instance keys only (device-global keys stay in device settings)
 
 ### 2. Implement lifecycle
@@ -59,7 +60,7 @@ Async HTTP/results must carry a **generation** (or equivalent). Discard stale ca
 
 ### 4. UI
 
-- Prefer `tessara::ui::Ts*` (UI Kit)
+- Prefer `tessera::ui::Ts*` (UI Kit)
 - Home shows a **summary**; detail is optional and opened by the shell
 - Do not own a global `lv_screen`; mount into the parent the shell provides
 

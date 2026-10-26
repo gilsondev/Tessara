@@ -24,7 +24,9 @@ constexpr int kStripStart = 4;  // px of page drag before the neighbour is built
 // Background renders hold the UI thread; run them only after the user has paused, so a burst of
 // checks or swipes never waits on one.
 constexpr uint32_t kCacheQuietMs = 400;
-constexpr uint32_t kPreviewQuietMs = 1200;
+// Warm neighbour bitmaps soon after a gesture — 1.2s left every swipe on the slow
+// live-widget path (create+paint under the finger) once agent USB invalidated previews.
+constexpr uint32_t kPreviewQuietMs = 350;
 
 todoist_panel::Hooks hooks = {};
 lv_obj_t *root = nullptr;
@@ -236,8 +238,8 @@ const lv_draw_buf_t *ready_preview(int view) {
     return bitmaps::preview(view, task_store::version(view), lv_area_get_width(&area), lv_area_get_height(&area));
 }
 
-// Neighbour strip for a horizontal swipe. Prefer a fast freeze when both sides already have
-// previews — never block the gesture on a synchronous full-list render (that was locking the drag).
+// Neighbour strip for a horizontal swipe. Prefer bitmap freeze when the neighbour
+// is pre-rendered — never create the other list's widgets under the finger (jank).
 void build_strip(int target) {
     Timed timed(stats.strip_us);
     drop_other();
@@ -249,7 +251,7 @@ void build_strip(int target) {
     const lv_draw_buf_t *page_preview =
         lv_obj_get_scroll_y(list) == 0 ? ready_preview(active) : nullptr;
 
-    if (other_preview && page_preview) {
+    if (other_preview) {
         bitmaps::FreezeSpec spec = {};
         spec.list = list;
         spec.page = current.obj;
@@ -258,12 +260,13 @@ void build_strip(int target) {
         spec.other_ref = dir > 0 ? -width : 0;
         spec.place_sheet = place_sheet;
         spec.other_bitmap = other_preview;
+        // Page side may be null — freeze() snapshots the live viewport instead.
         spec.page_bitmap = page_preview;
         spec.page_shift = 0;
         if (bitmaps::freeze(spec)) return;
     }
 
-    // Live path: build the neighbour page and slide the sheet — stays responsive under the finger.
+    // Last resort: live neighbour widgets (first rows only). Heavier with full lists.
     task_page::create(other, sheet, width);
     task_page::paint(other, target, on_mark);
     if (dir < 0) lv_obj_move_to_index(other.obj, 0);
@@ -295,6 +298,8 @@ void landed(lv_anim_t *) {
     active = view;
     select_tab(view, true);
     announce();
+    // Sync page if agent updated task_store during the gesture.
+    if (current.obj && current.version != task_store::version(current.view)) repaint();
     if (hooks.on_view_shown) hooks.on_view_shown(view);
 }
 
@@ -682,7 +687,10 @@ void todoist_panel::set_views(int selected) {
 }
 
 void todoist_panel::view_changed(int view) {
-    if (view == current.view && !busy() && current.version != task_store::version(view)) repaint();
+    (void)view;
+    // Chip counts update immediately. Page rebuild waits for idle_step so an agent
+    // USB push never reset_sheet() mid-swipe (that made the horizontal drag feel broken).
+    announce();
 }
 
 void todoist_panel::drop_row(int view, int row) {

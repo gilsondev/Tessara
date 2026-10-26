@@ -49,7 +49,7 @@ inline const char *wifi_strength_label(WifiStrength level) {
 
 // What the settings screens show about the connection.
 struct DeviceInfo {
-    char host[40];  // "tessara.local"
+    char host[40];  // "tessera.local"
     char ip[16];
     char ssid[64];
     bool online;
@@ -99,7 +99,7 @@ inline Appearance clamp_appearance(int value) {
 }
 
 // Resolves Light / Dark / Auto → effective dark mode for the palette.
-// Auto follows the OS preference from the portal; until that arrives, evening hours (19–7) are dark.
+// Auto follows macOS (Agente `THEME` push) or the portal `os_dark`; until known, evening (19–7).
 inline bool effective_dark(const DeviceSettings &settings, int local_hour = -1) {
     if (settings.appearance == Appearance::Dark) return true;
     if (settings.appearance == Appearance::Light) return false;

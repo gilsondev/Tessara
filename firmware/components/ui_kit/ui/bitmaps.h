@@ -5,7 +5,8 @@
 
 // Pre-rendered bitmaps that turn heavy redraws into plain copies:
 // - scroll cache: the whole current page, rendered in idle stripes, shown while the list scrolls vertically;
-// - freeze: current and neighbour viewports side by side, moved as one image while pages slide.
+// - freeze: current and neighbour viewports side by side; slide frames are row copies straight
+//   into the framebuffer (display_host::slide_frame), with LVGL images as fallback.
 namespace bitmaps {
 
 // `version` must change whenever the page's pixels may have changed.

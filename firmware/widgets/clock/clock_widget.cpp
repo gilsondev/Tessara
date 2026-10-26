@@ -6,21 +6,22 @@
 
 namespace {
 
-const tessara::WidgetManifest kManifest = {
-    "org.tessara.clock",
+const tessera::WidgetManifest kManifest = {
+    "org.tessera.clock",
     "Relógio",
     160,
     80,
     false,  // no grid tile; detalhe abre ao tocar a hora no hero
-    tessara::HomeTile::None,
+    tessera::HomeTile::None,
     0,
+    false,
 };
 
-class ClockWidget final : public tessara::TsWidget {
+class ClockWidget final : public tessera::TsWidget {
 public:
-    const tessara::WidgetManifest &manifest() const override { return kManifest; }
+    const tessera::WidgetManifest &manifest() const override { return kManifest; }
 
-    void mount(tessara::WidgetContext &ctx) override {
+    void mount(tessera::WidgetContext &ctx) override {
         generation_ = ctx.generation();
         if (ctx.logger()) ctx.logger()->info("clock.mount");
         auto *parent = static_cast<lv_obj_t *>(ctx.ui_parent());
@@ -28,7 +29,7 @@ public:
         else clock_page::show();
         if (ctx.time()) clock_page::paint(ctx.time()->now());
         else {
-            tessara::TimeSnapshot unsynced;
+            tessera::TimeSnapshot unsynced;
             clock_page::paint(unsynced);
         }
         mounted_ = true;
@@ -42,7 +43,7 @@ public:
         generation_ = 0;
     }
 
-    void paint(const tessara::TimeSnapshot &snap) {
+    void paint(const tessera::TimeSnapshot &snap) {
         if (mounted_) clock_page::paint(snap);
     }
 
@@ -57,16 +58,16 @@ private:
 
 }  // namespace
 
-const char *tessara::clock_widget_id() { return kManifest.id; }
+const char *tessera::clock_widget_id() { return kManifest.id; }
 
-tessara::TsWidget *tessara::create_clock_widget() { return new ClockWidget(); }
+tessera::TsWidget *tessera::create_clock_widget() { return new ClockWidget(); }
 
-void tessara::clock_widget_paint(TsWidget *widget, const TimeSnapshot &snap) {
+void tessera::clock_widget_paint(TsWidget *widget, const TimeSnapshot &snap) {
     if (!widget) return;
     static_cast<ClockWidget *>(widget)->paint(snap);
 }
 
-void tessara::clock_widget_apply_theme(TsWidget *widget) {
+void tessera::clock_widget_apply_theme(TsWidget *widget) {
     if (!widget) return;
     static_cast<ClockWidget *>(widget)->apply_theme();
 }

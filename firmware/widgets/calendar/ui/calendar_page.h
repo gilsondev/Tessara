@@ -12,6 +12,8 @@ void unmount();
 void show();
 void apply_theme();
 void paint(const calendar::View &view);
+// Device weekday (0 = Sunday) so day cards past tomorrow can be named; -1 when the clock is unknown.
+void set_weekday(int wday);
 const calendar::View &last_view();
 
 }  // namespace calendar_page

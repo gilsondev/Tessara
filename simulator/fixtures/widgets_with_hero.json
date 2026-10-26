@@ -59,11 +59,11 @@
     "pack_on_sd": true
   },
   "dashboard": [
-    "org.tessara.greeting",
-    "org.tessara.date",
-    "org.tessara.clock",
-    "org.tessara.todoist",
-    "org.tessara.weather",
-    "org.tessara.aitokens"
+    "org.tessera.greeting",
+    "org.tessera.date",
+    "org.tessera.clock",
+    "org.tessera.todoist",
+    "org.tessera.weather",
+    "org.tessera.aitokens"
   ]
 }

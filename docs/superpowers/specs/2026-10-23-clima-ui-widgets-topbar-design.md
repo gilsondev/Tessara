@@ -1,6 +1,6 @@
 # Clima UI, ciclo de vida dos widgets e topbar
 
-Painel Tessara (JC3248W535, landscape 480×320). Fecha o fluxo web de cidade, o feedback de carregamento nos tiles da home, a tela de detalhe do Clima (layout C) e a padronização das barras superiores dos subsistemas.
+Painel Tessera (JC3248W535, landscape 480×320). Fecha o fluxo web de cidade, o feedback de carregamento nos tiles da home, a tela de detalhe do Clima (layout C) e a padronização das barras superiores dos subsistemas.
 
 ## Decisões fechadas
 

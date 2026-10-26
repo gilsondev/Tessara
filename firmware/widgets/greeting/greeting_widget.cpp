@@ -2,21 +2,22 @@
 
 namespace {
 
-const tessara::WidgetManifest kManifest = {
-    "org.tessara.greeting",
+const tessera::WidgetManifest kManifest = {
+    "org.tessera.greeting",
     "Saudação",
     0,
     0,
     true,
-    tessara::HomeTile::None,
+    tessera::HomeTile::None,
     0,
+    false,
 };
 
 // Hero-only: shell paints via clock_face; no detail mount.
-class GreetingWidget final : public tessara::TsWidget {
+class GreetingWidget final : public tessera::TsWidget {
 public:
-    const tessara::WidgetManifest &manifest() const override { return kManifest; }
-    void mount(tessara::WidgetContext &ctx) override {
+    const tessera::WidgetManifest &manifest() const override { return kManifest; }
+    void mount(tessera::WidgetContext &ctx) override {
         generation_ = ctx.generation();
         if (ctx.logger()) ctx.logger()->info("greeting.mount");
         mounted_ = true;
@@ -34,5 +35,5 @@ private:
 
 }  // namespace
 
-const char *tessara::greeting_widget_id() { return kManifest.id; }
-tessara::TsWidget *tessara::create_greeting_widget() { return new GreetingWidget(); }
+const char *tessera::greeting_widget_id() { return kManifest.id; }
+tessera::TsWidget *tessera::create_greeting_widget() { return new GreetingWidget(); }

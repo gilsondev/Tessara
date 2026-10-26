@@ -1,15 +1,30 @@
 #include "platform/daytime.h"
 
 #include <Arduino.h>
+#include <Preferences.h>
 
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <sys/time.h>
 
 namespace {
 
 char g_tz_id[24] = "sao_paulo";
 bool g_started = false;
+constexpr time_t kMinEpoch = 1704067200;  // 2024-01-01 UTC
+uint32_t g_last_persist_ms = 0;
+
+void persist_epoch(time_t epoch) {
+    if (epoch < kMinEpoch) return;
+    const uint32_t now_ms = millis();
+    if (g_last_persist_ms != 0 && (now_ms - g_last_persist_ms) < 60000) return;
+    g_last_persist_ms = now_ms;
+    Preferences prefs;
+    if (!prefs.begin("daytime", false)) return;
+    prefs.putLong64("epoch", static_cast<int64_t>(epoch));
+    prefs.end();
+}
 
 struct Zone {
     const char *id;
@@ -65,6 +80,20 @@ const char *daytime::timezone_id() { return g_tz_id; }
 
 const char *daytime::timezone_label(const char *tz_id) { return find_zone(tz_id)->label; }
 
+void daytime::restore() {
+    time_t now = time(nullptr);
+    if (now >= kMinEpoch) return;
+    Preferences prefs;
+    if (!prefs.begin("daytime", true)) return;
+    const int64_t saved = prefs.getLong64("epoch", 0);
+    prefs.end();
+    if (saved < static_cast<int64_t>(kMinEpoch)) return;
+    timeval tv{};
+    tv.tv_sec = static_cast<time_t>(saved);
+    tv.tv_usec = 0;
+    settimeofday(&tv, nullptr);
+}
+
 bool daytime::local(int &hour, int &minute, int &wday, int &day, int &month) {
     int second = 0, year = 0;
     return local(hour, minute, second, wday, day, month, year);
@@ -81,5 +110,6 @@ bool daytime::local(int &hour, int &minute, int &second, int &wday, int &day, in
     day = parts.tm_mday;
     month = parts.tm_mon;
     year = parts.tm_year + 1900;
+    persist_epoch(now);
     return true;
 }

@@ -20,7 +20,7 @@ void setup() {
         case ESP_RST_USB: why = "usb"; break;
         default: break;
     }
-    Serial.printf("tessara reset=%d (%s) board=%s\n", static_cast<int>(rr), why, hal::board().descriptor.id);
+    Serial.printf("tessera reset=%d (%s) board=%s\n", static_cast<int>(rr), why, hal::board().descriptor.id);
     app::begin(hal::board());
 }
 

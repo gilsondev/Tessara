@@ -1,0 +1,72 @@
+# Continuous build of the Mac companion on every push/PR — release publishing stays on agent-release.yml (tags).
+name: Agent build
+
+on:
+  push:
+    branches: [main, master, "feat/**"]
+    paths:
+      - "agentd/**"
+      - "apps/agent-ui/**"
+      - ".github/workflows/agent-build.yml"
+      - "mise.toml"
+  pull_request:
+    paths:
+      - "agentd/**"
+      - "apps/agent-ui/**"
+      - ".github/workflows/agent-build.yml"
+      - "mise.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-mac:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+
+      - name: Test agentd
+        working-directory: agentd
+        run: cargo test --workspace
+
+      - name: Build agentd (release)
+        working-directory: agentd
+        run: cargo build --release -p agentd
+
+      - name: Build Tessera.app
+        working-directory: apps/agent-ui
+        run: npm install && npm run tauri build
+
+      - name: Package smoke (agentd.tgz)
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/tessera-smoke"
+          mkdir -p "$OUT/stage/bin"
+          install -m 755 agentd/target/release/Tessera "$OUT/stage/bin/Tessera"
+          ln -sfn Tessera "$OUT/stage/bin/agentd"
+          APP=""
+          for cand in \
+            "apps/agent-ui/src-tauri/target/release/bundle/macos/Tessera.app" \
+            "agentd/target/release/bundle/macos/Tessera.app"; do
+            if [ -d "$cand" ]; then APP="$cand"; break; fi
+          done
+          test -n "$APP"
+          cp -R "$APP" "$OUT/stage/Tessera.app"
+          tar -C "$OUT/stage" -czf "$OUT/agentd.tgz" .
+          tar -tzf "$OUT/agentd.tgz" | head
+          ls -lh "$OUT/agentd.tgz"
+
+      - name: Upload smoke artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentd-smoke
+          path: ${{ runner.temp }}/tessera-smoke/agentd.tgz
+          retention-days: 7

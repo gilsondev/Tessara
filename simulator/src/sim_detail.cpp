@@ -7,7 +7,7 @@
 #include "ui/clock_page.h"
 #include "ui/todoist_panel.h"
 #include "ui/weather_page.h"
-#include "tessara/services.h"
+#include "tessera/services.h"
 
 #include <cstdio>
 #include <cstring>
@@ -238,7 +238,7 @@ void sim_detail::open_clock(const Scenario &scenario, lv_event_cb_t on_back) {
         clock_page::begin(on_back);
         g_clock_begun = true;
     }
-    tessara::TimeSnapshot snap;
+    tessera::TimeSnapshot snap;
     snap.hour = scenario.hour;
     snap.minute = scenario.minute;
     snap.wday = scenario.wday;

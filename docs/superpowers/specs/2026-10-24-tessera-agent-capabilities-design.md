@@ -1,4 +1,4 @@
-# Tessara Agent — capabilities notebook ↔ painel (mapa + fases)
+# Tessera Agent — capabilities notebook ↔ painel (mapa + fases)
 
 **Status:** discovery → spec (sem implementação nesta entrega)  
 **Data:** 2026-10-24  
@@ -17,7 +17,7 @@
 
 ## Visão
 
-O painel Tessara vira **companheiro de mesa do notebook**: vê o que está tocando, vê o estado dos agentes de AI, e dispara ações curtas no Mac — sempre pelo **mesmo Tessara Agent** USB, sem o ESP chamar APIs das provedoras ou do sistema do Mac direto.
+O painel Tessera vira **companheiro de mesa do notebook**: vê o que está tocando, vê o estado dos agentes de AI, e dispara ações curtas no Mac — sempre pelo **mesmo Tessera Agent** USB, sem o ESP chamar APIs das provedoras ou do sistema do Mac direto.
 
 Hoje (baseline):
 - Mac → painel: `AGENT`, `AITOKENS`
@@ -154,7 +154,7 @@ Frescor: mesmo espírito de `AITOKENS` / `AGENT` (RAM; stale se parar de push). 
 | **Home** | Card **Mídia** (título · artista · play/pause); tile/card **Foco** (nome do ativo → abre detalhe); AI Tokens continua; lock discreto (não no meio do hero) |
 | **Detalhe Foco** | Lista dos Focus do Mac; item ativo marcado; toque → `FOCUS\tSET\t<id>`; opção “Nenhum” → `FOCUS\tOFF` |
 | **AI Tokens** | Cotas + badges “em uso” / indisponível (dev desk) |
-| **Agente Tessara** | Continua status/install; lista “capabilities ativas” (Mídia · Foco · Cotas) quando online |
+| **Agente Tessera** | Continua status/install; lista “capabilities ativas” (Mídia · Foco · Cotas) quando online |
 | **Web** | Status + permissões macOS necessárias (Accessibility, etc.); sem redesenhar portal no 1º corte além do necessário |
 
 ## Permissões macOS (descoberta)
@@ -182,12 +182,19 @@ Sleep e controles destrutivos ficam **depois** de lock/DND com confirmação de 
 
 ## Fora de escopo (este mapa)
 
-- Calendário, bateria, Slack/mail badges  
+- Bateria, Slack/mail badges  
 - Companion HTTP `localhost`  
 - Agente LLM no Mac acionado pelo painel  
 - Shell arbitrário / abrir URLs genéricas  
 - Persistência NVS de snapshots do Mac  
-- Substituir Todoist/Clima (continuam Wi‑Fi no painel)
+- Substituir Clima (continua Wi‑Fi no painel)  
+
+## Capabilities entregues fora das fases 1–3 (addenda)
+
+| Capability | Spec | Notas |
+|---|---|---|
+| **Calendário** | `2026-10-24-calendario-design.md` | Eventos via Mac; painel USB |
+| **Todoist** | `2026-10-26-todoist-via-agent-design.md` + guia `docs/guides/todoist-agent.md` | HTTPS no Mac; painel só USB (saiu do Wi‑Fi no ESP) |
 
 ## Riscos
 

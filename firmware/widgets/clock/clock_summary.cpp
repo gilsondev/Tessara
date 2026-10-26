@@ -137,7 +137,7 @@ clock_face::Summary clock_face::from_parts(int hour, int minute, int wday, int d
     return out;
 }
 
-clock_face::Summary clock_face::from_snapshot(const tessara::TimeSnapshot &snap, Options opts) {
+clock_face::Summary clock_face::from_snapshot(const tessera::TimeSnapshot &snap, Options opts) {
     opts.second = snap.second;
     return from_parts(snap.hour, snap.minute, snap.wday, snap.day, snap.month, snap.year, snap.synced,
                       opts);

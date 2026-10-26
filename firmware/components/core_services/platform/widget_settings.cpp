@@ -40,6 +40,7 @@ const char *nvs_key(const char *key) {
     if (!std::strcmp(key, "time_format")) return "time_fmt";
     if (!std::strcmp(key, "date_format")) return "date_fmt";
     if (!std::strcmp(key, "selection") || !std::strcmp(key, "cal_sel")) return "cal_sel";
+    if (!std::strcmp(key, "home_tile_size") || !std::strcmp(key, "tile_sz")) return "tile_sz";
     // Truncate unknown keys to fit NVS.
     return key;
 }

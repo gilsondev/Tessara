@@ -1,5 +1,6 @@
 #include "ui/bitmaps.h"
 
+#include "platform/display_host.h"
 #include "ui/kit.h"
 #include "ui/palette.h"
 #include "ui/theme.h"
@@ -14,9 +15,11 @@ constexpr size_t kScrollBytes = 480 * 2600 * sizeof(uint16_t);
 constexpr int32_t kStripeRows = 120;
 
 struct Frozen {
-    lv_obj_t *box;
-    lv_obj_t *image[2];  // left, right
-    lv_obj_t *filler;    // white under a page shorter than the viewport
+    bool active;
+    bool direct;      // frames composed in the framebuffer instead of moved by LVGL
+    lv_obj_t *box;    // LVGL fallback only
+    lv_obj_t *image[2];
+    lv_obj_t *filler;
     int filler_side;
     int32_t step;
     int32_t origin;
@@ -266,37 +269,58 @@ bool bitmaps::freeze(const FreezeSpec &spec) {
 
     bool other_left = other_ref > rest;
     int32_t step = other_ref > rest ? other_ref - rest : rest - other_ref;
-    freeze_state.box = kit::bare(lv_screen_active());
-    lv_obj_add_flag(freeze_state.box, LV_OBJ_FLAG_FLOATING);
-    lv_obj_set_pos(freeze_state.box, area.x1, area.y1);
-    lv_obj_set_size(freeze_state.box, w, h);
-    // Both halves (plus the filler under a short page) paint every pixel at any shift between the rest positions.
-    kit::declare_opaque(freeze_state.box);
     int page_side = other_left ? 1 : 0;
-    freeze_state.image[1 - page_side] = kit::opaque_image(freeze_state.box, other_src);
-    freeze_state.image[page_side] = kit::opaque_image(freeze_state.box, page_src);
-    lv_obj_set_y(freeze_state.image[1 - page_side], 0);
-    lv_obj_set_y(freeze_state.image[page_side], page_y);
-    int32_t page_bottom = page_y + static_cast<int32_t>(page_src->header.h);
-    if (page_bottom < h) {
-        freeze_state.filler = kit::bare(freeze_state.box);
-        lv_obj_set_size(freeze_state.filler, w, h - page_bottom);
-        lv_obj_set_y(freeze_state.filler, page_bottom);
-        lv_obj_set_style_bg_color(freeze_state.filler, theme::paper(), 0);
-        lv_obj_set_style_bg_opa(freeze_state.filler, LV_OPA_COVER, 0);
-        freeze_state.filler_side = page_side;
-    }
+    freeze_state.active = true;
     freeze_state.step = step;
     freeze_state.origin = other_left ? other_ref : rest;
+
+    // Page on the left half when the neighbour comes in from the right, and the other way round.
+    display_host::SlideSpec slide = {};
+    slide.viewport = area;
+    slide.step = step;
+    slide.left = page_side == 0 ? display_host::SlideHalf{page_src, page_y}
+                                : display_host::SlideHalf{other_src, 0};
+    slide.right = page_side == 0 ? display_host::SlideHalf{other_src, 0}
+                                 : display_host::SlideHalf{page_src, page_y};
+    slide.fill = lv_color_to_u16(theme::paper());
+    freeze_state.direct = display_host::slide_begin(slide);
+
+    if (!freeze_state.direct) {
+        // LVGL fallback: both halves over the list, moved per frame.
+        freeze_state.box = kit::bare(lv_screen_active());
+        lv_obj_add_flag(freeze_state.box, LV_OBJ_FLAG_FLOATING);
+        lv_obj_set_pos(freeze_state.box, area.x1, area.y1);
+        lv_obj_set_size(freeze_state.box, w, h);
+        // Both halves (plus the filler under a short page) paint every pixel at any shift.
+        kit::declare_opaque(freeze_state.box);
+        freeze_state.image[1 - page_side] = kit::opaque_image(freeze_state.box, other_src);
+        freeze_state.image[page_side] = kit::opaque_image(freeze_state.box, page_src);
+        lv_obj_set_y(freeze_state.image[1 - page_side], 0);
+        lv_obj_set_y(freeze_state.image[page_side], page_y);
+        int32_t page_bottom = page_y + static_cast<int32_t>(page_src->header.h);
+        if (page_bottom < h) {
+            freeze_state.filler = kit::bare(freeze_state.box);
+            lv_obj_set_size(freeze_state.filler, w, h - page_bottom);
+            lv_obj_set_y(freeze_state.filler, page_bottom);
+            lv_obj_set_style_bg_color(freeze_state.filler, theme::paper(), 0);
+            lv_obj_set_style_bg_opa(freeze_state.filler, LV_OPA_COVER, 0);
+            freeze_state.filler_side = page_side;
+        }
+    }
     set_frozen_shift(rest);
     return true;
 }
 
-bool bitmaps::frozen() { return freeze_state.box != nullptr; }
+bool bitmaps::frozen() { return freeze_state.active; }
 
 void bitmaps::set_frozen_shift(int32_t shift) {
-    if (!freeze_state.box) return;
+    if (!freeze_state.active) return;
     freeze_state.shift = shift;
+    if (freeze_state.direct) {
+        // Strip column sitting at the left edge of the viewport.
+        display_host::slide_frame(freeze_state.origin - shift);
+        return;
+    }
     int32_t x[2] = {shift - freeze_state.origin, shift - freeze_state.origin + freeze_state.step};
     lv_obj_set_x(freeze_state.image[0], x[0]);
     lv_obj_set_x(freeze_state.image[1], x[1]);
@@ -306,8 +330,9 @@ void bitmaps::set_frozen_shift(int32_t shift) {
 int32_t bitmaps::frozen_shift() { return freeze_state.shift; }
 
 void bitmaps::unfreeze() {
-    if (!freeze_state.box) return;
-    lv_obj_delete(freeze_state.box);
+    if (!freeze_state.active) return;
+    if (freeze_state.direct) display_host::slide_end();
+    if (freeze_state.box) lv_obj_delete(freeze_state.box);
     freeze_state = Frozen{};
 }
 

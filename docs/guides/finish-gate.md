@@ -3,7 +3,7 @@
 Fixed order after any feature, bugfix, or UI change. Source of truth: root **`Makefile`** (`make help`).
 
 ```bash
-cd /path/to/Tessara
+cd /path/to/Tessera
 make help
 ```
 
@@ -12,7 +12,7 @@ make help
 | Order | Make target | What it does |
 |------:|---|---|
 | 1 | `make test` | Automated suite (`.venv/bin/pio test -e native`) |
-| 2 | `make e2e` | Simulator E2E (`simulator/scripts/verify_all.sh`). Inspect `$SIM_OUT` (default `/tmp/tessara-sim-out/`) |
+| 2 | `make e2e` | Simulator E2E (`simulator/scripts/verify_all.sh`). Inspect `$SIM_OUT` (default `/tmp/tessera-sim-out/`) |
 | 3 | `make flash` | Program the JC3248 (`tools/flash.sh`). Only after 1 and 2 are green |
 | 4 | `make device` | USB monitor for manual on-device checks. Ctrl+C exits |
 
@@ -43,3 +43,16 @@ Equivalent: `./tools/finish.sh` (`SKIP_FLASH=1` = finish-host).
 - Agents: `AGENTS.md`
 - Simulator: [`simulator.md`](simulator.md)
 - Architecture: [`architecture.md`](architecture.md)
+- Todoist via agent (regressão USB): [`todoist-agent.md`](todoist-agent.md)
+
+## Todoist / agentd USB
+
+After changes to `caps-todoist`, `todoist_bridge`, or Todoist USB ingest:
+
+```bash
+make test
+(cd agentd && cargo test -p tessera-caps-todoist && cargo test -p agentd logutil)
+make e2e   # or make finish-host
+```
+
+Manual device checklist: [`todoist-agent.md`](todoist-agent.md).

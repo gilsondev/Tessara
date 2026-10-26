@@ -28,18 +28,20 @@ English is canonical. Product north-star specs may also live in a sibling Terrar
 | Shell | `firmware/components/dashboard_shell/` | Slots, navigation, theme, Wi‑Fi/time chrome |
 | Widget SDK | `firmware/components/widget_sdk/` | `TsWidget`, `WidgetManifest`, `WidgetContext`, `MemoryHost` |
 | Runtime | `firmware/components/widget_runtime/` | Registry, `mount_exclusive`, generation cancel |
-| UI Kit | `firmware/components/ui_kit/` | `tessara::ui::Ts*` over `kit::` |
+| UI Kit | `firmware/components/ui_kit/` | `tessera::ui::Ts*` over `kit::` |
 | HAL | `firmware/components/hal/` | Board-agnostic ports |
 | Board | `firmware/boards/jc3248w535/` | JC adapters |
 | Simulator | `simulator/` | Same widget/shell sources + host ports + fixtures |
 
 ## Current building blocks
 
-- Manifest fields include `hero_only`, `home_tile`, `accent_rgb`
+- Manifest fields include `hero_only`, `home_tile`, `accent_rgb`, `supports_home_tile_size`
+- Shared home grid height: widget setting `home_tile_size` (`S`–`XL`) via `domain/home_tile_size.h`
 - Context services: time, settings, http, scheduler, logger
 - Nav: `Screen::{Home,Detail,Settings}` + `widget_id`
 - Controller opens detail only through the registry (`type_registered` / `type_hero_only`)
 - Home = compose ∩ registry; tiles follow `home_tile`
+- Hidden (portal “Oculto”) = not in compose → no home LVGL tile; controller skips USB asks / Wi‑Fi fetches for that id until re-enabled
 - Widget settings: namespaced (`/api/widget_settings`, NVS `w_*`)
 - Host verification: `make e2e` / `simulator/scripts/verify_all.sh`
 

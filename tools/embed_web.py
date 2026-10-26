@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Embed web/src/*.html into PROGMEM headers under web_configurator (Tessara web/ extract)."""
+"""Embed web/src/*.html into PROGMEM headers under web_configurator (Tessera web/ extract)."""
 
 from pathlib import Path
 

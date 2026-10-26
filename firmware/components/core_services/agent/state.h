@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-// Estado do Tessara Agent no painel (handshake USB AGENT). Snapshot só em RAM.
+// Estado do Tessera Agent no painel (handshake USB AGENT). Snapshot só em RAM.
 namespace agent {
 
 constexpr int kDetailMax = 48;

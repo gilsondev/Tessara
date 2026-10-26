@@ -1,0 +1,52 @@
+# Tessera — toolchain (agentd + Tessera.app UI)
+# Docs: docs/superpowers/specs/2026-10-25-tessera-agent-v2-design.md
+
+[tools]
+rust = "1.90.0"
+node = "22.14.0"
+python = "3.12.9"
+
+[settings]
+# Monorepo: tasks na root; crates em agentd/
+experimental = true
+
+[env]
+_.file = ".env"
+
+[tasks.agent-check-trees]
+description = "Sanity: agentd + UI trees (legacy Python must be gone)"
+run = "bash scripts/mise/check-agent-trees.sh"
+
+[tasks.agentd-build]
+description = "Build agentd (Rust) — available after daemon plan"
+dir = "agentd"
+run = "cargo build --release"
+# hide until crate exists: use `mise run` only after agentd/ exists
+
+[tasks.agentd-test]
+description = "Test agentd workspace"
+dir = "agentd"
+run = "cargo test"
+
+[tasks.agentd-run]
+description = "Run agentd in foreground"
+dir = "agentd"
+run = "cargo run -p agentd"
+
+[tasks.agent-ui-dev]
+description = "Tauri/Vite dev — after ui plan"
+dir = "apps/agent-ui"
+run = "npm run tauri dev"
+
+[tasks.agent-ui-build]
+description = "Build Tessera.app"
+dir = "apps/agent-ui"
+run = "npm run tauri build"
+
+[tasks.agent-install]
+description = "Build agentd + Tessera.app and cutover-install on this Mac"
+run = "bash tools/agent-install.sh"
+
+[tasks.doctor-smoke]
+description = "GET /v1/doctor on running agentd (127.0.0.1:19792)"
+run = "curl -sf http://127.0.0.1:19792/v1/doctor | head -c 200"

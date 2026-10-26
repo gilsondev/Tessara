@@ -7,6 +7,10 @@ namespace kit {
 
 // Plain container: no theme style, no scrolling, not clickable.
 lv_obj_t *bare(lv_obj_t *parent);
+// Phone-like press: slight scale + dim, ~100ms ease_out; larger hit pad.
+void press_feedback(lv_obj_t *obj);
+// Vertical list with momentum + elastic overscroll (calendar / weather / settings).
+void enable_list_scroll(lv_obj_t *obj);
 lv_obj_t *action_button(lv_obj_t *parent, const char *text, lv_event_cb_t on_click);
 // Symbol button. tone 0 uses the platform primary; a widget passes its own color.
 lv_obj_t *icon_button(lv_obj_t *parent, const char *symbol, lv_event_cb_t on_click, uint32_t tone = 0);

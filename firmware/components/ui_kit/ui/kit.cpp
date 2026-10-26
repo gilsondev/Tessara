@@ -17,6 +17,25 @@
 
 namespace {
 constexpr int kDots = 8;
+// 256 = 100% in LVGL 9 transform scale units; 245 ≈ 0.96.
+constexpr int32_t kPressScale = 245;
+constexpr uint32_t kPressMs = 100;
+constexpr int32_t kHitPad = 12;
+
+lv_style_transition_dsc_t g_press_trans;
+bool g_press_trans_ready = false;
+
+void ensure_press_trans() {
+    if (g_press_trans_ready) return;
+    static const lv_style_prop_t props[] = {
+        LV_STYLE_TRANSFORM_SCALE_X,
+        LV_STYLE_TRANSFORM_SCALE_Y,
+        LV_STYLE_BG_OPA,
+        (lv_style_prop_t)0,
+    };
+    lv_style_transition_dsc_init(&g_press_trans, props, lv_anim_path_ease_out, kPressMs, 0, nullptr);
+    g_press_trans_ready = true;
+}
 
 void prep_button(lv_obj_t *button, int pad_x, int height) {
     lv_obj_set_height(button, height);
@@ -65,13 +84,42 @@ lv_obj_t *kit::bare(lv_obj_t *parent) {
     return obj;
 }
 
+void kit::press_feedback(lv_obj_t *obj) {
+    if (!obj) return;
+    ensure_press_trans();
+    lv_obj_set_ext_click_area(obj, kHitPad);
+    lv_obj_set_style_transform_pivot_x(obj, lv_pct(50), 0);
+    lv_obj_set_style_transform_pivot_y(obj, lv_pct(50), 0);
+    lv_obj_set_style_transition(obj, &g_press_trans, 0);
+    lv_obj_set_style_transition(obj, &g_press_trans, LV_STATE_PRESSED);
+    lv_obj_set_style_transform_scale_x(obj, kPressScale, LV_STATE_PRESSED);
+    lv_obj_set_style_transform_scale_y(obj, kPressScale, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(obj, LV_OPA_80, LV_STATE_PRESSED);
+}
+
+void kit::enable_list_scroll(lv_obj_t *obj) {
+    if (!obj) return;
+    // kit::bare strips CLICKABLE — without it LVGL never feeds the drag to the scroller.
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLL_ELASTIC);
+    lv_obj_set_scroll_dir(obj, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_ACTIVE);
+    lv_obj_set_scroll_snap_y(obj, LV_SCROLL_SNAP_NONE);
+    lv_obj_set_style_bg_color(obj, theme::muted(), LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_opa(obj, LV_OPA_40, LV_PART_SCROLLBAR);
+    lv_obj_set_style_width(obj, 3, LV_PART_SCROLLBAR);
+}
+
 lv_obj_t *kit::action_button(lv_obj_t *parent, const char *text, lv_event_cb_t on_click) {
     lv_obj_t *button = lv_button_create(parent);
     prep_button(button, 10, 30);
     lv_obj_set_style_bg_color(button, theme::primary(), 0);
+    lv_obj_set_style_bg_opa(button, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(button, 8, 0);
-    lv_obj_set_ext_click_area(button, 6);
     lv_obj_add_flag(button, LV_OBJ_FLAG_SCROLL_CHAIN);
+    kit::press_feedback(button);
     lv_obj_add_event_cb(button, on_click, LV_EVENT_CLICKED, nullptr);
     lv_obj_t *label = lv_label_create(button);
     lv_label_set_text(label, text);
@@ -82,7 +130,7 @@ lv_obj_t *kit::action_button(lv_obj_t *parent, const char *text, lv_event_cb_t o
 
 lv_obj_t *kit::icon_button(lv_obj_t *parent, const char *symbol, lv_event_cb_t on_click, uint32_t tone) {
     lv_obj_t *button = lv_button_create(parent);
-    lv_obj_set_size(button, 36, 36);
+    lv_obj_set_size(button, 44, 44);
     lv_obj_set_style_pad_all(button, 0, 0);
     lv_obj_set_style_radius(button, 10, 0);
     lv_obj_set_style_bg_color(button, lv_color_hex(tone ? tone : palette::primary()), 0);
@@ -91,7 +139,7 @@ lv_obj_t *kit::icon_button(lv_obj_t *parent, const char *symbol, lv_event_cb_t o
     lv_obj_set_style_border_width(button, 0, 0);
     lv_obj_remove_flag(button, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_remove_flag(button, LV_OBJ_FLAG_EVENT_BUBBLE);
-    lv_obj_set_ext_click_area(button, 6);
+    kit::press_feedback(button);
     lv_obj_add_event_cb(button, on_click, LV_EVENT_CLICKED, nullptr);
     lv_obj_t *glyph = lv_label_create(button);
     lv_label_set_text(glyph, symbol);
@@ -114,6 +162,7 @@ lv_obj_t *kit::card(lv_obj_t *parent, const char *title, lv_event_cb_t on_click)
     lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(box, 4, 0);
     lv_obj_add_flag(box, LV_OBJ_FLAG_CLICKABLE);
+    kit::press_feedback(box);
     if (on_click) lv_obj_add_event_cb(box, on_click, LV_EVENT_CLICKED, nullptr);
     lv_obj_t *name = lv_label_create(box);
     lv_label_set_text(name, title);
@@ -197,8 +246,10 @@ lv_obj_t *kit::chip(lv_obj_t *parent, const char *text, bool selected, lv_event_
     lv_obj_t *button = lv_button_create(parent);
     prep_button(button, 12, 30);
     lv_obj_set_style_radius(button, 15, 0);
+    lv_obj_set_style_bg_opa(button, LV_OPA_COVER, 0);
     // Chain both axes so vertical drag on chips scrolls the parent page (settings Geral).
     lv_obj_add_flag(button, LV_OBJ_FLAG_SCROLL_CHAIN);
+    kit::press_feedback(button);
     lv_obj_add_event_cb(button, on_click, LV_EVENT_CLICKED, user_data);
     lv_obj_t *label = lv_label_create(button);
     lv_label_set_text(label, text);

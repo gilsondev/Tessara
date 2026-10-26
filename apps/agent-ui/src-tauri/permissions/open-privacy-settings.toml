@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-open-privacy-settings"
+description = "Open macOS Privacy Settings deep links for Tessera permissions."
+commands.allow = ["open_privacy_settings"]

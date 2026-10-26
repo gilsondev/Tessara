@@ -1,4 +1,4 @@
-# Simulator (Tessara)
+# Simulator (Tessera)
 
 Host **test harness** for the real firmware UI — not a demo. Links the same sources as the device (LVGL9 + SDL2 + fixtures).
 
@@ -20,5 +20,5 @@ make sim
 
 ```bash
 make e2e
-# artifacts: $SIM_OUT (default /tmp/tessara-sim-out/)
+# artifacts: $SIM_OUT (default /tmp/tessera-sim-out/)
 ```

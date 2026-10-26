@@ -1,0 +1,11 @@
+{
+  "version": "0.1.0",
+  "released_at": "2026-10-26T00:00:00Z",
+  "agentd_url": "https://github.com/gilsondev/Tessara/releases/latest",
+  "app_url": "https://github.com/gilsondev/Tessara/releases/latest",
+  "sha256": {
+    "agentd": "",
+    "app": ""
+  },
+  "notes": "Placeholder até a 1ª tag agent-v* publicar artefatos via agent-release.yml. Enquanto isso o botão aponta para /releases/latest."
+}

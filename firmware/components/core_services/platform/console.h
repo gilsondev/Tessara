@@ -13,6 +13,8 @@ public:
     virtual void on_perf() = 0;
     virtual void on_drag(int x0, int y0, int x1, int y1, uint32_t ms) = 0;
     virtual void on_flash() = 0;
+    // Opens a short one-shot window for PUT /agentd/agentd.tgz (portal / pack-agentd).
+    virtual void on_agent_push(bool on) = 0;
     // First-run portal, and the way back to the credentials copied by it.
     virtual void on_enter_setup() = 0;
     virtual void on_restore() = 0;
@@ -23,6 +25,11 @@ public:
     virtual void on_aitokens(const char *line) = 0;
     virtual void on_agent(const char *line) = 0;
     virtual void on_calendar(const char *line) = 0;
+    virtual void on_todoist(const char *line) = 0;
+    virtual void on_media(const char *line) = 0;
+    virtual void on_focus(const char *line) = 0;
+    // macOS appearance: THEME\tv1\t1\tdark|light (Agente).
+    virtual void on_theme(const char *line) = 0;
     // Screen rest test: "", "wake", "saver", "fade", "off".
     virtual void on_rest(const char *arg) = 0;
 };

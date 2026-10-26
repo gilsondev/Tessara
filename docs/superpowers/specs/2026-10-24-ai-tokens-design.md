@@ -2,14 +2,14 @@
 
 **Depende de:** grilling fechado (Q1–Q24). Glossário: `GLOSSARY.md`. ADR: `docs/adr/0002-ai-tokens-usb-bridge.md`.
 
-O subsistema mostra uso/cotas locais de agentes no Mac ligado ao Tessara. O painel **não** chama APIs das provedoras.
+O subsistema mostra uso/cotas locais de agentes no Mac ligado ao Tessera. O painel **não** chama APIs das provedoras.
 
 ## O que a pessoa vê
 
-- **Cartão de AI Tokens (home).** No fim da home, depois da linha Tarefas|Clima. Ícone no firmware + título "AI Tokens" + linhas só das Fontes coletadas. Codex: % restante 5 h + horário de reset. Cursor: soma dos % usados. Sem Bridge: “ligar Bridge”. **desatualizado** só após ~3 min sem push.
+- **Cartão de AI Tokens (home).** No fim da home, depois da linha Tarefas|Clima. Ícone no firmware + título "AI Tokens" + linhas só das Fontes coletadas. Codex: % restante 5 h + horário de reset. Cursor: **Modelos % · Outros %** (sem soma — ver `2026-10-26-aitokens-providers-stability-design.md`). Sem Bridge: “ligar Bridge”. **desatualizado** só após ~3 min sem push. Linha habilitada **não** some só porque a cotas live falhou; agentd mantém últimos valores ~6 h.
 - **Tela de AI Tokens.** Topbar com voltar + refresh. Codex: barras 5 h e semana (% restante). Cursor: Modelos/Outros (% usados). Refresh manda `AITOKENS?`.
 - **Configurações no aparelho:** entrada **AI Tokens** com checagem de status do Bridge (desligado / ok / sem cotas / desatualizado) e linhas das Fontes do último snapshot. Sem ligar/desligar Fonte no aparelho (Q16).
-- **Página do celular:** sem toggles de Fonte neste MVP (Q16/Q22); limites manuais ficam para depois (Q4).
+- **Página do celular / portal / Agente:** toggles Codex/Claude/Cursor (`show_aitokens_*`) + ordem dos cards (`sources_order`). Coleta no Mac (No Mac) sincroniza com esses toggles — ver `2026-10-26-aitokens-providers-stability-design.md`.
 
 ## Métricas
 
@@ -27,7 +27,7 @@ Claude **indisponível** se o statusLine não estiver configurado. Codex/Cursor 
 - Empurra snapshot a cada **~5 s** pela USB (115200).
 - Responde a pedido do painel (`AITOKENS?`).
 - **Solta a porta** se flash/probe/monitor a ocupar; retoma sozinho.
-- Estrutura modular (potencial agente Tessara depois); MVP só cotas — sem LLM.
+- Estrutura modular (potencial agente Tessera depois); MVP só cotas — sem LLM.
 - Inclui script/doc de statusLine macOS para Claude.
 
 ## Protocolo USB
@@ -58,7 +58,7 @@ AITOKENS\tv1\t<bridge_ok>\t<id>\t<available>\t<kind>\t<value>\t<display>\t<reset
 
 ## Instalação no Mac
 
-Cotas vêm pelo **Agente Tessara** (não mais pelo bridge legado). Ver `2026-10-24-tessera-agent-design.md` e `agent/README.md`.
+Cotas vêm pelo **Agente Tessera** (não mais pelo bridge legado). Ver `2026-10-24-tessera-agent-design.md` e `agent/README.md`.
 
 ```bash
 # pack no SD do painel, depois baixar instalador na web do aparelho — ou, em dev:

@@ -1,4 +1,4 @@
-# Tessara
+# Tessera
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
@@ -44,7 +44,8 @@ Full environment setup (macOS + Linux): **[`docs/getting-started.md`](docs/getti
 | `firmware/` | Device app (`components/`, `widgets/`, `boards/`) |
 | `simulator/` | Same UI sources on host (LVGL9 + SDL2) + `verify_all` |
 | `web/` | Portal HTML → PROGMEM embed |
-| `agent/` | Mac USB agent (AI Tokens first capability) |
+| `agentd/` | Mac companion (Rust daemon + USB capabilities) |
+| `apps/agent-ui/` | Tessera.app (Doctor / setup UI) |
 | `docs/` | Guides, ADRs, feature plans |
 | `Makefile` | Finish gate (`make help`) |
 

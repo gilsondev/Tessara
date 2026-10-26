@@ -1,0 +1,6 @@
+[package]
+name = "tessera-protocol"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

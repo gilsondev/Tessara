@@ -1,4 +1,4 @@
-# Contributing to Tessara
+# Contributing to Tessera
 
 Thank you for helping. English is the default for code, comments, commits, and docs. Optional Portuguese mirrors live under `docs/pt/`.
 

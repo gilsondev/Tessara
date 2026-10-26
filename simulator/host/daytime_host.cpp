@@ -44,6 +44,8 @@ const char *timezone_label(const char *tz_id) {
     return tz_id;
 }
 
+void restore() {}
+
 bool local(int &hour, int &minute, int &wday, int &day, int &month) {
     int second = 0;
     int year = 0;

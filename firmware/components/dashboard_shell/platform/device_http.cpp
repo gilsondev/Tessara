@@ -4,11 +4,11 @@
 
 namespace {
 
-tessara::DeviceHttp g_http;
+tessera::DeviceHttp g_http;
 
 }  // namespace
 
-int tessara::DeviceHttp::get(const char *url, uint32_t generation, HttpCallback cb, void *user) {
+int tessera::DeviceHttp::get(const char *url, uint32_t generation, HttpCallback cb, void *user) {
     if (!url || !cb || generation == 0) return -1;
     for (int i = 0; i < kMaxJobs; ++i) {
         if (jobs_[i].active) continue;
@@ -24,25 +24,25 @@ int tessara::DeviceHttp::get(const char *url, uint32_t generation, HttpCallback 
     return -1;
 }
 
-void tessara::DeviceHttp::cancel(int job) {
+void tessera::DeviceHttp::cancel(int job) {
     if (job < 0 || job >= kMaxJobs) return;
     jobs_[job] = {};
 }
 
-void tessara::DeviceHttp::cancel_generation(uint32_t generation) {
+void tessera::DeviceHttp::cancel_generation(uint32_t generation) {
     for (int i = 0; i < kMaxJobs; ++i) {
         if (jobs_[i].active && jobs_[i].generation == generation) jobs_[i] = {};
     }
 }
 
-int tessara::DeviceHttp::pending_count() const {
+int tessera::DeviceHttp::pending_count() const {
     int n = 0;
     for (int i = 0; i < kMaxJobs; ++i)
         if (jobs_[i].active) ++n;
     return n;
 }
 
-int tessara::DeviceHttp::take_pending(char *url_out, size_t url_len, uint32_t *generation_out) {
+int tessera::DeviceHttp::take_pending(char *url_out, size_t url_len, uint32_t *generation_out) {
     if (!url_out || url_len == 0) return -1;
     for (int i = 0; i < kMaxJobs; ++i) {
         if (!jobs_[i].active || jobs_[i].taken) continue;
@@ -55,7 +55,7 @@ int tessara::DeviceHttp::take_pending(char *url_out, size_t url_len, uint32_t *g
     return -1;
 }
 
-bool tessara::DeviceHttp::complete(int job, HttpStatus status, const char *body, size_t len) {
+bool tessera::DeviceHttp::complete(int job, HttpStatus status, const char *body, size_t len) {
     if (job < 0 || job >= kMaxJobs || !jobs_[job].active) return false;
     Job snap = jobs_[job];
     jobs_[job] = {};
@@ -67,4 +67,4 @@ bool tessara::DeviceHttp::complete(int job, HttpStatus status, const char *body,
     return true;
 }
 
-tessara::DeviceHttp &tessara::device_http() { return g_http; }
+tessera::DeviceHttp &tessera::device_http() { return g_http; }

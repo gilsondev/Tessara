@@ -5,6 +5,10 @@ include/secrets.h
 .DS_Store
 simulator/build/
 agent/dist/
+agentd/dist/
+agentd/target/
+apps/agent-ui/src-tauri/target/
+apps/agent-ui/src-tauri/src-tauri/
 agent/.venv/
 tmp/
 *.ppm
@@ -12,3 +16,5 @@ __pycache__/
 *.py[cod]
 .idea/
 .vscode/
+.worktrees/
+mise.local.toml

@@ -2,21 +2,22 @@
 
 namespace {
 
-const tessara::WidgetManifest kManifest = {
-    "org.tessara.date",
+const tessera::WidgetManifest kManifest = {
+    "org.tessera.date",
     "Data",
     0,
     0,
     true,
-    tessara::HomeTile::None,
+    tessera::HomeTile::None,
     0,
+    false,
 };
 
 // Hero-only: shell paints via clock_face; no detail mount.
-class DateWidget final : public tessara::TsWidget {
+class DateWidget final : public tessera::TsWidget {
 public:
-    const tessara::WidgetManifest &manifest() const override { return kManifest; }
-    void mount(tessara::WidgetContext &ctx) override {
+    const tessera::WidgetManifest &manifest() const override { return kManifest; }
+    void mount(tessera::WidgetContext &ctx) override {
         generation_ = ctx.generation();
         if (ctx.logger()) ctx.logger()->info("date.mount");
         mounted_ = true;
@@ -34,5 +35,5 @@ private:
 
 }  // namespace
 
-const char *tessara::date_widget_id() { return kManifest.id; }
-tessara::TsWidget *tessara::create_date_widget() { return new DateWidget(); }
+const char *tessera::date_widget_id() { return kManifest.id; }
+tessera::TsWidget *tessera::create_date_widget() { return new DateWidget(); }

@@ -1,6 +1,6 @@
-#include "tessara/memory_services.h"
-#include "tessara/runtime.h"
-#include "tessara/widget.h"
+#include "tessera/memory_services.h"
+#include "tessera/runtime.h"
+#include "tessera/widget.h"
 
 #include <unity.h>
 
@@ -8,12 +8,12 @@
 
 namespace {
 
-const tessara::WidgetManifest kFakeManifest = {"org.tessara.fake", "Fake", 100, 100, false,
-                                               tessara::HomeTile::Generic, 0};
+const tessera::WidgetManifest kFakeManifest = {"org.tessera.fake", "Fake", 100, 100, false,
+                                               tessera::HomeTile::Generic, 0, false};
 
-struct FakeWidget : tessara::TsWidget {
-    const tessara::WidgetManifest &manifest() const override { return kFakeManifest; }
-    void mount(tessara::WidgetContext &ctx) override {
+struct FakeWidget : tessera::TsWidget {
+    const tessera::WidgetManifest &manifest() const override { return kFakeManifest; }
+    void mount(tessera::WidgetContext &ctx) override {
         mounted = true;
         gen = ctx.generation();
         parent = ctx.ui_parent();
@@ -38,7 +38,7 @@ struct FakeWidget : tessara::TsWidget {
         ++unmounts;
     }
 
-    static void on_http(void *user, uint32_t generation, const tessara::HttpResult &result) {
+    static void on_http(void *user, uint32_t generation, const tessera::HttpResult &result) {
         auto *self = static_cast<FakeWidget *>(user);
         self->http_calls += 1;
         self->last_http_gen = generation;
@@ -56,8 +56,8 @@ struct FakeWidget : tessara::TsWidget {
     uint32_t gen = 0;
     int mounts = 0;
     int unmounts = 0;
-    tessara::ITime *time = nullptr;
-    tessara::ILogger *logger = nullptr;
+    tessera::ITime *time = nullptr;
+    tessera::ILogger *logger = nullptr;
     char settings_place[32] = {};
     int http_job = -1;
     int sched_job = -1;
@@ -65,12 +65,12 @@ struct FakeWidget : tessara::TsWidget {
     int sched_calls = 0;
     uint32_t last_http_gen = 0;
     uint32_t last_sched_gen = 0;
-    tessara::HttpStatus last_http_status = tessara::HttpStatus::Network;
+    tessera::HttpStatus last_http_status = tessera::HttpStatus::Network;
 };
 
 FakeWidget *g_last = nullptr;
 
-tessara::TsWidget *make_fake() {
+tessera::TsWidget *make_fake() {
     g_last = new FakeWidget();
     return g_last;
 }
@@ -78,10 +78,10 @@ tessara::TsWidget *make_fake() {
 }  // namespace
 
 void test_runtime_register_mount_unmount_bumps_generation(void) {
-    tessara::Runtime rt;
-    TEST_ASSERT_TRUE(rt.register_type("org.tessara.fake", make_fake));
+    tessera::Runtime rt;
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.fake", make_fake));
     int a = 42;
-    int slot = rt.mount("org.tessara.fake", &a);
+    int slot = rt.mount("org.tessera.fake", &a);
     TEST_ASSERT_TRUE(slot >= 0);
     TEST_ASSERT_NOT_NULL(g_last);
     TEST_ASSERT_TRUE(g_last->mounted);
@@ -96,16 +96,16 @@ void test_runtime_register_mount_unmount_bumps_generation(void) {
 }
 
 void test_runtime_unknown_type_fails(void) {
-    tessara::Runtime rt;
-    TEST_ASSERT_EQUAL(-1, rt.mount("org.tessara.missing", nullptr));
+    tessera::Runtime rt;
+    TEST_ASSERT_EQUAL(-1, rt.mount("org.tessera.missing", nullptr));
 }
 
 void test_runtime_remount_same_type_reuses_slot(void) {
-    tessara::Runtime rt;
-    TEST_ASSERT_TRUE(rt.register_type("org.tessara.fake", make_fake));
-    int slot1 = rt.mount("org.tessara.fake", nullptr);
+    tessera::Runtime rt;
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.fake", make_fake));
+    int slot1 = rt.mount("org.tessera.fake", nullptr);
     uint32_t g1 = rt.generation(slot1);
-    int slot2 = rt.mount("org.tessara.fake", nullptr);
+    int slot2 = rt.mount("org.tessera.fake", nullptr);
     TEST_ASSERT_EQUAL(slot1, slot2);
     uint32_t g2 = rt.generation(slot2);
     TEST_ASSERT_TRUE(g2 != g1);
@@ -115,7 +115,7 @@ void test_runtime_remount_same_type_reuses_slot(void) {
 }
 
 void test_context_exposes_services_and_namespaced_settings(void) {
-    tessara::MemoryHost host;
+    tessera::MemoryHost host;
     host.time.snap = {};
     host.time.snap.hour = 14;
     host.time.snap.minute = 30;
@@ -124,13 +124,13 @@ void test_context_exposes_services_and_namespaced_settings(void) {
     host.time.snap.month = 9;
     host.time.snap.year = 2025;
     host.time.snap.synced = true;
-    host.settings.set("org.tessara.fake/place", "Campinas");
-    tessara::HostServices bag = host.bag();
+    host.settings.set("org.tessera.fake/place", "Campinas");
+    tessera::HostServices bag = host.bag();
 
-    tessara::Runtime rt;
+    tessera::Runtime rt;
     rt.set_services(&bag);
-    TEST_ASSERT_TRUE(rt.register_type("org.tessara.fake", make_fake));
-    int slot = rt.mount("org.tessara.fake", nullptr);
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.fake", make_fake));
+    int slot = rt.mount("org.tessera.fake", nullptr);
     TEST_ASSERT_TRUE(slot >= 0);
     TEST_ASSERT_NOT_NULL(g_last->time);
     TEST_ASSERT_TRUE(g_last->time->now().synced);
@@ -141,12 +141,12 @@ void test_context_exposes_services_and_namespaced_settings(void) {
 }
 
 void test_unmount_cancels_http_so_late_result_is_dropped(void) {
-    tessara::MemoryHost host;
-    tessara::HostServices bag = host.bag();
-    tessara::Runtime rt;
+    tessera::MemoryHost host;
+    tessera::HostServices bag = host.bag();
+    tessera::Runtime rt;
     rt.set_services(&bag);
-    TEST_ASSERT_TRUE(rt.register_type("org.tessara.fake", make_fake));
-    int slot = rt.mount("org.tessara.fake", nullptr);
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.fake", make_fake));
+    int slot = rt.mount("org.tessera.fake", nullptr);
     TEST_ASSERT_TRUE(g_last->http_job >= 0);
     int job = g_last->http_job;
     TEST_ASSERT_EQUAL(1, host.http.pending_count());
@@ -154,16 +154,16 @@ void test_unmount_cancels_http_so_late_result_is_dropped(void) {
     TEST_ASSERT_TRUE(rt.unmount(slot));
     TEST_ASSERT_EQUAL(0, host.http.pending_count());
     // Completing a canceled job must be a no-op (FakeWidget already destroyed).
-    TEST_ASSERT_FALSE(host.http.complete(job, tessara::HttpStatus::Ok, "{}", 2));
+    TEST_ASSERT_FALSE(host.http.complete(job, tessera::HttpStatus::Ok, "{}", 2));
 }
 
 void test_unmount_cancels_scheduler_jobs(void) {
-    tessara::MemoryHost host;
-    tessara::HostServices bag = host.bag();
-    tessara::Runtime rt;
+    tessera::MemoryHost host;
+    tessera::HostServices bag = host.bag();
+    tessera::Runtime rt;
     rt.set_services(&bag);
-    TEST_ASSERT_TRUE(rt.register_type("org.tessara.fake", make_fake));
-    int slot = rt.mount("org.tessara.fake", nullptr);
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.fake", make_fake));
+    int slot = rt.mount("org.tessera.fake", nullptr);
     int job = g_last->sched_job;
     TEST_ASSERT_TRUE(job >= 0);
     TEST_ASSERT_EQUAL(1, host.scheduler.active_count());
@@ -173,29 +173,29 @@ void test_unmount_cancels_scheduler_jobs(void) {
 }
 
 void test_runtime_registry_exposes_titles(void) {
-    tessara::Runtime rt;
-    TEST_ASSERT_TRUE(rt.register_type("org.tessara.fake", make_fake));
+    tessera::Runtime rt;
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.fake", make_fake));
     TEST_ASSERT_EQUAL(1, rt.type_count());
-    TEST_ASSERT_EQUAL_STRING("org.tessara.fake", rt.type_id(0));
+    TEST_ASSERT_EQUAL_STRING("org.tessera.fake", rt.type_id(0));
     TEST_ASSERT_EQUAL_STRING("Fake", rt.type_title(0));
 }
 
 namespace {
 
-const tessara::WidgetManifest kOtherManifest = {"org.tessara.other", "Other", 80, 80, false,
-                                                tessara::HomeTile::Generic, 0};
+const tessera::WidgetManifest kOtherManifest = {"org.tessera.other", "Other", 80, 80, false,
+                                                tessera::HomeTile::Generic, 0, false};
 
 struct OtherWidget;
 OtherWidget *g_other = nullptr;
 
-struct OtherWidget : tessara::TsWidget {
-    static void on_http(void *, uint32_t, const tessara::HttpResult &) {}
+struct OtherWidget : tessera::TsWidget {
+    static void on_http(void *, uint32_t, const tessera::HttpResult &) {}
     ~OtherWidget() override {
         mounted = false;
         if (g_other == this) g_other = nullptr;
     }
-    const tessara::WidgetManifest &manifest() const override { return kOtherManifest; }
-    void mount(tessara::WidgetContext &ctx) override {
+    const tessera::WidgetManifest &manifest() const override { return kOtherManifest; }
+    void mount(tessera::WidgetContext &ctx) override {
         mounted = true;
         gen = ctx.generation();
         parent = ctx.ui_parent();
@@ -209,7 +209,7 @@ struct OtherWidget : tessara::TsWidget {
     int http_job = -1;
 };
 
-tessara::TsWidget *make_other() {
+tessera::TsWidget *make_other() {
     g_other = new OtherWidget();
     return g_other;
 }
@@ -217,16 +217,16 @@ tessara::TsWidget *make_other() {
 }  // namespace
 
 void test_mount_exclusive_unmounts_previous_and_cancels_its_http(void) {
-    tessara::MemoryHost host;
-    tessara::HostServices bag = host.bag();
-    tessara::Runtime rt;
+    tessera::MemoryHost host;
+    tessera::HostServices bag = host.bag();
+    tessera::Runtime rt;
     rt.set_services(&bag);
-    TEST_ASSERT_TRUE(rt.register_type("org.tessara.fake", make_fake));
-    TEST_ASSERT_TRUE(rt.register_type("org.tessara.other", make_other));
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.fake", make_fake));
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.other", make_other));
 
     int parent_a = 1;
     int parent_b = 2;
-    int slot_a = rt.mount("org.tessara.fake", &parent_a);
+    int slot_a = rt.mount("org.tessera.fake", &parent_a);
     TEST_ASSERT_TRUE(slot_a >= 0);
     TEST_ASSERT_TRUE(g_last->mounted);
     TEST_ASSERT_EQUAL_PTR(&parent_a, g_last->parent);
@@ -235,7 +235,7 @@ void test_mount_exclusive_unmounts_previous_and_cancels_its_http(void) {
     TEST_ASSERT_TRUE(job_a >= 0);
     TEST_ASSERT_EQUAL(1, host.http.pending_count());
 
-    int slot_b = rt.mount_exclusive("org.tessara.other", &parent_b);
+    int slot_b = rt.mount_exclusive("org.tessera.other", &parent_b);
     TEST_ASSERT_TRUE(slot_b >= 0);
     TEST_ASSERT_NOT_EQUAL(slot_a, slot_b);
     TEST_ASSERT_NOT_NULL(g_other);
@@ -255,10 +255,10 @@ void test_mount_exclusive_unmounts_previous_and_cancels_its_http(void) {
 }
 
 void test_mount_passes_detail_slot_parent(void) {
-    tessara::Runtime rt;
-    TEST_ASSERT_TRUE(rt.register_type("org.tessara.fake", make_fake));
+    tessera::Runtime rt;
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.fake", make_fake));
     int slot_obj = 99;
-    int idx = rt.mount("org.tessara.fake", &slot_obj);
+    int idx = rt.mount("org.tessera.fake", &slot_obj);
     TEST_ASSERT_TRUE(idx >= 0);
     TEST_ASSERT_EQUAL_PTR(&slot_obj, g_last->parent);
     rt.unmount(idx);
@@ -266,26 +266,27 @@ void test_mount_passes_detail_slot_parent(void) {
 
 namespace {
 
-const tessara::WidgetManifest kHeroManifest = {"org.tessara.hero", "Hero", 0, 0, true, tessara::HomeTile::None, 0};
+const tessera::WidgetManifest kHeroManifest = {"org.tessera.hero", "Hero", 0, 0, true, tessera::HomeTile::None, 0,
+                                               false};
 
-struct HeroWidget : tessara::TsWidget {
-    const tessara::WidgetManifest &manifest() const override { return kHeroManifest; }
-    void mount(tessara::WidgetContext &) override {}
+struct HeroWidget : tessera::TsWidget {
+    const tessera::WidgetManifest &manifest() const override { return kHeroManifest; }
+    void mount(tessera::WidgetContext &) override {}
     void on_resize(uint16_t, uint16_t) override {}
     void unmount() override {}
 };
 
-tessara::TsWidget *make_hero() { return new HeroWidget(); }
+tessera::TsWidget *make_hero() { return new HeroWidget(); }
 
 }  // namespace
 
 void test_runtime_exposes_hero_only_flag(void) {
-    tessara::Runtime rt;
-    TEST_ASSERT_TRUE(rt.register_type("org.tessara.fake", make_fake));
-    TEST_ASSERT_TRUE(rt.register_type("org.tessara.hero", make_hero));
-    TEST_ASSERT_TRUE(rt.type_registered("org.tessara.fake"));
-    TEST_ASSERT_FALSE(rt.type_hero_only("org.tessara.fake"));
-    TEST_ASSERT_TRUE(rt.type_hero_only("org.tessara.hero"));
-    TEST_ASSERT_FALSE(rt.type_registered("org.tessara.missing"));
-    TEST_ASSERT_FALSE(rt.type_hero_only("org.tessara.missing"));
+    tessera::Runtime rt;
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.fake", make_fake));
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.hero", make_hero));
+    TEST_ASSERT_TRUE(rt.type_registered("org.tessera.fake"));
+    TEST_ASSERT_FALSE(rt.type_hero_only("org.tessera.fake"));
+    TEST_ASSERT_TRUE(rt.type_hero_only("org.tessera.hero"));
+    TEST_ASSERT_FALSE(rt.type_registered("org.tessera.missing"));
+    TEST_ASSERT_FALSE(rt.type_hero_only("org.tessera.missing"));
 }

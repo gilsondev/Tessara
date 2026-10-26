@@ -1,12 +1,12 @@
 #pragma once
 
-#include "tessara/services.h"
+#include "tessera/services.h"
 
 #include <stddef.h>
 #include <stdint.h>
 
 // Device IHttp: queues GETs; UI/net_worker takes URL, then complete() delivers.
-namespace tessara {
+namespace tessera {
 
 class DeviceHttp final : public IHttp {
 public:
@@ -35,4 +35,4 @@ private:
 
 DeviceHttp &device_http();
 
-}  // namespace tessara
+}  // namespace tessera

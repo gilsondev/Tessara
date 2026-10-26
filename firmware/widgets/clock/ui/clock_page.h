@@ -1,6 +1,6 @@
 #pragma once
 
-#include "tessara/services.h"
+#include "tessera/services.h"
 
 #include <lvgl.h>
 
@@ -11,6 +11,6 @@ void mount(lv_obj_t *parent);
 void unmount();
 void show();
 void apply_theme();
-void paint(const tessara::TimeSnapshot &snap);
+void paint(const tessera::TimeSnapshot &snap);
 
 }  // namespace clock_page

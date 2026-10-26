@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tessera — painel + Agent no Mac</title>
+    <meta
+      name="description"
+      content="Tessera: painel de mesa e companion no Mac. Baixe o Agent e sincronize por USB."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="./">
+        <img src="/mark.svg" width="36" height="36" alt="" />
+        <span>Tessera</span>
+      </a>
+      <a class="ghost" href="https://github.com/gilsondev/Tessera">GitHub</a>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="eyebrow">Painel + Mac</p>
+        <h1>Tessera</h1>
+        <p class="lede">
+          Peças do mosaico da mesa: o painel JC3248 e o Agent no notebook, ligados por USB.
+        </p>
+        <div class="cta">
+          <a class="btn primary" id="download" href="https://github.com/gilsondev/Tessara/releases/latest"
+            >Baixar Agent para Mac</a
+          >
+          <p class="meta" id="version-note">Carregando versão…</p>
+        </div>
+        <p class="note">
+          Ou no Terminal:
+          <code id="install-cmd">curl -fsSL https://gilsondev.github.io/Tessera/install.command | bash</code>
+          <button type="button" class="ghost" id="copy-cmd">Copiar</button>
+        </p>
+        <p class="note">
+          Builds ainda <strong>não notarizados</strong> pela Apple — na 1ª abertura, use
+          Privacidade e Segurança se o Gatekeeper bloquear.
+        </p>
+      </section>
+
+      <section class="block">
+        <h2>Começar</h2>
+        <ol>
+          <li>Plugar o painel no Mac (USB).</li>
+          <li>Instalar o Agent por esta página (botão ou comando acima).</li>
+          <li>Autorizar o que a varredura pedir (FDA, Automação, etc.).</li>
+          <li>O painel passa a falar com o Mac sozinho — sem cartão SD.</li>
+        </ol>
+      </section>
+    </main>
+
+    <footer>
+      <span>Tessera</span>
+      <span id="footer-ver"></span>
+      <a href="https://github.com/gilsondev/Tessara">Código</a>
+    </footer>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

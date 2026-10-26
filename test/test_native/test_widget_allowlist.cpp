@@ -9,8 +9,8 @@
 
 namespace {
 
-#ifndef TESSARA_PROJECT_DIR
-#error "TESSARA_PROJECT_DIR must be set (platformio.ini native build_flags)"
+#ifndef TESSERA_PROJECT_DIR
+#error "TESSERA_PROJECT_DIR must be set (platformio.ini native build_flags)"
 #endif
 
 const char *kForbidden[] = {
@@ -81,7 +81,7 @@ std::string scan_tree(const std::string &root) {
 }  // namespace
 
 void test_widgets_forbid_platform_includes(void) {
-    std::string root = std::string(TESSARA_PROJECT_DIR) + "/firmware/widgets";
+    std::string root = std::string(TESSERA_PROJECT_DIR) + "/firmware/widgets";
     struct stat st = {};
     TEST_ASSERT_EQUAL_MESSAGE(0, stat(root.c_str(), &st), root.c_str());
     TEST_ASSERT_TRUE(S_ISDIR(st.st_mode));

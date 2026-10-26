@@ -14,7 +14,14 @@ constexpr size_t kBodyCap = 160 * 1024;
 constexpr char kHost[] = "api.todoist.com";
 constexpr uint32_t kReadTimeoutMs = 12000;
 constexpr uint32_t kConnectTimeoutMs = 20000;
-constexpr int kConnectAttempts = 3;
+// mbedTLS needs a contiguous internal block. On this board with UI+Wi‑Fi+USB CDC the
+// largest free block often sits ~30–32KB even when total free is ~60KB+. Historical
+// failures were largest≈21KB ("SSL - Memory allocation failed"). Gate just above that;
+// never demand 40KB — that permanently blocks Todoist while the shell is painted.
+constexpr size_t kTlsMinLargest = 28 * 1024;
+constexpr size_t kTlsMinFree = 40 * 1024;
+constexpr uint32_t kTlsHeapWaitMs = 2000;
+constexpr int kConnectAttempts = 2;
 
 char token[128] = "";
 
@@ -24,18 +31,52 @@ char *body_buffer() {
     return buffer;
 }
 
-// One reused TLS client: avoids fragmenting internal DRAM on every request.
+// Keep ArduinoJson off internal DRAM — default malloc competes with mbedTLS.
+struct SpiRamAllocator : ArduinoJson::Allocator {
+    void *allocate(size_t size) override {
+        return heap_caps_malloc(size ? size : 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+    void deallocate(void *pointer) override { heap_caps_free(pointer); }
+    void *reallocate(void *pointer, size_t new_size) override {
+        return heap_caps_realloc(pointer, new_size ? new_size : 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+};
+
+SpiRamAllocator &json_alloc() {
+    static SpiRamAllocator alloc;
+    return alloc;
+}
+
+JsonDocument make_doc() { return JsonDocument(&json_alloc()); }
+
+// One reused TLS client + keep-alive: handshake once, many GETs. Reconnect only when needed.
 WiFiClientSecure &tls() {
     static WiFiClientSecure client;
     static bool ready = false;
     if (!ready) {
         client.setHandshakeTimeout(kConnectTimeoutMs / 1000);
         client.setTimeout(kReadTimeoutMs);
-        // Builtin Mozilla bundle (same as setCACertBundle of the embedded CRT).
         client.useBuiltinCACertBundle();
         ready = true;
     }
     return client;
+}
+
+size_t heap_largest() { return heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL); }
+size_t heap_free() { return heap_caps_get_free_size(MALLOC_CAP_INTERNAL); }
+
+bool tls_budget_ok() { return heap_largest() >= kTlsMinLargest && heap_free() >= kTlsMinFree; }
+
+bool wait_tls_budget() {
+    if (tls_budget_ok()) return true;
+    uint32_t start = millis();
+    logger::printf("todoist TLS aguardando DRAM free=%u largest=%u\n", static_cast<unsigned>(heap_free()),
+                   static_cast<unsigned>(heap_largest()));
+    while (millis() - start < kTlsHeapWaitMs) {
+        delay(40);
+        if (tls_budget_ok()) return true;
+    }
+    return tls_budget_ok();
 }
 
 int read_wait(WiFiClient &client) {
@@ -98,22 +139,46 @@ bool read_body(WiFiClient &client, char *dest, size_t cap, int content_length, b
     return used > 0 || content_length == 0;
 }
 
-bool open_tls() {
+bool open_tls_fresh() {
     WiFiClientSecure &client = tls();
     if (client.connected()) client.stop();
+    if (!wait_tls_budget()) {
+        logger::printf("todoist TLS sem DRAM free=%u largest=%u (mín largest=%u)\n",
+                       static_cast<unsigned>(heap_free()), static_cast<unsigned>(heap_largest()),
+                       static_cast<unsigned>(kTlsMinLargest));
+        return false;
+    }
     for (int attempt = 1; attempt <= kConnectAttempts; ++attempt) {
-        size_t free_int = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-        size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
-        if (client.connect(kHost, 443, kConnectTimeoutMs)) return true;
+        if (!tls_budget_ok() && !wait_tls_budget()) break;
+        size_t free_int = heap_free();
+        size_t largest = heap_largest();
+        if (client.connect(kHost, 443, kConnectTimeoutMs)) {
+            logger::printf("todoist TLS ok try=%d free=%u largest=%u\n", attempt, static_cast<unsigned>(free_int),
+                           static_cast<unsigned>(largest));
+            return true;
+        }
         char err[96] = "";
         client.lastError(err, sizeof(err));
         logger::printf("todoist TLS falhou try=%d wifi=%d heap_int=%u largest=%u %s\n", attempt,
                        static_cast<int>(WiFi.status()), static_cast<unsigned>(free_int),
                        static_cast<unsigned>(largest), err[0] ? err : "(sem detalhe)");
         client.stop();
-        delay(150 * attempt);
+        delay(200 * attempt);
     }
     return false;
+}
+
+bool ensure_tls() {
+    WiFiClientSecure &client = tls();
+    if (client.connected()) {
+        // Keep-alive across UI thrash leaves a half-dead socket (status 0 on next GET).
+        // Drop and renegotiate only when DRAM looks healthy again.
+        if (tls_budget_ok()) return true;
+        logger::printf("todoist TLS drop (DRAM baixa free=%u largest=%u)\n", static_cast<unsigned>(heap_free()),
+                       static_cast<unsigned>(heap_largest()));
+        client.stop();
+    }
+    return open_tls_fresh();
 }
 
 bool request(const char *method, const char *path, const char *payload, int *status, char *body, size_t *got) {
@@ -129,44 +194,69 @@ bool request(const char *method, const char *path, const char *payload, int *sta
         logger::printf("todoist sem wi-fi\n");
         return false;
     }
-    if (!open_tls()) return false;
 
-    WiFiClientSecure &client = tls();
-    // Avoid Arduino String (fragments internal heap during TLS lifetime).
-    // Path can be >1KB on filter queries — print in pieces, never one fixed buffer.
     size_t payload_len = payload ? strlen(payload) : 0;
-    client.printf("%s %s HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nConnection: close\r\n", method,
-                  path, kHost, token);
-    if (payload) {
-        client.printf("Content-Type: application/x-www-form-urlencoded\r\nContent-Length: %u\r\n\r\n",
-                      static_cast<unsigned>(payload_len));
-        if (payload_len) client.write(reinterpret_cast<const uint8_t *>(payload), payload_len);
-    } else {
-        client.print("\r\n");
-    }
+    for (int pass = 0; pass < 2; ++pass) {
+        if (!ensure_tls()) return false;
+        WiFiClientSecure &client = tls();
+        // Keep-alive: one handshake serves sync + every filter page until the server closes.
+        client.printf("%s %s HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nConnection: keep-alive\r\n",
+                      method, path, kHost, token);
+        if (payload) {
+            client.printf("Content-Type: application/x-www-form-urlencoded\r\nContent-Length: %u\r\n\r\n",
+                          static_cast<unsigned>(payload_len));
+            if (payload_len) client.write(reinterpret_cast<const uint8_t *>(payload), payload_len);
+        } else {
+            client.print("\r\n");
+        }
 
-    char header[160];
-    int content_length = -1;
-    bool chunked = false;
-    for (;;) {
-        if (!read_header_line(client, header, sizeof(header))) {
+        char header[160];
+        int content_length = -1;
+        bool chunked = false;
+        bool server_close = false;
+        bool headers_ok = true;
+        for (;;) {
+            if (!read_header_line(client, header, sizeof(header))) {
+                headers_ok = false;
+                break;
+            }
+            if (header[0] == '\0') break;
+            if (!strncmp(header, "HTTP/", 5)) {
+                const char *space = strchr(header, ' ');
+                if (space) *status = atoi(space + 1);
+            } else if (!strncasecmp(header, "Content-Length:", 15)) content_length = atoi(header + 15);
+            else if (!strncasecmp(header, "Transfer-Encoding:", 18) && strstr(header, "chunked")) chunked = true;
+            else if (!strncasecmp(header, "Connection:", 11)) {
+                const char *v = header + 11;
+                while (*v == ' ' || *v == '\t') ++v;
+                if (!strncasecmp(v, "close", 5)) server_close = true;
+            }
+        }
+        if (!headers_ok) {
             client.stop();
+            *status = 0;
+            *got = 0;
+            if (pass == 0) continue;
             return false;
         }
-        if (header[0] == '\0') break;
-        if (!strncmp(header, "HTTP/", 5)) {
-            const char *space = strchr(header, ' ');
-            if (space) *status = atoi(space + 1);
-        } else if (!strncasecmp(header, "Content-Length:", 15)) content_length = atoi(header + 15);
-        else if (!strncasecmp(header, "Transfer-Encoding:", 18) && strstr(header, "chunked")) chunked = true;
+        bool ok = read_body(client, body, kBodyCap, content_length, chunked, got);
+        if (!ok || !client.connected() || server_close) client.stop();
+        logger::printf("todoist %.48s %d (%u bytes)%s\n", path, *status, static_cast<unsigned>(*got),
+                       client.connected() ? " keep" : "");
+        if (*status == 401 || *status == 403) {
+            logger::printf("todoist auth recusada (%d) — token inválido ou revogado\n", *status);
+            client.stop();
+        }
+        if (ok && *status >= 200 && *status < 300) return true;
+        // Transient / dead socket (keep-alive residue often yields status 0): renegotiate once.
+        client.stop();
+        if (pass == 0) {
+            delay(80);
+            continue;
+        }
+        break;
     }
-    bool ok = read_body(client, body, kBodyCap, content_length, chunked, got);
-    client.stop();
-    logger::printf("todoist %.48s %d (%u bytes)\n", path, *status, static_cast<unsigned>(*got));
-    if (*status == 401 || *status == 403) {
-        logger::printf("todoist auth recusada (%d) — token inválido ou revogado\n", *status);
-    }
-    return ok && *status >= 200 && *status < 300;
+    return false;
 }
 
 const char *json_text(JsonVariant value) { return value.is<const char *>() ? value.as<const char *>() : nullptr; }
@@ -232,13 +322,13 @@ int todoist::load_views(ViewItem *views, int cap) {
     if (!request("POST", "/api/v1/sync", "sync_token=*&resource_types=%5B%22filters%22%5D", &status, body, &got)) {
         return use_fallback(views, cap);
     }
-    JsonDocument filter;
+    JsonDocument filter = make_doc();
     filter["filters"][0]["name"] = true;
     filter["filters"][0]["query"] = true;
     filter["filters"][0]["is_favorite"] = true;
     filter["filters"][0]["is_deleted"] = true;
     filter["filters"][0]["item_order"] = true;
-    JsonDocument doc;
+    JsonDocument doc = make_doc();
     if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) return use_fallback(views, cap);
 
     struct Row {
@@ -299,14 +389,14 @@ bool todoist::load_tasks(const char *query, TaskItem *tasks, int *count, char *e
             else text::copy(error, error_len, "sem conexão com o Todoist");
             return false;
         }
-        JsonDocument filter;
+        JsonDocument filter = make_doc();
         filter["results"][0]["id"] = true;
         filter["results"][0]["content"] = true;
         filter["results"][0]["priority"] = true;
         filter["results"][0]["due"] = true;
         filter["results"][0]["deadline"] = true;
         filter["next_cursor"] = true;
-        JsonDocument doc;
+        JsonDocument doc = make_doc();
         if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) {
             text::copy(error, error_len, "resposta inválida");
             return false;

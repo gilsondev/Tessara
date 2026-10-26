@@ -9,7 +9,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 PIO="${ROOT}/.venv/bin/pio"
 PY="${ROOT}/.venv/bin/python"
-OUT="${SIM_OUT:-/tmp/tessara-sim-out}"
+OUT="${SIM_OUT:-/tmp/tessera-sim-out}"
 CMD="${1:-monitor}"
 
 app_port() {
@@ -34,7 +34,7 @@ case "$CMD" in
     echo "  • Home (tiles Tarefas / Clima / AI Tokens)"
     echo "  • Engrenagem → Configurações (Geral, descanso, duração do relógio, …)"
     echo "  • Detalhe Todoist (chips + slide), Clima, AI Tokens"
-    echo "  • Portal: http://tessara.local/  (ou IP do card Wi‑Fi nos ajustes)"
+    echo "  • Portal: http://tessera.local/  (ou IP do card Wi‑Fi nos ajustes)"
     echo ""
     echo "Serial 115200 — Ctrl+C para sair. Logs do firmware abaixo."
     echo ""

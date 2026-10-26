@@ -4,10 +4,13 @@
 namespace daytime {
 
 void start();
-// Apply a Tessara timezone id (e.g. "sao_paulo", "utc"). Idempotent; restarts NTP mapping.
+// Apply a Tessera timezone id (e.g. "sao_paulo", "utc"). Idempotent; restarts NTP mapping.
 bool set_timezone(const char *tz_id);
 const char *timezone_id();
 const char *timezone_label(const char *tz_id);
+
+// If the RTC is still at epoch (power-on), seed it from the last persisted wall time.
+void restore();
 
 // Local civil time in the configured zone. wday is 0 = Sunday; month is 0-based.
 bool local(int &hour, int &minute, int &wday, int &day, int &month);

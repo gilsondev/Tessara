@@ -98,7 +98,7 @@ void clock_page::apply_theme() {
     if (sync_label) lv_obj_set_style_text_color(sync_label, theme::muted(), 0);
 }
 
-void clock_page::paint(const tessara::TimeSnapshot &snap) {
+void clock_page::paint(const tessera::TimeSnapshot &snap) {
     if (!time_face.root) return;
     auto set_if = [](lv_obj_t *label, const char *text) {
         if (label && text && std::strcmp(lv_label_get_text(label), text) != 0) lv_label_set_text(label, text);
