@@ -49,8 +49,11 @@ Detalhe do AI Tokens: um bloco por Fonte com uso, cota/% e reset quando a Fonte 
 _Avoid_: Página de tokens (reserve “página” para o ajuste no celular)
 
 **Agente Tessara** (antes: Bridge):
-Programa no Mac que fala com o painel pela USB. MVP: lê cotas das Fontes (AI Tokens). Pacote do monorepo: `agent/`.
+Programa no Mac que fala com o painel pela USB. Produto atual: Python em `agent/`. Redesign (**Agent v2**): **agentd** (Rust) + app companion — `docs/superpowers/specs/2026-10-25-tessera-agent-v2-design.md`. Até o cutover, labels/paths distintos.
 _Avoid_: Servidor, API gateway, proxy de nuvem. Em docs técnicas antigas, “Bridge” = mesmo processo.
+
+**agentd**:
+Daemon Rust do Agent v2 (USB, Doctor, perfis). Distinto do agent Python legado (`com.tessera.agent`).
 
 **Bridge**:
 Nome legado do Agente Tessara (só transporte USB de cotas). Preferir **Agente Tessara** na UI.
@@ -61,27 +64,35 @@ Um provedor ou ferramenta cuja cota/uso o Bridge consegue ler no Mac (MVP: Codex
 _Avoid_: Provider (só no código se precisar), conta
 
 **Mac** (subsistema):
-Subsistema do painel: cartão na home mais a tela de detalhe. Glance-and-act sobre o computador ligado ao Agente Tessara pela USB (MVP Fase 1: Agora tocando + play/pause/next). O rótulo de exibição começa como “Mac” e pode passar a refletir o modelo/tipo da máquina quando o Agente informar.
+Companion de sistema: tile **Mac** (Focus) + Tela Mac, separado do tile **Música**. USB via Agente Tessara.
 _Avoid_: Notebook (colide com a página do celular), Host (só no código se precisar), Controle remoto, Remote desktop
 
-**Cartão Mac**:
-Resumo do Mac na home: só leitura — faixa/artista do Agora tocando, ou estado vazio. Toque abre a tela de detalhe. Sem botões de mídia no cartão.
+**Música** (tile):
+Half-tile na home (`org.tessara.media`): faixa/artista do Agora tocando. Toque → Tela Música (capa + metadados, só leitura).
+_Avoid_: Cartão Mac (mídia)
+
+**Cartão / tile Mac**:
+Half-tile (`org.tessara.mac`): Focus ativo (“Nenhum” / offline). Toque → Tela Mac.
 _Avoid_: Widget do Mac
 
+**Tela Música**:
+Detalhe de mídia: capa, título, artista, álbum; sem nome do app; sem controles.
+_Avoid_: Tela Mac (mídia)
+
 **Tela Mac**:
-Detalhe do Mac. Fase 1: bloco de mídia (Agora tocando + play/pause/previous/next), sem capa. Focus e Lock entram depois na mesma tela; capa do álbum é evolução posterior, não da primeira entrega.
+Lista de Focus do Mac; item ativo marcado; “Nenhum” → OFF. Lock fora deste corte.
 _Avoid_: Página do Mac
 
 **Agora tocando**:
-Faixa que o macOS expõe como sessão de mídia ativa (qualquer app). No painel: título, artista quando houver, e estado tocando/pausado; com várias sessões, prevalece a que está tocando, senão a mais recente. Pausado ainda mostra a faixa.
+Faixa que o macOS expõe como sessão de mídia ativa (Music/Spotify via DNC). No painel: título, artista, estado tocando/pausado.
 _Avoid_: Now Playing (só no código/spec se precisar), Media session
 
 **Mac offline**:
-Estado em que não há Agente Tessara falando pela USB. Distinto de silêncio (agente ok, nada tocando). Cartão Mac permanece na home nesse estado.
+Sem Agente na USB. Distinto de “Nada tocando” (agente ok) e de “Nenhum” (Focus off).
 _Avoid_: Desconectado (genérico demais), Offline sozinho (colide com outros subsistemas)
 
 **Focus** (no Mac):
-Modo de concentração do macOS exposto na Tela Mac: lista para escolher. Toque no Focus já ativo desliga; toque noutro troca; com nenhum ativo, toque liga o escolhido. No cartão (quando a fase existir): só o Focus ativo, leitura.
+Modo de concentração do macOS na Tela Mac / tile Mac. Toque aplica (`FOCUS\tSET`); “Nenhum” desliga (`FOCUS\tOFF`).
 _Avoid_: DND, Não perturbe (rótulo de um Focus, não do conceito), Focus Mode (só no código se precisar)
 
 **Lock** (no Mac):
