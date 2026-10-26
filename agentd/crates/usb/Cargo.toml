@@ -4,3 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+serialport = "4"
+thiserror.workspace = true
+
+[dev-dependencies]
+tessara-protocol = { path = "../protocol" }
