@@ -49,5 +49,5 @@ dir = "apps/agent-ui"
 run = "npm run tauri build"
 
 [tasks.doctor-smoke]
-description = "Placeholder until doctor crate; exits 0 if trees ok"
-run = "bash scripts/mise/check-agent-trees.sh"
+description = "GET /v1/doctor on running agentd (127.0.0.1:19792)"
+run = "curl -sf http://127.0.0.1:19792/v1/doctor | head -c 200"

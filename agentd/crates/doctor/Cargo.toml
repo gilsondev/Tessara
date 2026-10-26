@@ -1,0 +1,14 @@
+[package]
+name = "tessara-doctor"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+tessara-caps-media = { path = "../caps-media" }
+tessara-profile = { path = "../profile" }
+tessara-scan = { path = "../scan" }
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile = "=3.14.0"

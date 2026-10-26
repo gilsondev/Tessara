@@ -15,6 +15,8 @@ dependencies = [
  "tessara-caps-calendar",
  "tessara-caps-focus",
  "tessara-caps-media",
+ "tessara-doctor",
+ "tessara-logbuf",
  "tessara-profile",
  "tessara-protocol",
  "tessara-scan",
@@ -898,6 +900,26 @@ name = "tessara-caps-media"
 version = "0.1.0"
 dependencies = [
  "tessara-protocol",
+]
+
+[[package]]
+name = "tessara-doctor"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tessara-caps-media",
+ "tessara-profile",
+ "tessara-scan",
+]
+
+[[package]]
+name = "tessara-logbuf"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tempfile",
 ]
 
 [[package]]

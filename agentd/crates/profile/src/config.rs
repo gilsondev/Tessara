@@ -61,6 +61,10 @@ impl ProfilePaths {
     pub fn scan_json(&self) -> PathBuf {
         self.agentd_dir().join("scan.json")
     }
+
+    pub fn agentd_log(&self) -> PathBuf {
+        self.agentd_dir().join("agentd.log")
+    }
 }
 
 #[derive(Debug, Error)]

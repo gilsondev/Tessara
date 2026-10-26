@@ -1,4 +1,4 @@
-/** Embedded demo payloads when agentd has no /v1/doctor or /v1/logs yet. */
+/** Embedded demo payloads when agentd is offline or routes fail. */
 
 export const DOCTOR_FIXTURE = {
   summary: "1 coisa precisa de você",

@@ -9,6 +9,8 @@ members = [
   "crates/caps-focus",
   "crates/caps-aitokens",
   "crates/caps-calendar",
+  "crates/doctor",
+  "crates/logbuf",
   "crates/agentd",
 ]
 

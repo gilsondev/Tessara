@@ -1,11 +1,14 @@
 //! Localhost HTTP IPC for companion UI (127.0.0.1 only).
 
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use tessara_doctor::{DoctorDeps, DoctorReport};
+use tessara_logbuf::SharedLogBuf;
 use serde::{Deserialize, Serialize};
 use tessara_profile::{
     load_or_init_with_paths, read_scan_json, write_config, write_machine_display_name,
@@ -36,14 +39,29 @@ impl UsbLink {
 pub struct AppState {
     pub usb: Arc<RwLock<UsbLink>>,
     pub profile_paths: ProfilePaths,
+    pub logs: SharedLogBuf,
+    pub push_queue_depth: Arc<AtomicUsize>,
+}
+
+impl AppState {
+    pub fn new(profile_paths: ProfilePaths, logs: SharedLogBuf) -> Self {
+        Self {
+            usb: Arc::new(RwLock::new(UsbLink::Disconnected)),
+            profile_paths,
+            logs,
+            push_queue_depth: Arc::new(AtomicUsize::new(0)),
+        }
+    }
 }
 
 impl Default for AppState {
     fn default() -> Self {
-        Self {
-            usb: Arc::new(RwLock::new(UsbLink::Disconnected)),
-            profile_paths: ProfilePaths::default_home(),
-        }
+        let paths = ProfilePaths::default_home();
+        let logs = Arc::new(
+            tessara_logbuf::LogBuf::with_file(paths.agentd_log(), tessara_logbuf::DEFAULT_CAPACITY)
+                .unwrap_or_else(|_| tessara_logbuf::LogBuf::new(tessara_logbuf::DEFAULT_CAPACITY)),
+        );
+        Self::new(paths, logs)
     }
 }
 
@@ -232,6 +250,60 @@ async fn v1_machines(
     }))
 }
 
+async fn v1_doctor(
+    State(state): State<AppState>,
+) -> Result<Json<DoctorReport>, (axum::http::StatusCode, String)> {
+    let usb = *state.usb.read().expect("usb lock");
+    let (config, _) = profile_snapshot(&state.profile_paths).map_err(internal)?;
+    let roots = tessara_scan::ScanRoots::default_home();
+    let deps = DoctorDeps::live(
+        usb == UsbLink::Up,
+        state.push_queue_depth.load(Ordering::Relaxed),
+        config,
+        &roots,
+    );
+    Ok(Json(tessara_doctor::run_doctor(&deps)))
+}
+
+#[derive(Deserialize, Default)]
+struct LogsQuery {
+    tail: Option<usize>,
+}
+
+#[derive(Serialize)]
+struct LogsResponse {
+    lines: Vec<String>,
+}
+
+async fn v1_logs(
+    State(state): State<AppState>,
+    Query(q): Query<LogsQuery>,
+) -> Json<LogsResponse> {
+    let tail = q.tail.unwrap_or(200).clamp(1, 2000);
+    let mut lines = state.logs.tail(tail);
+    if lines.is_empty() {
+        if let Ok(from_disk) = state.logs.load_file_tail(tail) {
+            lines = from_disk;
+        }
+    }
+    if lines.is_empty() {
+        lines.push(format!(
+            "{} INFO  agentd: log buffer empty (tail={tail})",
+            iso_log_timestamp()
+        ));
+    }
+    Json(LogsResponse { lines })
+}
+
+fn iso_log_timestamp() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    format!("{secs}")
+}
+
 fn internal(err: String) -> (axum::http::StatusCode, String) {
     (axum::http::StatusCode::INTERNAL_SERVER_ERROR, err)
 }
@@ -243,6 +315,8 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/scan", post(v1_scan_post))
         .route("/v1/scan/last", get(v1_scan_last))
         .route("/v1/machines", get(v1_machines))
+        .route("/v1/doctor", get(v1_doctor))
+        .route("/v1/logs", get(v1_logs))
         .with_state(state)
 }
 
@@ -275,10 +349,11 @@ mod tests {
     use super::*;
 
     fn test_state(dir: &tempfile::TempDir) -> AppState {
-        AppState {
-            usb: Arc::new(RwLock::new(UsbLink::Disconnected)),
-            profile_paths: ProfilePaths::from_tessera_root(dir.path()),
-        }
+        let paths = ProfilePaths::from_tessera_root(dir.path());
+        let logs = Arc::new(
+            tessara_logbuf::LogBuf::with_file(paths.agentd_log(), 100).expect("test log"),
+        );
+        AppState::new(paths, logs)
     }
 
     #[tokio::test]
@@ -369,6 +444,51 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let cfg = tessara_profile::read_config(&paths.config_toml()).unwrap();
         assert!(cfg.setup_completed);
+    }
+
+    #[tokio::test]
+    async fn v1_doctor_returns_checks() {
+        let app = router(AppState::default());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/doctor")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["summary"].is_string());
+        assert!(json["checks"].as_array().is_some_and(|a| !a.is_empty()));
+    }
+
+    #[tokio::test]
+    async fn v1_logs_tail() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state(&dir);
+        state.logs.append("test line alpha");
+        let app = router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/logs?tail=10")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let lines = json["lines"].as_array().unwrap();
+        assert!(lines.iter().any(|l| l.as_str() == Some("test line alpha")));
     }
 
     #[tokio::test]

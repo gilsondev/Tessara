@@ -63,6 +63,11 @@ async fn main() {
     let aitokens_enabled = profile.config.aitokens;
     let calendar_enabled = profile.config.calendar;
     let app_state = ipc::AppState::default();
+    app_state.logs.append(format!(
+        "INFO  agentd: started v{} machine={}",
+        env!("CARGO_PKG_VERSION"),
+        profile.machine_id
+    ));
     let usb_link = app_state.usb.clone();
 
     if let Some(port) = args.port.clone() {

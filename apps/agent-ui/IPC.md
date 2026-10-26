@@ -2,7 +2,7 @@
 
 HTTP on `127.0.0.1` only. Port: `TESSARA_AGENTD_IPC_PORT` (default **19792**), overridable in dev via `VITE_AGENTD_PORT`.
 
-Until agentd implements every route, the UI falls back to embedded fixtures and shows a **demo** badge.
+If agentd is offline or a route is missing, the UI falls back to embedded fixtures and shows a **demo** badge.
 
 | Method | Path | Shape |
 |---|---|---|

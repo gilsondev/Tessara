@@ -22,6 +22,8 @@ tessara-caps-media = { path = "../caps-media" }
 tessara-caps-focus = { path = "../caps-focus" }
 tessara-caps-aitokens = { path = "../caps-aitokens" }
 tessara-caps-calendar = { path = "../caps-calendar" }
+tessara-doctor = { path = "../doctor" }
+tessara-logbuf = { path = "../logbuf" }
 
 [dev-dependencies]
 tempfile = "=3.14.0"
