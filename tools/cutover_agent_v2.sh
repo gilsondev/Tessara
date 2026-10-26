@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Cutover local: legacy Python (com.tessera.agent) → agentd + Tessera.app
+# Instala agentd + Tessera.app neste Mac (LaunchAgent com.tessera.agentd).
+# Se ainda existir o LaunchAgent Python legado (com.tessera.agent), desliga por padrão.
 #
 # Pré-req: mise run agentd-build && mise run agent-ui-build (ou binários via env)
 #
@@ -7,7 +8,7 @@
 #   tools/cutover_agent_v2.sh [--bootout-legacy]
 #   BOOTOUT_LEGACY=1 tools/cutover_agent_v2.sh
 #
-# --bootout-legacy  para e remove com.tessera.agent (nunca os dois LaunchAgents no cutover final)
+# --bootout-legacy  para e remove com.tessera.agent (default on — nunca os dois na USB)
 set -euo pipefail
 
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"

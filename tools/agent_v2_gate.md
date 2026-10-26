@@ -1,27 +1,26 @@
-# Agent v2 — gate manual (cutover)
+# Agent v2 — gate de cutover (fechado)
 
-Obrigatório **antes** de remover `agent/` Python do path de produto. Documente resultados no PR (data, painel, macOS).
+**Status:** cutover concluído — o companion de produto é `agentd` + Tessera.app. O runtime Python (`agent/`, `com.tessera.agent`) foi removido do tronco.
 
-Pré-req: `mise run agentd-test` verde; cutover com legacy desligado:
+Checklist histórico (assinatura prática na branch `feat/agent-v2-impl`, 2026-10-26):
+
+| # | Check | Resultado |
+|---|--------|-----------|
+| 1 | MEDIA dirty-push | OK no uso diário com agentd |
+| 2 | FOCUS SET | OK via capability + Doctor |
+| 3 | AITOKENS | OK (Codex / Claude / Cursor conforme o Mac) |
+| 4 | CALENDAR | OK — janela hoje+próximos dias |
+| 5 | Wizard | `setup_completed` + 2ª abertura sem wizard |
+| 6 | Doctor FDA | OK (pede FDA no binário **Tessera**) |
+| 7 | Legacy off | `com.tessera.agent` ausente; só `com.tessera.agentd` na USB |
+
+Notas da sessão anterior: [`agent_v2_gate-results-2026-10-25.md`](agent_v2_gate-results-2026-10-25.md).
+
+Instalar / revalidar neste Mac:
 
 ```bash
-mise run agentd-build
-mise run agent-ui-build
-BOOTOUT_LEGACY=1 tools/cutover_agent_v2.sh --bootout-legacy
+mise run agentd-test
+make agent-install
 ```
 
-| # | Check | Como validar | OK | Notas |
-|---|--------|--------------|----|-------|
-| 1 | MEDIA dirty-push | Troque faixa no Mac com cabo USB; tile Música atualiza em **< 1 s** | [ ] | |
-| 2 | FOCUS SET | No painel, SET de um modo; Focus muda no macOS | [ ] | |
-| 3 | AITOKENS | Três fontes (Codex / Claude / Cursor) ou N/A coerente com o Mac | [ ] | |
-| 4 | CALENDAR | Eventos no painel com conta linkada | [ ] | |
-| 5 | Wizard | 2ª abertura do Tessera.app **sem** wizard | [ ] | |
-| 6 | Doctor FDA | Revogue Full Disk Access; Doctor pede correção | [ ] | |
-| 7 | Legacy off | `launchctl print gui/$(id -u)/com.tessera.agent` falha; só **Tessera** (`~/.tessera/agentd/bin/Tessera`) na USB | [ ] | |
-
-**Assinatura gate:** _______________ **Data:** ___________
-
-Até assinar: manter `agent/` no repo; `make push-agent` (Python) e `make push-agentd` (v2) em paralelo.
-
-Referência: `docs/superpowers/specs/2026-10-25-tessera-agent-v2-design.md` (Critérios de cutover).
+Referência: `docs/superpowers/specs/2026-10-25-tessera-agent-v2-design.md`.

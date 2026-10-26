@@ -1,4 +1,4 @@
-# Tessera — toolchain (Agent v2 + legacy Python + UI)
+# Tessera — toolchain (agentd + Tessera.app UI)
 # Docs: docs/superpowers/specs/2026-10-25-tessera-agent-v2-design.md
 
 [tools]
@@ -7,20 +7,15 @@ node = "22.14.0"
 python = "3.12.9"
 
 [settings]
-# Monorepo: tasks na root; crates em agentd/ depois
+# Monorepo: tasks na root; crates em agentd/
 experimental = true
 
 [env]
 _.file = ".env"
-# PYTHONPATH só em tasks legacy
 
 [tasks.agent-check-trees]
-description = "Sanity: legacy/agentd/ui trees"
+description = "Sanity: agentd + UI trees (legacy Python must be gone)"
 run = "bash scripts/mise/check-agent-trees.sh"
-
-[tasks.agent-legacy-run]
-description = "Run Python agent (legacy) from agent/"
-run = "bash scripts/mise/agent-legacy-run.sh"
 
 [tasks.agentd-build]
 description = "Build agentd (Rust) — available after daemon plan"

@@ -1,13 +1,13 @@
 # Tessera Agent v2 — redesign (daemon + companion UI)
 
-**Status:** design approved for planning  
-**Data:** 2026-10-25  
+**Status:** cutover concluído (2026-10-26) — produto = `agentd` + Tessera.app; `agent/` Python removido  
+**Data:** 2026-10-25 (revisão 2026-10-26)  
 **Relacionado:**  
-- `2026-10-24-tessera-agent-design.md` (MVP Python + SD install)  
+- `2026-10-24-tessera-agent-design.md` (MVP Python histórico)  
 - `2026-10-24-tessera-agent-capabilities-design.md` (mapa MEDIA / FOCUS / DEV)  
 - `docs/prototypes/agent-ui/` (UI companion)  
-- `2026-10-25-tessera-site-branding-design.md` (**depois** do cutover: Pages + brand + release CI)  
-**Substitui (após cutover):** runtime Python em `agent/` como produto; o protocolo USB no firmware permanece.
+- `2026-10-25-tessera-site-branding-design.md` (Pages + brand + release CI)  
+**Substituiu:** runtime Python em `agent/` / `com.tessera.agent`. Protocolo USB no firmware permanece.
 
 ## Decisão de produto
 
@@ -28,7 +28,7 @@ O Agent v2 é o companion de mesa do Tessera no notebook:
 2. **App Tessera** — janela + menu (tray): onboarding, varredura, PCs, Painel, Atividade, Doctor.  
 3. **Painel JC3248** — continua consumindo as mesmas linhas USB (`AGENT`, `AITOKENS`, `MEDIA`, `FOCUS`, `CALENDAR`, …).
 
-Enquanto v2 não estiver pronto, o **agent Python atual** (`agent/`, launchd `com.tessera.agent`) permanece o que o usuário usa no dia a dia.
+O companion de dia a dia é **agentd** (`com.tessera.agentd` + Tessera.app).
 
 ## Objetivos
 
@@ -200,18 +200,16 @@ Arquivo root `mise.toml`:
 
 Bootstrap: `mise trust` + `mise install` documentado em `docs/getting-started.md` (addendum no plano mise).
 
-## Critérios de cutover (gate)
+## Critérios de cutover (gate) — fechados
 
-Todos obrigatórios:
+1. `mise run agentd-test` + golden de protocolo — OK.  
+2. Mac real: MEDIA, FOCUS, AITOKENS, CALENDAR / TODOIST via agentd — OK.  
+3. App: onboarding + Doctor FDA — OK.  
+4. `tools/cutover_agent_v2.sh` / `make agent-install` — path padrão.  
+5. Pack SD / portal: `make pack-agentd` → `/tessera/agentd.tgz` + `PUT/GET /agentd/…`.  
+6. **`agent/` Python removido do tronco** (2026-10-26).
 
-1. `mise run agentd-test` + testes golden de protocolo verdes.  
-2. No Mac real: MEDIA, FOCUS, AITOKENS, CALENDAR iguais ao Python no mesmo painel (checklist manual).  
-3. App: onboarding 1ª vez + 2ª abertura sem wizard; Doctor detecta FDA faltando.  
-4. Coexistência documentada; depois `tools/cutover_agent_v2.sh` para o usuário: para Python, instala agentd+app, migra `config` se houver.  
-5. `make push-agent` / pack SD aponta para o artefato v2.  
-6. Remoção de `agent/` Python do produto (código pode ir para `archive/` ou delete numa PR dedicada).
-
-Até o gate: **não** remover launchd Python do path padrão de install.
+Checklist: `tools/agent_v2_gate.md`.
 
 ## Riscos
 
@@ -235,6 +233,6 @@ Até o gate: **não** remover launchd Python do path padrão de install.
 ## Glossário (addendum)
 
 - **agentd** — daemon Rust do Agent v2.  
-- **Agent legacy** — processo Python `com.tessera.agent` até o cutover.  
+- **Agent legacy** — processo Python `com.tessera.agent` (removido; cutover 2026-10-26).  
 - **Perfil de máquina** — config local em `~/.tessera/` (não credenciais).  
 - **Doctor** — checagem de saúde do companion + CTAs.

@@ -23,7 +23,8 @@ Tessera/
       greeting/, date/            # hero-only
       aitokens/
       todoist/                    # optional (not MVP acceptance)
-  agent/                          # Mac USB agent
+  agentd/                         # Mac companion (Rust daemon)
+  apps/agent-ui/                  # Tessera.app
   boards/*.json                   # PlatformIO board definition
   simulator/                      # LVGL9 + SDL2 · fixtures · verify_all.sh
   web/src/                        # portal → tools/embed_web.py
@@ -49,7 +50,7 @@ Per-package `-I` in `platformio.ini`. Widgets must not include Arduino / Wi‑Fi
 | Layer | Status |
 |---|---|
 | `firmware/components` + `widgets` + `boards` | Active |
-| `agent/` | Active (USB; AI Tokens) |
+| `agentd/` + `apps/agent-ui/` | Active (USB companion) |
 | `simulator/` | Active — `painel`, fixtures, `make e2e` |
 | `web/` | Active — `web/src` → PROGMEM |
 | Widget SDK / runtime | Active — mount / generation / http cancel |

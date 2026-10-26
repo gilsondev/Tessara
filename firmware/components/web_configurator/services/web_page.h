@@ -184,7 +184,7 @@ h1{font-size:30px}
 </section>
 <section class="card" id="agent-upload-box">
 <h2>Enviar pacote</h2>
-<p class="note">Arquivo <code>agent.tgz</code> (gere com <code>agent/pack_sd.sh</code>). Cartão SD no aparelho.</p>
+<p class="note">Arquivo <code>agentd.tgz</code> (gere com <code>make pack-agentd</code> / <code>agentd/pack_sd.sh</code>). Cartão SD no aparelho.</p>
 <label for="agent-file-tgz">Arquivo</label>
 <input id="agent-file-tgz" type="file" accept=".tgz,.tar.gz,application/gzip">
 <div class="actions"><button class="act" type="button" id="agent-upload">Enviar para o SD</button></div>
@@ -196,7 +196,7 @@ h1{font-size:30px}
 <code id="agent-install-cmd">curl -fsSL … | bash</code>
 <div class="actions" style="gap:8px;flex-wrap:wrap;margin-top:0">
 <button class="act" type="button" id="agent-copy-cmd">Copiar comando</button>
-<a class="act ghost" id="agent-dl" href="/agent/install.command" download="install-tessera-agent.command">Baixar .command</a>
+<a class="act ghost" id="agent-dl" href="/agentd/install.command" download="install-tessera-agent.command">Baixar .command</a>
 <button class="act ghost" type="button" id="agent-reupload">Trocar pacote</button>
 </div>
 <p class="note" id="agent-dl-hint">Se baixar o arquivo: <code style="font-size:12px">bash ~/Downloads/install-tessera-agent.command</code> (não abra com duplo clique).</p>
@@ -474,7 +474,7 @@ else if(ag.ok){as.textContent='OK — comunicando';as.className='ok';
 if(hint)hint.textContent='Agente no Mac respondeu via USB. Atualiza a cada poucos segundos.'}
 else{as.textContent=ag.detail||'Falha';as.className='warn';
 if(hint)hint.textContent=ag.detail==='sem sinal recente'
-?'O agente parou de responder. Confira USB e se o processo tessera-agent está rodando.'
+?'O agente parou de responder. Confira USB e se o Tessera (agentd) está rodando.'
 :'Handshake recebido, mas o agente reportou falha.'}
 }
 const ap=document.getElementById('agent-pack-note');
@@ -485,17 +485,17 @@ if(boxUp&&boxIn){const forceUp=document.body.dataset.agentForceUpload==='1';
 if(s.agent_pack&&!forceUp){boxUp.style.display='none';boxIn.style.display='grid'}
 else{boxUp.style.display='grid';boxIn.style.display=s.agent_pack?'grid':'none'}}
 const cmdEl=document.getElementById('agent-install-cmd');
-if(cmdEl){cmdEl.textContent=`curl -fsSL ${location.origin}/agent/install.command | bash`}
+if(cmdEl){cmdEl.textContent=`curl -fsSL ${location.origin}/agentd/install.command | bash`}
 draw();drawResources();pushOsTheme(false)}
 async function putFile(url,file){const r=await fetch(url,{method:'PUT',headers:{'Content-Type':'application/octet-stream'},body:file});
 if(!r.ok){const t=await r.text();throw new Error(t||('HTTP '+r.status))}return r}
 async function uploadAgentPack(){const tgz=document.getElementById('agent-file-tgz').files[0];
-if(!tgz){toast('Escolha o agent.tgz');return}
+if(!tgz){toast('Escolha o agentd.tgz');return}
 toast('Enviando…');
-try{await putFile('/agent/agent.tgz',tgz);document.body.dataset.agentForceUpload='';
+try{await putFile('/agentd/agentd.tgz',tgz);document.body.dataset.agentForceUpload='';
 toast('Pacote pronto — copie o comando de instalar');setTimeout(load,400)}catch(e){toast(e&&e.message?e.message:'Falha no upload')}}
 async function copyInstallCmd(){
-const text=`curl -fsSL ${location.origin}/agent/install.command | bash`;
+const text=`curl -fsSL ${location.origin}/agentd/install.command | bash`;
 try{await navigator.clipboard.writeText(text);toast('Comando copiado — cole no Terminal e olhe o Status')}
 catch(e){toast('Selecione o comando e copie (⌘C)')}
 }

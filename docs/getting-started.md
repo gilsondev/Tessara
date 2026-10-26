@@ -141,8 +141,8 @@ cp include/secrets.example.h include/secrets.h
 
 ## Agent (Mac)
 
-- Agent v2 (em construção): [guides/agent-v2-dev.md](guides/agent-v2-dev.md) — `mise install`
-- Agent legacy (Python): `cd agent && …` ou `mise run agent-legacy-run`
+- Companion atual (agentd + Tessera.app): [guides/agent-v2-dev.md](guides/agent-v2-dev.md) — `mise install` · `make agent-install`
+- Pacote SD / portal: `make pack-agentd` → `tessera/agentd.tgz`
 
 ## Next
 

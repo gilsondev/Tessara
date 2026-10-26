@@ -44,10 +44,10 @@ help: ## List harness tasks
 	@echo "  make device-snap  capture panel framebuffer (SNAP → PNG)"
 	@echo "  make monitor      alias of make device"
 	@echo ""
-	@echo "Agent v2 (Mac companion, paralelo ao legacy até gate):"
+	@echo "Agent (Mac companion — agentd):"
 	@echo "  make agent-install  build agentd+app e instala neste Mac"
-	@echo "  make pack-agentd    agentd/pack_sd.sh → dist/sd/tessera/agentd/"
-	@echo "  make push-agentd    pack + instruções PUT (firmware /agentd/ ainda TBD)"
+	@echo "  make pack-agentd    agentd/pack_sd.sh → dist/sd/tessera/agentd.tgz"
+	@echo "  make push-agentd    pack + dicas PUT /agentd/agentd.tgz"
 	@echo ""
 	@echo "E2E/SNAP artifacts: \$$SIM_OUT (default $(OUT))"
 	@echo "Docs: docs/getting-started.md · docs/guides/finish-gate.md"
@@ -111,9 +111,9 @@ pack-agentd: ## Empacota agentd + Tessera.app para staging SD (sem segredos)
 agent-install: ## Build agentd + Tessera.app e instala neste Mac (LaunchAgent + /Applications)
 	bash $(ROOT)/tools/agent-install.sh
 
-push-agentd: pack-agentd ## Pack v2; PUT ao painel quando rota /agentd/ existir no firmware
+push-agentd: pack-agentd ## Pack agentd para SD / portal (PUT /agentd/agentd.tgz)
 	@echo "==> push-agentd: artefatos em $(AGENTD_SD)"
 	@echo "    Copiar ao cartão: ./agentd/pack_sd.sh /Volumes/TESSERA"
-	@echo "    Cutover Mac: make agent-install   # ou tools/cutover_agent_v2.sh"
-	@echo "    Gate manual: tools/agent_v2_gate.md (obrigatório antes de retirar agent/ Python)"
-	@echo "    Nota: PUT /agentd/agentd.tgz + AGENT_PUSH no firmware ainda não implementado neste worktree."
+	@echo "      (grava também tessera/agentd.tgz flat — o que o portal serve)"
+	@echo "    Instalar neste Mac: make agent-install"
+	@echo "    Portal: PUT /agentd/agentd.tgz (com agent_push armado) ou upload na página Agente"

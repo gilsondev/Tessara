@@ -99,6 +99,10 @@ assert_no_secrets "$PKG"
 
 tar -C "$PKG" -czf "$OUT/agentd.tgz" .
 printf '%s\n' "$VERSION" > "$OUT/agentd.version"
+# Flat copies at /tessera/ — same layout the portal PUT writes (FAT, no subfolder).
+mkdir -p "$DEST/tessera"
+cp "$OUT/agentd.tgz" "$DEST/tessera/agentd.tgz"
+cp "$OUT/agentd.version" "$DEST/tessera/agentd.version"
 
 cat > "$OUT/install.command" <<'EOF'
 #!/bin/bash

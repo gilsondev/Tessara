@@ -29,7 +29,7 @@ struct Snapshot {
     char weather_city[48];
     bool weather_ready;
     AgentInfo agent;
-    bool agent_pack;  // agent.tgz no SD (install.command é gerado no GET)
+    bool agent_pack;  // agentd.tgz no SD (install.command é gerado no GET)
     bool agent_push_armed;
     char agent_pack_version[24];
     dashboard::Layout dashboard;

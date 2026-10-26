@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-// USB/HTTP window that allows PUT /agent/agent.tgz (flash-agent / SD pack).
+// USB/HTTP window that allows PUT /agentd/agentd.tgz (SD pack / portal upload).
 namespace agent_push {
 
 void arm();

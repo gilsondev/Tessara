@@ -780,14 +780,14 @@ public:
     }
 
     bool agent_pack_ready() const {
-        return sd_host::ready() && sd_host::exists("/tessera/agent.tgz");
+        return sd_host::ready() && sd_host::exists("/tessera/agentd.tgz");
     }
 
     void read_agent_pack_version(char *dest, size_t cap) const {
         if (!dest || !cap) return;
         dest[0] = '\0';
         size_t n = 0;
-        uint8_t *raw = sd_host::read_file("/tessera/agent.version", &n);
+        uint8_t *raw = sd_host::read_file("/tessera/agentd.version", &n);
         if (!raw || !n) {
             sd_host::free_buf(raw);
             return;

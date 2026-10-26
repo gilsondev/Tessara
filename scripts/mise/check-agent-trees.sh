@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-test -d "$ROOT/agent/src/agent" || { echo "missing legacy agent/"; exit 1; }
-echo "legacy agent/: ok"
-if [[ -d "$ROOT/agentd" ]]; then
-  echo "agentd/: present"
-else
-  echo "agentd/: not created yet (expected until daemon plan)"
+test -d "$ROOT/agentd/crates/agentd" || { echo "missing agentd/"; exit 1; }
+echo "agentd/: ok"
+test -d "$ROOT/apps/agent-ui" || { echo "missing apps/agent-ui/"; exit 1; }
+echo "apps/agent-ui/: ok"
+if [[ -d "$ROOT/agent" ]]; then
+  echo "agent/: still present (legacy Python — remove before merge)" >&2
+  exit 1
 fi
-if [[ -d "$ROOT/apps/agent-ui" ]]; then
-  echo "apps/agent-ui/: present"
-else
-  echo "apps/agent-ui/: not created yet (expected until ui plan)"
-fi
+echo "agent/ (legacy Python): gone"

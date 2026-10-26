@@ -1,16 +1,11 @@
-# AI Tokens Bridge (legado)
+# AI Tokens Bridge (arquivo)
 
-Movido para o pacote do monorepo:
+Este diretório é legado do protótipo USB de AI Tokens.
+
+O transporte e as fontes (Codex / Claude / Cursor) vivem em:
 
 ```text
-../../agent/
+agentd/crates/caps-aitokens/
 ```
 
-Dev:
-
-```bash
-cd ../../agent
-PYTHONPATH=src python3 -m agent
-```
-
-Instalação / SD: `../../agent/pack_sd.sh` e `../../agent/README.md`.
+Instalação do companion: `make agent-install` · pacote SD: `make pack-agentd`.

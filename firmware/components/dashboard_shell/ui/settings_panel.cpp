@@ -161,11 +161,11 @@ void fill_agent_status() {
     lv_obj_t *pack = lv_label_create(content);
     if (agent_pack_on_sd && agent_pack_version[0]) {
         char line[96];
-        std::snprintf(line, sizeof(line), "Pacote no SD: pronto (agent.tgz) — %s.", agent_pack_version);
+        std::snprintf(line, sizeof(line), "Pacote no SD: pronto (agentd.tgz) — %s.", agent_pack_version);
         lv_label_set_text(pack, line);
     } else {
-        lv_label_set_text(pack, agent_pack_on_sd ? "Pacote no SD: pronto (agent.tgz)."
-                                                 : "Pacote no SD: ausente — envie agent.tgz pelo site.");
+        lv_label_set_text(pack, agent_pack_on_sd ? "Pacote no SD: pronto (agentd.tgz)."
+                                                 : "Pacote no SD: ausente — envie agentd.tgz pelo site.");
     }
     lv_obj_set_width(pack, lv_pct(100));
     lv_label_set_long_mode(pack, LV_LABEL_LONG_WRAP);

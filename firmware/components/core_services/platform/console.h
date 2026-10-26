@@ -13,7 +13,7 @@ public:
     virtual void on_perf() = 0;
     virtual void on_drag(int x0, int y0, int x1, int y1, uint32_t ms) = 0;
     virtual void on_flash() = 0;
-    // Opens a short one-shot window for PUT /agent/agent.tgz (make push-agent).
+    // Opens a short one-shot window for PUT /agentd/agentd.tgz (portal / pack-agentd).
     virtual void on_agent_push(bool on) = 0;
     // First-run portal, and the way back to the credentials copied by it.
     virtual void on_enter_setup() = 0;
