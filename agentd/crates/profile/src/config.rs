@@ -15,6 +15,7 @@ pub struct AgentdConfig {
     pub focus: bool,
     pub aitokens: bool,
     pub calendar: bool,
+    pub setup_completed: bool,
 }
 
 impl Default for AgentdConfig {
@@ -24,6 +25,7 @@ impl Default for AgentdConfig {
             focus: true,
             aitokens: true,
             calendar: true,
+            setup_completed: false,
         }
     }
 }
@@ -54,6 +56,10 @@ impl ProfilePaths {
 
     pub fn config_toml(&self) -> PathBuf {
         self.agentd_dir().join("config.toml")
+    }
+
+    pub fn scan_json(&self) -> PathBuf {
+        self.agentd_dir().join("scan.json")
     }
 }
 
@@ -136,6 +142,46 @@ pub fn write_config(path: &Path, config: &AgentdConfig) -> Result<(), ProfileErr
 pub fn read_config(path: &Path) -> Result<AgentdConfig, ProfileError> {
     let raw = fs::read_to_string(path)?;
     Ok(toml::from_str(&raw)?)
+}
+
+pub fn write_machine_display_name(path: &Path, display_name: &str) -> Result<(), ProfileError> {
+    let trimmed = display_name.trim();
+    if trimmed.is_empty() {
+        return Err(ProfileError::Io(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "display_name empty",
+        )));
+    }
+    let machine = if path.exists() {
+        let raw = fs::read_to_string(path)?;
+        serde_json::from_str::<MachineJson>(&raw)?
+    } else {
+        load_or_init_machine(path)?
+    };
+    let updated = MachineJson {
+        machine_id: machine.machine_id,
+        display_name: trimmed.to_string(),
+    };
+    let pretty = serde_json::to_string_pretty(&updated)?;
+    fs::write(path, format!("{pretty}\n"))?;
+    Ok(())
+}
+
+pub fn write_scan_json(path: &Path, value: &serde_json::Value) -> Result<(), ProfileError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let pretty = serde_json::to_string_pretty(value)?;
+    fs::write(path, format!("{pretty}\n"))?;
+    Ok(())
+}
+
+pub fn read_scan_json(path: &Path) -> Result<Option<serde_json::Value>, ProfileError> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(path)?;
+    Ok(Some(serde_json::from_str(&raw)?))
 }
 
 fn default_display_name() -> String {

@@ -16,8 +16,12 @@ tokio = { workspace = true }
 tower = { version = "=0.5.2", features = ["util"] }
 tessara-protocol = { path = "../protocol" }
 tessara-profile = { path = "../profile" }
+tessara-scan = { path = "../scan" }
 tessara-usb = { path = "../usb" }
 tessara-caps-media = { path = "../caps-media" }
 tessara-caps-focus = { path = "../caps-focus" }
 tessara-caps-aitokens = { path = "../caps-aitokens" }
 tessara-caps-calendar = { path = "../caps-calendar" }
+
+[dev-dependencies]
+tempfile = "=3.14.0"

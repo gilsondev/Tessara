@@ -2,6 +2,7 @@ import {
   fetchStatus,
   fetchDoctor,
   fetchLogs,
+  postScan,
   AGENTD_PORT,
   isAgentdOnline,
   isUsbUp,
@@ -293,6 +294,15 @@ function ensurePolls() {
   }
 }
 
+async function runScanIfNeeded(id) {
+  if (id !== "scan") return;
+  try {
+    await postScan({});
+  } catch {
+    /* fixtures / offline — UI stays usable */
+  }
+}
+
 function go(id) {
   const meta = screens.find((s) => s.id === id) || screens.find((s) => s.id === "welcome");
   document.querySelectorAll(".screen").forEach((el) => {
@@ -305,6 +315,7 @@ function go(id) {
   document.title = `Tessara — ${meta.title}`;
   history.replaceState(null, "", "#" + id);
   ensurePolls();
+  void runScanIfNeeded(id);
 }
 
 document.body.addEventListener("click", (e) => {
@@ -383,11 +394,25 @@ document.body.addEventListener("click", (e) => {
   }
 });
 
-const hash = location.hash.replace("#", "");
-if (hash && screens.some((s) => s.id === hash)) go(hash);
+async function bootScreen() {
+  const hash = location.hash.replace("#", "");
+  if (hash && screens.some((s) => s.id === hash)) {
+    go(hash);
+    return;
+  }
+  try {
+    const status = await fetchStatus();
+    if (status?.setup_completed) {
+      go("home");
+      return;
+    }
+  } catch {
+    /* agentd offline — show welcome */
+  }
+  go("welcome");
+}
 
-if (!location.hash.replace("#", "")) go("welcome");
-else ensurePolls();
+void bootScreen();
 
 if (window.__TAURI__?.event?.listen) {
   window.__TAURI__.event.listen("navigate", (ev) => {

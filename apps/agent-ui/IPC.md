@@ -6,7 +6,10 @@ Until agentd implements every route, the UI falls back to embedded fixtures and 
 
 | Method | Path | Shape |
 |---|---|---|
-| GET | /v1/status | `{ ok, version, usb, machine }` |
+| GET | /v1/status | `{ ok, version, usb, setup_completed, machine: { id, display_name } }` |
+| POST | /v1/scan | `{ scanned_at, found: [{ id, state, enabled }] }` |
+| GET | /v1/scan/last | último scan |
+| GET | /v1/machines | `{ machines: [...] }` |
 | GET | /v1/doctor | `{ summary, checks: [{ id, level, title, detail, action? }] }` |
 | GET | /v1/logs?tail=N | `{ lines: string[] }` |
 

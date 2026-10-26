@@ -57,8 +57,11 @@ Companion UI reads daemon state over HTTP on **127.0.0.1 only** (not exposed on 
 
 | Method | Path | Response |
 |--------|------|----------|
-| GET | `/v1/status` | `{ "ok": true, "version": "<crate version>", "usb": "disconnected" \| "up" }` |
+| GET | `/v1/status` | `{ "ok", "version", "usb", "setup_completed", "machine": { "id", "display_name" } }` |
 | GET | `/v1/health` | `{ "ok": true }` |
+| POST | `/v1/scan` | Varredura local; persiste `scan.json` e atualiza `config.toml` (body opcional: `setup_completed`, `display_name`, `found[]`) |
+| GET | `/v1/scan/last` | Último `scan.json` |
+| GET | `/v1/machines` | `{ "machines": [{ "machine_id", "display_name", "this_machine" }] }` |
 
 Example:
 

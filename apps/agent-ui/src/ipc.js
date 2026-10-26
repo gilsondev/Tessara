@@ -24,6 +24,39 @@ export async function fetchStatus() {
   return body;
 }
 
+/** @returns {Promise<{ scanned_at: string, found: object[] }>} */
+export async function fetchScanLast() {
+  const r = await fetch(agentdUrl("/v1/scan/last"), {
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS),
+  });
+  if (!r.ok) throw new Error(`scan/last ${r.status}`);
+  return r.json();
+}
+
+/**
+ * @param {object} [body]
+ * @returns {Promise<{ scanned_at: string, found: object[] }>}
+ */
+export async function postScan(body = {}) {
+  const r = await fetch(agentdUrl("/v1/scan"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 2),
+  });
+  if (!r.ok) throw new Error(`scan ${r.status}`);
+  return r.json();
+}
+
+/** @returns {Promise<{ machines: object[] }>} */
+export async function fetchMachines() {
+  const r = await fetch(agentdUrl("/v1/machines"), {
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS),
+  });
+  if (!r.ok) throw new Error(`machines ${r.status}`);
+  return r.json();
+}
+
 /**
  * @returns {Promise<{ report: { summary: string, checks: object[] }, demo: boolean }>}
  */

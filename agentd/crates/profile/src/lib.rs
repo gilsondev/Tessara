@@ -3,8 +3,8 @@ mod config;
 use std::path::PathBuf;
 
 pub use config::{
-    load_or_init, load_or_init_with_paths, read_config, write_config, AgentdConfig, ProfileError,
-    ProfilePaths,
+    load_or_init, load_or_init_with_paths, read_config, read_scan_json, write_config,
+    write_machine_display_name, write_scan_json, AgentdConfig, ProfileError, ProfilePaths,
 };
 
 use serde::{Deserialize, Serialize};

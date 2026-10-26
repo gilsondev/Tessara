@@ -4,6 +4,7 @@ members = [
   "crates/protocol",
   "crates/usb",
   "crates/profile",
+  "crates/scan",
   "crates/caps-media",
   "crates/caps-focus",
   "crates/caps-aitokens",
