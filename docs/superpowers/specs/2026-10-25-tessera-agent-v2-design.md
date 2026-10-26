@@ -6,6 +6,7 @@
 - `2026-10-24-tessera-agent-design.md` (MVP Python + SD install)  
 - `2026-10-24-tessera-agent-capabilities-design.md` (mapa MEDIA / FOCUS / DEV)  
 - `docs/prototypes/agent-ui/` (UI companion)  
+- `2026-10-25-tessara-site-branding-design.md` (**depois** do cutover: Pages + brand + release CI)  
 **Substitui (após cutover):** runtime Python em `agent/` como produto; o protocolo USB no firmware permanece.
 
 ## Decisão de produto
