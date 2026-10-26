@@ -15,4 +15,5 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 tower = { version = "=0.5.2", features = ["util"] }
 tessara-protocol = { path = "../protocol" }
+tessara-profile = { path = "../profile" }
 tessara-usb = { path = "../usb" }

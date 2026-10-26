@@ -25,6 +25,18 @@ async fn main() {
         return;
     }
 
+    let profile = match tessara_profile::load_or_init() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("agentd: profile: {e}");
+            std::process::exit(1);
+        }
+    };
+    eprintln!(
+        "agentd: machine {} ({})",
+        profile.display_name, profile.machine_id
+    );
+
     if args.once {
         let port = match args.port {
             Some(p) => p,
