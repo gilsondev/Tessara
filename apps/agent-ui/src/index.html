@@ -286,6 +286,7 @@
               <button type="button" class="on" data-mode-set="simple">Simples</button>
               <button type="button" data-mode-set="advanced">Avançado</button>
             </div>
+            <span class="demo-badge adv-only" data-live="activity-demo-badge" hidden>demo</span>
             <span class="hint simple-only">Filtros da lista abaixo</span>
             <span class="hint adv-only">Últimas linhas do agentd · nível DEBUG</span>
           </div>
@@ -336,18 +337,10 @@
               </div>
             </article>
           </div>
-          <pre class="log adv-only" aria-label="Log técnico"><span class="ts">2026-10-25T21:04:12.441-03:00</span> <span class="lvl-info">INFO </span> usb: attached vid=303a pid=1001 serial=JC3248-A1 path=/dev/cu.usbmodem*
-<span class="ts">2026-10-25T21:04:12.610-03:00</span> <span class="lvl-info">INFO </span> agentd: handshake ok proto=1 device=tessara fw=0.9.4
-<span class="ts">2026-10-25T21:04:12.802-03:00</span> <span class="lvl-info">INFO </span> media.watch: source=spotify state=paused title="" dirty=false
-<span class="ts">2026-10-25T21:04:12.918-03:00</span> <span class="lvl-info">INFO </span> focus.watch: mode="Trabalho" assertions_mtime=1729905851 push=ok
-<span class="ts">2026-10-25T21:04:13.104-03:00</span> <span class="lvl-debug">DEBUG</span> aitokens.cursor: remaining=42% window=monthly path=~/Library/Application Support/Cursor/*
-<span class="ts">2026-10-25T21:04:13.220-03:00</span> <span class="lvl-warn">WARN </span> aitokens.claude: fda=denied; skip quota until Full Disk Access
-<span class="ts">2026-10-25T21:05:01.044-03:00</span> <span class="lvl-warn">WARN </span> usb: detach (transient) — reconnect in 380ms
-<span class="ts">2026-10-25T21:05:01.424-03:00</span> <span class="lvl-info">INFO </span> usb: reattached; resume dirty-push queue=2
-<span class="ts">2026-10-25T18:22:09.011-03:00</span> <span class="lvl-err">ERROR</span> focus.watch: TCC kTCCServiceSystemPolicyAllFiles denied → UI “Falta autorização de arquivos”</pre>
+          <pre class="log adv-only" data-live="activity-log" aria-label="Log técnico"></pre>
           <div class="actions">
             <button class="btn ghost" type="button" data-go="doctor">Rodar Doctor</button>
-            <button class="btn ghost adv-only" type="button">Copiar log</button>
+            <button class="btn ghost adv-only" type="button" data-action="copy-log">Copiar log</button>
             <button class="btn ghost" type="button">Enviar relatório</button>
           </div>
         </div>
@@ -355,7 +348,7 @@
         <!-- DOCTOR -->
         <div class="screen" data-screen="doctor">
           <div class="hero">
-            <p class="eyebrow">Doctor</p>
+            <p class="eyebrow">Doctor <span class="demo-badge" data-live="doctor-demo-badge" hidden>demo</span></p>
             <h2>Checagem deste Mac</h2>
             <p>Passamos cabo, autorizações, apps de IA e o que sincroniza. Diz o que está ok e o que só você pode resolver.</p>
           </div>
@@ -366,81 +359,7 @@
               <span data-live="doctor-status-sub">Mac do trabalho · checado agora · o resto está ok.</span>
             </div>
           </div>
-          <ul class="check">
-            <li class="ok" data-live="doctor-usb-check">
-              <span class="mark" aria-hidden="true">✓</span>
-              <div class="copy">
-                <b>Painel no cabo</b>
-                <span data-live="doctor-usb-sub">USB ok · handshake · firmware 0.9.4</span>
-              </div>
-              <span class="pill" data-live="doctor-usb-pill"><i></i> Ok</span>
-            </li>
-            <li class="ok" data-live="doctor-agentd-check">
-              <span class="mark" aria-hidden="true">✓</span>
-              <div class="copy">
-                <b>App em segundo plano</b>
-                <span data-live="doctor-agentd-sub">Abre com o Mac e está rodando agora</span>
-              </div>
-              <span class="pill" data-live="doctor-agentd-pill"><i></i> Ok</span>
-            </li>
-            <li class="bad">
-              <span class="mark" aria-hidden="true">!</span>
-              <div class="copy">
-                <b>Acesso aos arquivos</b>
-                <span>Claude e Focus precisam que você marque o Tessara em Ajustes do Mac.</span>
-                <button class="btn ghost fix" type="button" data-go="setup">Abrir Ajustes</button>
-              </div>
-              <span class="pill warn"><i></i> Ação</span>
-            </li>
-            <li class="ok">
-              <span class="mark" aria-hidden="true">✓</span>
-              <div class="copy">
-                <b>Música</b>
-                <span>Spotify detectado · agora: parado</span>
-              </div>
-              <span class="pill"><i></i> Ok</span>
-            </li>
-            <li class="warn">
-              <span class="mark" aria-hidden="true">~</span>
-              <div class="copy">
-                <b>Focus</b>
-                <span>Último modo: Trabalho · pausado até liberar acesso aos arquivos</span>
-              </div>
-              <span class="pill warn"><i></i> Parcial</span>
-            </li>
-            <li class="ok">
-              <span class="mark" aria-hidden="true">✓</span>
-              <div class="copy">
-                <b>Cursor</b>
-                <span>Conta logada · cotas lidas · 42% do mês</span>
-              </div>
-              <span class="pill"><i></i> Ok</span>
-            </li>
-            <li class="warn">
-              <span class="mark" aria-hidden="true">~</span>
-              <div class="copy">
-                <b>Claude</b>
-                <span>App achado · cotas bloqueadas pela autorização acima</span>
-              </div>
-              <span class="pill warn"><i></i> Parcial</span>
-            </li>
-            <li class="skip">
-              <span class="mark" aria-hidden="true">–</span>
-              <div class="copy">
-                <b>Codex / ChatGPT</b>
-                <span>Não instalado neste Mac — nada a fazer</span>
-              </div>
-              <span class="pill neutral"><i></i> N/A</span>
-            </li>
-            <li class="ok">
-              <span class="mark" aria-hidden="true">✓</span>
-              <div class="copy">
-                <b>Envio ao painel</b>
-                <span>Fila limpa · último push há 2 s</span>
-              </div>
-              <span class="pill"><i></i> Ok</span>
-            </li>
-          </ul>
+          <ul class="check" data-live="doctor-checks"></ul>
           <div class="actions">
             <button class="btn primary" type="button" data-go="setup">Resolver o que falta</button>
             <button class="btn ghost" type="button" data-go="scan">Varrer de novo</button>
