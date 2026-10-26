@@ -1,0 +1,9 @@
+[package]
+name = "tessara-caps-media"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tessara-protocol = { path = "../protocol" }
+
+[dev-dependencies]

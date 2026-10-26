@@ -58,13 +58,23 @@ async fn main() {
         return;
     }
 
-    if args.port.is_some() {
-        eprintln!("agentd: use --once com --port para smoke USB");
-        std::process::exit(1);
+    let media_enabled = profile.config.media;
+    let app_state = ipc::AppState::default();
+    let usb_link = app_state.usb.clone();
+
+    if let Some(port) = args.port.clone() {
+        eprintln!("agentd: USB sessão em background (--port {port})");
+        std::thread::spawn(move || {
+            if let Err(e) = usb_loop::run_session(&port, media_enabled, Some(usb_link)) {
+                eprintln!("agentd: USB: {e}");
+            }
+        });
+    } else {
+        usb_loop::print_candidate_ports();
+        std::thread::spawn(move || usb_loop::run_auto(media_enabled, Some(usb_link)));
     }
 
-    usb_loop::print_candidate_ports();
-    if let Err(e) = ipc::run_ipc_server(ipc::AppState::default()).await {
+    if let Err(e) = ipc::run_ipc_server(app_state).await {
         eprintln!("agentd: IPC: {e}");
         std::process::exit(1);
     }

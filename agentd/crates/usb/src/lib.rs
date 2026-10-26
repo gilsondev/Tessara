@@ -56,10 +56,26 @@ pub fn open_tessara_port(path: &str) -> Result<Box<dyn serialport::SerialPort>, 
 
 /// Write AGENT handshake line + newline (transport); callers pass protocol body without `\n`.
 pub fn write_handshake(w: &mut impl Write, line: &str) -> io::Result<()> {
+    write_line(w, line)
+}
+
+/// One protocol line + newline; brief pause so the panel can parse before the next line.
+pub fn write_line(w: &mut impl Write, line: &str) -> io::Result<()> {
     let body = line.trim_end_matches('\n');
+    if body.is_empty() {
+        return Ok(());
+    }
     w.write_all(body.as_bytes())?;
     w.write_all(b"\n")?;
     w.flush()?;
+    std::thread::sleep(Duration::from_millis(20));
+    Ok(())
+}
+
+pub fn write_lines(w: &mut impl Write, lines: &[String]) -> io::Result<()> {
+    for line in lines {
+        write_line(w, line)?;
+    }
     Ok(())
 }
 
