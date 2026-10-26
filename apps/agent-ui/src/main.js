@@ -249,3 +249,12 @@ if (hash && screens.some((s) => s.id === hash)) go(hash);
 
 if (!location.hash.replace("#", "")) go("welcome");
 else ensureStatusPoll();
+
+if (window.__TAURI__?.event?.listen) {
+  window.__TAURI__.event.listen("navigate", (ev) => {
+    const id = ev.payload;
+    if (typeof id === "string" && screens.some((s) => s.id === id)) {
+      go(id);
+    }
+  });
+}
