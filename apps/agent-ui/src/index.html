@@ -1,39 +1,727 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <link rel="stylesheet" href="styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri App</title>
+    <title>Tessara</title>
+    <link rel="stylesheet" href="styles.css" />
     <script type="module" src="/main.js" defer></script>
   </head>
-
   <body>
-    <main class="container">
-      <h1>Welcome to Tauri</h1>
-
-      <div class="row">
-        <a href="https://tauri.app" target="_blank">
-          <img src="/assets/tauri.svg" class="logo tauri" alt="Tauri logo" />
-        </a>
-        <a
-          href="https://developer.mozilla.org/en-US/docs/Web/JavaScript"
-          target="_blank"
-        >
-          <img
-            src="/assets/javascript.svg"
-            class="logo vanilla"
-            alt="JavaScript logo"
-          />
-        </a>
+<main class="window" role="application">
+      <div class="titlebar">
+        <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
+        <strong id="win-title">Início</strong>
+        <span></span>
       </div>
-      <p>Click on the Tauri logo to learn more about the framework</p>
+      <nav class="nav-tabs" id="tabs" aria-label="Seções">
+        <button type="button" data-go="home">Início</button>
+        <button type="button" data-go="panel">Painel</button>
+        <button type="button" data-go="mac">No Mac</button>
+        <button type="button" data-go="machines">PCs</button>
+        <button type="button" data-go="activity">Atividade</button>
+        <button type="button" data-go="more">Mais</button>
+      </nav>
+      <div class="body">
 
-      <form class="row" id="greet-form">
-        <input id="greet-input" placeholder="Enter a name..." />
-        <button type="submit">Greet</button>
-      </form>
-      <p id="greet-msg"></p>
+        <!-- HOME -->
+        <div class="screen" data-screen="home">
+          <div class="hero">
+            <p class="eyebrow">Início</p>
+            <h2>Tudo certo por aqui.</h2>
+            <p>O painel pode viver com mais de um computador. Agora quem manda é este Mac.</p>
+          </div>
+          <div class="banner ok">
+            <span class="dot" aria-hidden="true"></span>
+            <div class="copy">
+              <b>Painel ligado a este Mac</b>
+              <span>Mac do trabalho · música, Focus e cotas atualizando.</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="machine">
+              <div class="avatar work" aria-hidden="true">T</div>
+              <div class="copy">
+                <h3>Mac do trabalho</h3>
+                <p class="sub">Ativo agora · Cursor e Claude encontrados</p>
+              </div>
+              <div class="meta"><button class="btn ghost" type="button" data-go="machines">Trocar</button></div>
+            </div>
+          </div>
+          <div class="quick">
+            <button type="button" data-go="panel">
+              <b>Ajustar o painel</b>
+              <span>Brilho, sono, som…</span>
+            </button>
+            <button type="button" data-go="doctor">
+              <b>Rodar Doctor</b>
+              <span>O que precisa de você</span>
+            </button>
+            <button type="button" data-go="scan">
+              <b>Varrer este Mac</b>
+              <span>Apps e autorizações</span>
+            </button>
+          </div>
+          <div class="grid two">
+            <div class="card">
+              <div class="row">
+                <div class="copy">
+                  <h3>Agora tocando</h3>
+                  <p class="sub">Parado</p>
+                </div>
+                <div class="meta"><span class="pill neutral"><i></i> Pausado</span></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="row">
+                <div class="copy">
+                  <h3>Focus atual</h3>
+                  <p class="sub">Trabalho</p>
+                </div>
+                <div class="meta"><span class="pill"><i></i> Ativo</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SETUP -->
+        <div class="screen" data-screen="setup">
+          <div class="progress" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+          <div class="hero">
+            <p class="eyebrow">Neste Mac · 3 de 4</p>
+            <h2>Faltam autorizações do Mac</h2>
+            <p>A varredura já mostrou o que precisa. Abrimos a tela certa; você marca o Tessara e volta.</p>
+          </div>
+          <ul class="steps">
+            <li class="done">
+              <span class="n">✓</span>
+              <div class="copy">
+                <b>Abrir com o Mac</b>
+                <span>Já autorizado a iniciar junto com você</span>
+              </div>
+              <span class="pill"><i></i> Pronto</span>
+            </li>
+            <li class="now">
+              <span class="n">2</span>
+              <div class="copy">
+                <b>Acesso aos seus arquivos</b>
+                <span>Para ler Focus e as cotas dos apps de IA</span>
+              </div>
+              <span class="pill warn"><i></i> Falta</span>
+            </li>
+            <li>
+              <span class="n">3</span>
+              <div class="copy">
+                <b>Atalhos (opcional)</b>
+                <span>Só se quiser mudar o Focus pelo painel</span>
+              </div>
+              <span class="pill neutral"><i></i> Depois</span>
+            </li>
+          </ul>
+          <div class="actions">
+            <button class="btn primary" type="button">Abrir Ajustes do Mac</button>
+            <button class="btn ghost" type="button">Já autorizei — conferir</button>
+            <button class="btn ghost" type="button" data-go="setup-cable">Continuar</button>
+          </div>
+        </div>
+
+        <div class="screen" data-screen="setup-cable">
+          <div class="progress" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+          <div class="hero">
+            <p class="eyebrow">Neste Mac · 4 de 4</p>
+            <h2>Ligue o painel neste Mac</h2>
+            <p>Use o cabo USB. Quem estiver plugado vira o Mac ativo — o outro fica pronto para a próxima vez.</p>
+          </div>
+          <div class="card">
+            <div class="row">
+              <div class="copy">
+                <h3>Procurando o painel…</h3>
+                <p class="sub">Deixe o cabo bem encaixado. Pode levar alguns segundos.</p>
+              </div>
+              <div class="meta"><span class="pill warn"><i></i> Aguardando</span></div>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" type="button" data-go="home">Simular “encontrei”</button>
+            <button class="btn ghost" type="button" data-go="setup">Voltar</button>
+          </div>
+          <p class="note">Se não achar: troque a porta USB, evite hub sem energia, ou toque em “Ver atividade”.</p>
+        </div>
+
+        <!-- PANEL / DEVICE -->
+        <div class="screen" data-screen="panel">
+          <div class="hero">
+            <p class="eyebrow">Painel</p>
+            <h2>Controle o aparelho daqui</h2>
+            <p>Mesmos ajustes do site do Tessara — sem abrir o navegador. Mudanças chegam na hora.</p>
+          </div>
+          <div class="banner ok">
+            <span class="dot" aria-hidden="true"></span>
+            <div class="copy">
+              <b>Controle remoto ativo</b>
+              <span>Enquanto o cabo estiver conectado.</span>
+            </div>
+          </div>
+          <div class="grid">
+            <div class="card">
+              <h3>Orientação</h3>
+              <p class="sub">Como o painel está na mesa</p>
+              <div class="chips">
+                <button type="button" class="on">Vertical</button>
+                <button type="button">Horizontal</button>
+              </div>
+            </div>
+            <div class="card">
+              <h3>Brilho</h3>
+              <p class="sub">Agora: Médio</p>
+              <div class="chips">
+                <button type="button">Baixo</button>
+                <button type="button" class="on">Médio</button>
+                <button type="button">Alto</button>
+              </div>
+            </div>
+            <div class="card">
+              <h3>Aparência</h3>
+              <div class="chips">
+                <button type="button">Claro</button>
+                <button type="button">Escuro</button>
+                <button type="button" class="on">Automático</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="row">
+                <div class="copy">
+                  <h3>Som</h3>
+                  <p class="sub">Toques e feedback</p>
+                </div>
+                <div class="meta">
+                  <button class="toggle on" type="button" aria-label="Som" aria-pressed="true"></button>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <h3>Descanso de tela</h3>
+              <p class="sub">Após quanto tempo sem tocar: <strong>5 min</strong></p>
+              <div class="range">
+                <input type="range" min="0" max="4" value="2" aria-label="Descanso">
+                <div class="labels"><span>Nunca</span><span>2 min</span><span>5 min</span><span>15 min</span><span>30 min</span></div>
+              </div>
+            </div>
+            <div class="card">
+              <h3>Relógio no descanso</h3>
+              <p class="sub">Quanto tempo mostrar o relógio antes de apagar: <strong>2 min</strong></p>
+              <div class="range">
+                <input type="range" min="0" max="3" value="1" aria-label="Relógio">
+                <div class="labels"><span>Até tocar</span><span>2 min</span><span>5 min</span><span>10 min</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" type="button">Acordar o painel agora</button>
+            <button class="btn ghost" type="button">Ir para a home do painel</button>
+          </div>
+          <p class="note">Wi‑Fi, cidade do clima e token do Todoist continuam no site do Tessara (rede). Aqui ficam os controles do dia a dia.</p>
+        </div>
+
+        <!-- MAC FEATURES -->
+        <div class="screen" data-screen="mac">
+          <div class="hero">
+            <p class="eyebrow">No Mac</p>
+            <h2>O que vai para o painel</h2>
+            <p>Ligue só o que usa. Desligado some do painel sem quebrar o resto.</p>
+          </div>
+          <div class="grid">
+            <div class="card">
+              <div class="cap">
+                <div class="copy">
+                  <h3>Música</h3>
+                  <p class="sub">Faixa e capa. Pausado mostra “Parado”; sem nada, “Sem música”.</p>
+                </div>
+                <button class="toggle on" type="button" aria-pressed="true"></button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="cap">
+                <div class="copy">
+                  <h3>Focus</h3>
+                  <p class="sub">Modo atual e troca pelo painel. Precisa da autorização de arquivos.</p>
+                </div>
+                <button class="toggle on" type="button" aria-pressed="true"></button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="cap">
+                <div class="copy">
+                  <h3>Cotas de IA</h3>
+                  <p class="sub">Cursor, Claude e Codex — o que ainda resta no mês.</p>
+                </div>
+                <button class="toggle on" type="button" aria-pressed="true"></button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="cap">
+                <div class="copy">
+                  <h3>Agenda</h3>
+                  <p class="sub">Próximos eventos do Google Calendar (só leitura).</p>
+                </div>
+                <button class="toggle on" type="button" aria-pressed="true"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ACTIVITY -->
+        <div class="screen" data-screen="activity" data-mode="simple">
+          <div class="hero">
+            <p class="eyebrow">Atividade</p>
+            <h2>O que aconteceu agora</h2>
+            <p>No modo simples, em português. No avançado, o log técnico completo.</p>
+          </div>
+          <div class="mode-bar">
+            <div class="chips filters" role="group" aria-label="Modo">
+              <button type="button" class="on" data-mode-set="simple">Simples</button>
+              <button type="button" data-mode-set="advanced">Avançado</button>
+            </div>
+            <span class="hint simple-only">Filtros da lista abaixo</span>
+            <span class="hint adv-only">Últimas linhas do agentd · nível DEBUG</span>
+          </div>
+          <div class="chips filters simple-only">
+            <button type="button" class="on">Tudo</button>
+            <button type="button">Avisos</button>
+            <button type="button">Problemas</button>
+          </div>
+          <div class="feed simple-only">
+            <article>
+              <time>21:04</time>
+              <div class="copy">
+                <b>Painel conectado</b>
+                <p>Pronto para sincronizar.</p>
+                <span class="tag">OK</span>
+              </div>
+            </article>
+            <article>
+              <time>21:04</time>
+              <div class="copy">
+                <b>Música acompanhando o Spotify</b>
+                <p>Capa pode demorar um pouco na primeira vez.</p>
+                <span class="tag">OK</span>
+              </div>
+            </article>
+            <article>
+              <time>21:04</time>
+              <div class="copy">
+                <b>Focus atualizado</b>
+                <p>Painel mostra Trabalho.</p>
+                <span class="tag">OK</span>
+              </div>
+            </article>
+            <article>
+              <time>21:05</time>
+              <div class="copy">
+                <b>Cabo soltou por um instante</b>
+                <p>Reconectamos sozinhos. Se repetir, troque a porta USB.</p>
+                <span class="tag warn">Aviso</span>
+              </div>
+            </article>
+            <article>
+              <time>Ontem</time>
+              <div class="copy">
+                <b>Falta autorização de arquivos</b>
+                <p>Focus ficou indisponível até você marcar o Tessara em Ajustes.</p>
+                <span class="tag bad">Problema</span>
+              </div>
+            </article>
+          </div>
+          <pre class="log adv-only" aria-label="Log técnico"><span class="ts">2026-10-25T21:04:12.441-03:00</span> <span class="lvl-info">INFO </span> usb: attached vid=303a pid=1001 serial=JC3248-A1 path=/dev/cu.usbmodem*
+<span class="ts">2026-10-25T21:04:12.610-03:00</span> <span class="lvl-info">INFO </span> agentd: handshake ok proto=1 device=tessara fw=0.9.4
+<span class="ts">2026-10-25T21:04:12.802-03:00</span> <span class="lvl-info">INFO </span> media.watch: source=spotify state=paused title="" dirty=false
+<span class="ts">2026-10-25T21:04:12.918-03:00</span> <span class="lvl-info">INFO </span> focus.watch: mode="Trabalho" assertions_mtime=1729905851 push=ok
+<span class="ts">2026-10-25T21:04:13.104-03:00</span> <span class="lvl-debug">DEBUG</span> aitokens.cursor: remaining=42% window=monthly path=~/Library/Application Support/Cursor/*
+<span class="ts">2026-10-25T21:04:13.220-03:00</span> <span class="lvl-warn">WARN </span> aitokens.claude: fda=denied; skip quota until Full Disk Access
+<span class="ts">2026-10-25T21:05:01.044-03:00</span> <span class="lvl-warn">WARN </span> usb: detach (transient) — reconnect in 380ms
+<span class="ts">2026-10-25T21:05:01.424-03:00</span> <span class="lvl-info">INFO </span> usb: reattached; resume dirty-push queue=2
+<span class="ts">2026-10-25T18:22:09.011-03:00</span> <span class="lvl-err">ERROR</span> focus.watch: TCC kTCCServiceSystemPolicyAllFiles denied → UI “Falta autorização de arquivos”</pre>
+          <div class="actions">
+            <button class="btn ghost" type="button" data-go="doctor">Rodar Doctor</button>
+            <button class="btn ghost adv-only" type="button">Copiar log</button>
+            <button class="btn ghost" type="button">Enviar relatório</button>
+          </div>
+        </div>
+
+        <!-- DOCTOR -->
+        <div class="screen" data-screen="doctor">
+          <div class="hero">
+            <p class="eyebrow">Doctor</p>
+            <h2>Checagem deste Mac</h2>
+            <p>Passamos cabo, autorizações, apps de IA e o que sincroniza. Diz o que está ok e o que só você pode resolver.</p>
+          </div>
+          <div class="banner warn">
+            <span class="dot" aria-hidden="true"></span>
+            <div class="copy">
+              <b>1 coisa precisa de você</b>
+              <span>Mac do trabalho · checado agora · o resto está ok.</span>
+            </div>
+          </div>
+          <ul class="check">
+            <li class="ok">
+              <span class="mark" aria-hidden="true">✓</span>
+              <div class="copy">
+                <b>Painel no cabo</b>
+                <span>USB ok · handshake · firmware 0.9.4</span>
+              </div>
+              <span class="pill"><i></i> Ok</span>
+            </li>
+            <li class="ok">
+              <span class="mark" aria-hidden="true">✓</span>
+              <div class="copy">
+                <b>App em segundo plano</b>
+                <span>Abre com o Mac e está rodando agora</span>
+              </div>
+              <span class="pill"><i></i> Ok</span>
+            </li>
+            <li class="bad">
+              <span class="mark" aria-hidden="true">!</span>
+              <div class="copy">
+                <b>Acesso aos arquivos</b>
+                <span>Claude e Focus precisam que você marque o Tessara em Ajustes do Mac.</span>
+                <button class="btn ghost fix" type="button" data-go="setup">Abrir Ajustes</button>
+              </div>
+              <span class="pill warn"><i></i> Ação</span>
+            </li>
+            <li class="ok">
+              <span class="mark" aria-hidden="true">✓</span>
+              <div class="copy">
+                <b>Música</b>
+                <span>Spotify detectado · agora: parado</span>
+              </div>
+              <span class="pill"><i></i> Ok</span>
+            </li>
+            <li class="warn">
+              <span class="mark" aria-hidden="true">~</span>
+              <div class="copy">
+                <b>Focus</b>
+                <span>Último modo: Trabalho · pausado até liberar acesso aos arquivos</span>
+              </div>
+              <span class="pill warn"><i></i> Parcial</span>
+            </li>
+            <li class="ok">
+              <span class="mark" aria-hidden="true">✓</span>
+              <div class="copy">
+                <b>Cursor</b>
+                <span>Conta logada · cotas lidas · 42% do mês</span>
+              </div>
+              <span class="pill"><i></i> Ok</span>
+            </li>
+            <li class="warn">
+              <span class="mark" aria-hidden="true">~</span>
+              <div class="copy">
+                <b>Claude</b>
+                <span>App achado · cotas bloqueadas pela autorização acima</span>
+              </div>
+              <span class="pill warn"><i></i> Parcial</span>
+            </li>
+            <li class="skip">
+              <span class="mark" aria-hidden="true">–</span>
+              <div class="copy">
+                <b>Codex / ChatGPT</b>
+                <span>Não instalado neste Mac — nada a fazer</span>
+              </div>
+              <span class="pill neutral"><i></i> N/A</span>
+            </li>
+            <li class="ok">
+              <span class="mark" aria-hidden="true">✓</span>
+              <div class="copy">
+                <b>Envio ao painel</b>
+                <span>Fila limpa · último push há 2 s</span>
+              </div>
+              <span class="pill"><i></i> Ok</span>
+            </li>
+          </ul>
+          <div class="actions">
+            <button class="btn primary" type="button" data-go="setup">Resolver o que falta</button>
+            <button class="btn ghost" type="button" data-go="scan">Varrer de novo</button>
+            <button class="btn ghost" type="button" data-go="activity" data-mode-open="advanced">Ver log</button>
+            <button class="btn ghost" type="button">Copiar relatório</button>
+          </div>
+        </div>
+
+        <!-- MORE -->
+        <div class="screen" data-screen="more">
+          <div class="hero">
+            <p class="eyebrow">Mais</p>
+            <h2>Conta, atualização e remoção</h2>
+          </div>
+          <div class="grid">
+            <div class="card">
+              <div class="row">
+                <div class="copy">
+                  <h3>Atualizar sozinho</h3>
+                  <p class="sub">Você está na versão mais recente</p>
+                </div>
+                <div class="meta">
+                  <button class="toggle on" type="button" aria-pressed="true"></button>
+                </div>
+              </div>
+              <div class="row">
+                <div class="copy">
+                  <h3>Nome do painel na rede</h3>
+                  <p class="sub">tessara.local</p>
+                </div>
+                <div class="meta"><button class="btn ghost" type="button">Alterar</button></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="row">
+                <div class="copy">
+                  <h3>Meus computadores</h3>
+                  <p class="sub">Trabalho, pessoal e qual está ativo</p>
+                </div>
+                <div class="meta"><button class="btn ghost" type="button" data-go="machines">Ver</button></div>
+              </div>
+              <div class="row">
+                <div class="copy">
+                  <h3>Doctor</h3>
+                  <p class="sub">O que funciona e o que precisa de você</p>
+                </div>
+                <div class="meta"><button class="btn ghost" type="button" data-go="doctor">Rodar</button></div>
+              </div>
+              <div class="row">
+                <div class="copy">
+                  <h3>Varrer este Mac de novo</h3>
+                  <p class="sub">Apps de IA e autorizações</p>
+                </div>
+                <div class="meta"><button class="btn ghost" type="button" data-go="scan">Varrer</button></div>
+              </div>
+              <div class="row">
+                <div class="copy">
+                  <h3>Autorizações</h3>
+                  <p class="sub">Acesso a arquivos e atalhos</p>
+                </div>
+                <div class="meta"><button class="btn ghost" type="button" data-go="setup">Abrir</button></div>
+              </div>
+              <div class="row">
+                <div class="copy">
+                  <h3>Abrir site do Tessara</h3>
+                  <p class="sub">Wi‑Fi, clima, Todoist e widgets</p>
+                </div>
+                <div class="meta"><button class="btn ghost" type="button">Abrir</button></div>
+              </div>
+              <div class="row">
+                <div class="copy">
+                  <h3>Remover deste Mac</h3>
+                  <p class="sub">Não apaga o perfil dos outros computadores</p>
+                </div>
+                <div class="meta"><button class="btn danger" type="button">Remover…</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PROBLEM -->
+        <div class="screen" data-screen="problem">
+          <div class="hero">
+            <p class="eyebrow">Precisa de você</p>
+            <h2>Não estamos falando com o painel</h2>
+            <p>Enquanto isso, o Tessara no Mac continua ligado. Assim que o cabo voltar, a sincronização retoma.</p>
+          </div>
+          <div class="banner err">
+            <span class="dot" aria-hidden="true"></span>
+            <div class="copy">
+              <b>Painel desconectado</b>
+              <span>Conferimos o cabo e tentamos de novo em instantes.</span>
+            </div>
+          </div>
+          <div class="card">
+            <h3>O que tentar</h3>
+            <p class="sub">1. Reencaixe o USB · 2. Outra porta do Mac · 3. Evite hub sem energia</p>
+          </div>
+          <div class="actions">
+            <button class="btn primary" type="button">Tentar de novo</button>
+            <button class="btn ghost" type="button" data-go="doctor">Rodar Doctor</button>
+            <button class="btn ghost" type="button" data-go="activity" data-mode-open="advanced">Ver log</button>
+            <button class="btn ghost" type="button" data-go="home">Dispensar</button>
+          </div>
+        </div>
+
+        <!-- MACHINES -->
+        <div class="screen" data-screen="machines">
+          <div class="hero">
+            <p class="eyebrow">Computadores</p>
+            <h2>Um painel, vários Macs</h2>
+            <p>Trabalho de dia, pessoal à noite. Quem estiver com o cabo manda no painel.</p>
+          </div>
+          <div class="grid">
+            <div class="card">
+              <div class="machine">
+                <div class="avatar work" aria-hidden="true">T</div>
+                <div class="copy">
+                  <h3>Mac do trabalho</h3>
+                  <p class="sub">Ativo · Cursor, Claude · última vez agora</p>
+                </div>
+                <div class="meta"><span class="pill"><i></i> Agora</span></div>
+              </div>
+              <div class="actions" style="margin-top:14px">
+                <button class="btn ghost" type="button" data-go="scan-result">Ver o que achamos</button>
+                <button class="btn ghost" type="button" data-go="scan">Varrer de novo</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="machine">
+                <div class="avatar home" aria-hidden="true">P</div>
+                <div class="copy">
+                  <h3>Mac pessoal</h3>
+                  <p class="sub">Pronto · Claude · última vez ontem</p>
+                </div>
+                <div class="meta"><span class="pill neutral"><i></i> Outro Mac</span></div>
+              </div>
+              <div class="actions" style="margin-top:14px">
+                <button class="btn ghost" type="button">Renomear</button>
+                <button class="btn danger" type="button">Esquecer</button>
+              </div>
+            </div>
+          </div>
+          <div class="banner warn">
+            <span class="dot" aria-hidden="true"></span>
+            <div class="copy">
+              <b>Como funciona</b>
+              <span>Instale o Tessara em cada computador. Ao plugar o painel, este Mac vira o ativo — sem desinstalar o outro.</span>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" type="button" data-go="scan">Preparar este Mac</button>
+          </div>
+        </div>
+
+        <!-- SCAN -->
+        <div class="screen" data-screen="scan">
+          <div class="progress" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i></div>
+          <div class="hero">
+            <p class="eyebrow">Neste Mac · 1 de 4</p>
+            <h2>Olhando o que tem neste Mac</h2>
+            <p>Procuramos apps de IA, o que pode ir ao painel e o que o sistema ainda precisa autorizar.</p>
+          </div>
+          <div class="scan-box">
+            <div class="scan-ring" aria-hidden="true"></div>
+            <h3>Varrendo este computador…</h3>
+            <p>Leva poucos segundos. Nada é enviado para a nuvem.</p>
+            <div class="scan-list">
+              <div class="done">Apps de IA</div>
+              <div class="done">Música e Focus</div>
+              <div class="now">Autorizações do Mac</div>
+              <div>Resumo para você confirmar</div>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" type="button" data-go="scan-result">Mostrar resultado</button>
+            <button class="btn ghost" type="button" data-go="home">Cancelar</button>
+          </div>
+        </div>
+
+        <!-- SCAN RESULT -->
+        <div class="screen" data-screen="scan-result">
+          <div class="progress" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+          <div class="hero">
+            <p class="eyebrow">Neste Mac · 2 de 4 · Mac do trabalho</p>
+            <h2>Encontramos isto</h2>
+            <p>Escolha o que quer no painel. O que faltar autorização a gente pede em seguida.</p>
+          </div>
+          <div class="card">
+            <div class="machine">
+              <div class="avatar work" aria-hidden="true">T</div>
+              <div class="copy">
+                <h3>Nome deste computador</h3>
+                <p class="sub">Mac do trabalho</p>
+              </div>
+              <div class="meta"><button class="btn ghost" type="button">Editar</button></div>
+            </div>
+          </div>
+          <ul class="found">
+            <li>
+              <div class="copy">
+                <b>Cursor</b>
+                <span>Conta logada · cotas podem ir ao painel</span>
+                <span class="need ok">Pronto</span>
+              </div>
+              <button class="toggle on" type="button" aria-pressed="true"></button>
+            </li>
+            <li>
+              <div class="copy">
+                <b>Claude</b>
+                <span>App no Mac · cotas detectadas</span>
+                <span class="need">Pede acesso aos arquivos</span>
+              </div>
+              <button class="toggle on" type="button" aria-pressed="true"></button>
+            </li>
+            <li>
+              <div class="copy">
+                <b>Codex / ChatGPT</b>
+                <span>Não achamos neste Mac</span>
+                <span class="need skip">Indisponível</span>
+              </div>
+              <button class="toggle" type="button" aria-pressed="false" disabled style="opacity:.45"></button>
+            </li>
+            <li>
+              <div class="copy">
+                <b>Música</b>
+                <span>Spotify ou Apple Music neste Mac</span>
+                <span class="need ok">Pronto</span>
+              </div>
+              <button class="toggle on" type="button" aria-pressed="true"></button>
+            </li>
+            <li>
+              <div class="copy">
+                <b>Focus</b>
+                <span>Modos do Mac · Trabalho, Pessoal…</span>
+                <span class="need">Pede acesso aos arquivos</span>
+              </div>
+              <button class="toggle on" type="button" aria-pressed="true"></button>
+            </li>
+            <li>
+              <div class="copy">
+                <b>Agenda</b>
+                <span>Google Calendar (se você conectar depois)</span>
+                <span class="need skip">Opcional</span>
+              </div>
+              <button class="toggle" type="button" aria-pressed="false"></button>
+            </li>
+          </ul>
+          <div class="banner warn">
+            <span class="dot" aria-hidden="true"></span>
+            <div class="copy">
+              <b>2 autorizações em falta</b>
+              <span>Claude e Focus precisam que você marque o Tessara em Ajustes do Mac.</span>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" type="button" data-go="setup">Resolver autorizações</button>
+            <button class="btn ghost" type="button" data-go="home">Salvar e usar assim</button>
+          </div>
+        </div>
+
+        <!-- WELCOME -->
+        <div class="screen on" data-screen="welcome">
+          <div class="hero">
+            <p class="eyebrow">Bem-vindo</p>
+            <h2>Um painel. Os Macs que você usa.</h2>
+            <p>No trabalho ou em casa: instalamos, varremos o que tem neste computador e ligamos ao Tessara.</p>
+          </div>
+          <div class="grid two">
+            <div class="card">
+              <h3>Varredura</h3>
+              <p class="sub">Descobre apps de IA e o que falta autorizar.</p>
+            </div>
+            <div class="card">
+              <h3>Vários computadores</h3>
+              <p class="sub">Cada Mac guarda o próprio perfil. O cabo define quem está ativo.</p>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" type="button" data-go="scan">Começar neste Mac</button>
+            <button class="btn ghost" type="button" data-go="machines">Já tenho outros Macs</button>
+          </div>
+        </div>
+
+      </div>
     </main>
   </body>
 </html>

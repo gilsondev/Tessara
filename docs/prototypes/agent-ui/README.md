@@ -2,7 +2,7 @@
 
 Protótipo HTML do companion no computador (menu + janela). Linguagem simples, contraste reforçado, **vários Macs** e **controle do painel** na mesma app.
 
-**Implementação:** spec Agent v2 — [`docs/superpowers/specs/2026-10-25-tessera-agent-v2-design.md`](../../superpowers/specs/2026-10-25-tessera-agent-v2-design.md); UI em `apps/agent-ui` (plano).
+**Implementação:** spec Agent v2 — [`docs/superpowers/specs/2026-10-25-tessera-agent-v2-design.md`](../../superpowers/specs/2026-10-25-tessera-agent-v2-design.md); UI de produto em [`apps/agent-ui`](../../../apps/agent-ui).
 
 ```bash
 open docs/prototypes/agent-ui/index.html
