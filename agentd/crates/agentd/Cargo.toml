@@ -8,5 +8,5 @@ name = "agentd"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
+clap = { version = "=4.5.23", features = ["derive"] }
 tessara-protocol = { path = "../protocol" }
