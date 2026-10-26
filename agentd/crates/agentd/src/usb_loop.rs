@@ -4,6 +4,9 @@ use std::io::Read;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
+use tessara_caps_focus::{
+    focus_line_changed, FocusCapability, FOCUS_POLL_INTERVAL_S, FOCUS_PUSH_INTERVAL_S,
+};
 use tessara_caps_media::{
     media_line_changed, MediaCapability, MEDIA_POLL_INTERVAL_S, MEDIA_PUSH_INTERVAL_S,
 };
@@ -67,6 +70,7 @@ fn set_usb_link(link: &Option<Arc<RwLock<UsbLink>>>, up: bool) {
 pub fn run_session(
     path: &str,
     media_enabled: bool,
+    focus_enabled: bool,
     usb_link: Option<Arc<RwLock<UsbLink>>>,
 ) -> Result<(), UsbError> {
     eprintln!("agentd: USB sessão em {path}");
@@ -76,6 +80,7 @@ pub fn run_session(
     eprintln!("agentd: conectado {path}");
 
     let mut media = MediaCapability::with_default_watcher();
+    let mut focus = FocusCapability::new();
     let mut buf = Vec::<u8>::new();
     let mut scratch = [0u8; 256];
     let mut last_media_heartbeat = Instant::now()
@@ -83,6 +88,12 @@ pub fn run_session(
         .unwrap_or_else(Instant::now);
     let mut last_media_poll = Instant::now()
         .checked_sub(Duration::from_secs(MEDIA_POLL_INTERVAL_S))
+        .unwrap_or_else(Instant::now);
+    let mut last_focus_heartbeat = Instant::now()
+        .checked_sub(Duration::from_secs(FOCUS_PUSH_INTERVAL_S))
+        .unwrap_or_else(Instant::now);
+    let mut last_focus_poll = Instant::now()
+        .checked_sub(Duration::from_secs(FOCUS_POLL_INTERVAL_S))
         .unwrap_or_else(Instant::now);
 
     loop {
@@ -112,6 +123,21 @@ pub fn run_session(
                             last_media_heartbeat = Instant::now();
                             last_media_poll = Instant::now();
                         }
+                    } else if focus_enabled && text.starts_with("FOCUS") {
+                        if text.contains('\t') && !text.ends_with('?') {
+                            eprintln!("agentd: focus ← {text}");
+                        }
+                        let replies = focus.handle_line(text);
+                        if !replies.is_empty() {
+                            write_lines(&mut port, &replies)?;
+                            for reply in &replies {
+                                if reply.starts_with("FOCUS\t") {
+                                    focus.note_pushed(reply);
+                                }
+                            }
+                            last_focus_heartbeat = Instant::now();
+                            last_focus_poll = Instant::now();
+                        }
                     } else if !text.is_empty() {
                         eprintln!("agentd: ← {text}");
                     }
@@ -124,6 +150,7 @@ pub fn run_session(
             }
         }
 
+        let mut wrote_push = false;
         if media_enabled {
             let poll_due =
                 last_media_poll.elapsed() >= Duration::from_secs(MEDIA_POLL_INTERVAL_S);
@@ -140,6 +167,29 @@ pub fn run_session(
                     write_lines(&mut port, &[line.clone()])?;
                     media.note_pushed(&line);
                     last_media_heartbeat = Instant::now();
+                    wrote_push = true;
+                }
+            }
+        }
+
+        if focus_enabled && !wrote_push {
+            let poll_due =
+                last_focus_poll.elapsed() >= Duration::from_secs(FOCUS_POLL_INTERVAL_S);
+            let heartbeat_due =
+                last_focus_heartbeat.elapsed() >= Duration::from_secs(FOCUS_PUSH_INTERVAL_S);
+            let db_dirty = poll_due && focus.poll_dirty();
+            if poll_due {
+                last_focus_poll = Instant::now();
+            }
+            if poll_due || heartbeat_due {
+                let line = focus.build_line();
+                let push = heartbeat_due
+                    || db_dirty
+                    || focus_line_changed(focus.last_pushed_line(), &line);
+                if push {
+                    write_lines(&mut port, &[line.clone()])?;
+                    focus.note_pushed(&line);
+                    last_focus_heartbeat = Instant::now();
                 }
             }
         }
@@ -147,7 +197,11 @@ pub fn run_session(
 }
 
 /// Auto-connect first Tessara port; reconnect on failure (matches legacy Python loop shape).
-pub fn run_auto(media_enabled: bool, usb_link: Option<Arc<RwLock<UsbLink>>>) {
+pub fn run_auto(
+    media_enabled: bool,
+    focus_enabled: bool,
+    usb_link: Option<Arc<RwLock<UsbLink>>>,
+) {
     eprintln!("agentd: aguardando painel USB…");
     loop {
         let ports = tessara_usb::list_candidate_ports();
@@ -157,7 +211,7 @@ pub fn run_auto(media_enabled: bool, usb_link: Option<Arc<RwLock<UsbLink>>>) {
             continue;
         }
         let PortName(path) = &ports[0];
-        match run_session(path, media_enabled, usb_link.clone()) {
+        match run_session(path, media_enabled, focus_enabled, usb_link.clone()) {
             Ok(()) => {}
             Err(e) => {
                 eprintln!("agentd: USB {path}: {e}");

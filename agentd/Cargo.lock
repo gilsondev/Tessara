@@ -10,6 +10,7 @@ dependencies = [
  "clap",
  "serde",
  "serde_json",
+ "tessara-caps-focus",
  "tessara-caps-media",
  "tessara-profile",
  "tessara-protocol",
@@ -770,6 +771,15 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "tessara-caps-focus"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tessara-protocol",
 ]
 
 [[package]]

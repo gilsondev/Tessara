@@ -42,6 +42,31 @@ fn sanitize_field(text: &str, limit: usize) -> String {
 }
 
 /// Matches `agent.capabilities.media.encode_line`.
+/// Matches `agent.capabilities.focus.encode_line`.
+pub fn focus_line(
+    ok: bool,
+    active_id: &str,
+    active_name: &str,
+    modes: &[(&str, &str)],
+) -> String {
+    if !ok {
+        return "FOCUS\tv1\t0\t\t\t0".to_string();
+    }
+    let mut parts = vec![
+        "FOCUS".to_string(),
+        "v1".to_string(),
+        "1".to_string(),
+        sanitize_field(active_id, 63),
+        sanitize_field(active_name, 40),
+        modes.len().to_string(),
+    ];
+    for (id, name) in modes {
+        parts.push(sanitize_field(id, 63));
+        parts.push(sanitize_field(name, 40));
+    }
+    parts.join("\t")
+}
+
 pub fn media_line(
     ok: bool,
     state: &str,
@@ -79,5 +104,15 @@ mod tests {
     fn media_encode_matches_python_shape() {
         let s = media_line(true, "playing", "Test Song", "Test Artist", "Music");
         assert!(s.starts_with("MEDIA\tv1\t1\tplaying\t"));
+    }
+
+    #[test]
+    fn focus_encode_matches_python_shape() {
+        assert_eq!(focus_line(false, "", "", &[]), "FOCUS\tv1\t0\t\t\t0");
+        let modes = [("trabalho", "Trabalho"), ("pessoal", "Pessoal")];
+        assert_eq!(
+            focus_line(true, "trabalho", "Trabalho", &modes),
+            "FOCUS\tv1\t1\ttrabalho\tTrabalho\t2\ttrabalho\tTrabalho\tpessoal\tPessoal"
+        );
     }
 }

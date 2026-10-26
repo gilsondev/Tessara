@@ -59,19 +59,24 @@ async fn main() {
     }
 
     let media_enabled = profile.config.media;
+    let focus_enabled = profile.config.focus;
     let app_state = ipc::AppState::default();
     let usb_link = app_state.usb.clone();
 
     if let Some(port) = args.port.clone() {
         eprintln!("agentd: USB sessão em background (--port {port})");
         std::thread::spawn(move || {
-            if let Err(e) = usb_loop::run_session(&port, media_enabled, Some(usb_link)) {
+            if let Err(e) =
+                usb_loop::run_session(&port, media_enabled, focus_enabled, Some(usb_link))
+            {
                 eprintln!("agentd: USB: {e}");
             }
         });
     } else {
         usb_loop::print_candidate_ports();
-        std::thread::spawn(move || usb_loop::run_auto(media_enabled, Some(usb_link)));
+        std::thread::spawn(move || {
+            usb_loop::run_auto(media_enabled, focus_enabled, Some(usb_link))
+        });
     }
 
     if let Err(e) = ipc::run_ipc_server(app_state).await {

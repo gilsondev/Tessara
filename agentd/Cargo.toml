@@ -5,6 +5,7 @@ members = [
   "crates/usb",
   "crates/profile",
   "crates/caps-media",
+  "crates/caps-focus",
   "crates/agentd",
 ]
 
