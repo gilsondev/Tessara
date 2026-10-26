@@ -28,4 +28,4 @@ Sanitization: tabs/newlines → space, trim, truncate with `…` at limit−1.
 
 ## Push
 
-Heartbeat every 8s when `config.media` is enabled (matches legacy `MEDIA_PUSH_S`).
+When `config.media` is enabled: poll the watcher every 2s and push immediately if the encoded line changed; 8s heartbeat still pushes as fallback (matches legacy push-on-dirty + `MEDIA_PUSH_S`).

@@ -4,7 +4,9 @@ use std::io::Read;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use tessara_caps_media::{MediaCapability, MEDIA_PUSH_INTERVAL_S};
+use tessara_caps_media::{
+    media_line_changed, MediaCapability, MEDIA_POLL_INTERVAL_S, MEDIA_PUSH_INTERVAL_S,
+};
 use tessara_protocol::agent_ok_line;
 use tessara_usb::{open_tessara_port, write_handshake, write_lines, PortName, UsbError};
 
@@ -76,8 +78,11 @@ pub fn run_session(
     let mut media = MediaCapability::with_default_watcher();
     let mut buf = Vec::<u8>::new();
     let mut scratch = [0u8; 256];
-    let mut last_media = Instant::now()
+    let mut last_media_heartbeat = Instant::now()
         .checked_sub(Duration::from_secs(MEDIA_PUSH_INTERVAL_S))
+        .unwrap_or_else(Instant::now);
+    let mut last_media_poll = Instant::now()
+        .checked_sub(Duration::from_secs(MEDIA_POLL_INTERVAL_S))
         .unwrap_or_else(Instant::now);
 
     loop {
@@ -99,7 +104,13 @@ pub fn run_session(
                         let replies = media.handle_line(text);
                         if !replies.is_empty() {
                             write_lines(&mut port, &replies)?;
-                            last_media = Instant::now();
+                            for reply in &replies {
+                                if reply.starts_with("MEDIA\t") {
+                                    media.note_pushed(reply);
+                                }
+                            }
+                            last_media_heartbeat = Instant::now();
+                            last_media_poll = Instant::now();
                         }
                     } else if !text.is_empty() {
                         eprintln!("agentd: ← {text}");
@@ -113,9 +124,24 @@ pub fn run_session(
             }
         }
 
-        if media_enabled && last_media.elapsed() >= Duration::from_secs(MEDIA_PUSH_INTERVAL_S) {
-            write_lines(&mut port, &[media.build_line()])?;
-            last_media = Instant::now();
+        if media_enabled {
+            let poll_due =
+                last_media_poll.elapsed() >= Duration::from_secs(MEDIA_POLL_INTERVAL_S);
+            let heartbeat_due =
+                last_media_heartbeat.elapsed() >= Duration::from_secs(MEDIA_PUSH_INTERVAL_S);
+            if poll_due || heartbeat_due {
+                if poll_due {
+                    last_media_poll = Instant::now();
+                }
+                let line = media.build_line();
+                let push = heartbeat_due
+                    || media_line_changed(media.last_pushed_line(), &line);
+                if push {
+                    write_lines(&mut port, &[line.clone()])?;
+                    media.note_pushed(&line);
+                    last_media_heartbeat = Instant::now();
+                }
+            }
         }
     }
 }

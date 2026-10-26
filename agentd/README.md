@@ -14,7 +14,7 @@ USB lines are tab-separated. Golden fixtures under `crates/protocol/tests/fixtur
 - `agent/src/agent/protocol.py` — `AGENT\tv1\t1` (OK handshake; **no** extra semver field; Python adds `\n` only when writing the serial port)
 - `agent/src/agent/capabilities/media/__init__.py` — `MEDIA\tv1\t…` (see `crates/caps-media/README.md` for field order)
 
-With `config.media = true`, the daemon USB loop answers `MEDIA?` and pushes a heartbeat every 8s (`MEDIA_PUSH_INTERVAL_S`).
+With `config.media = true`, the daemon USB loop answers `MEDIA?`, pushes on encoded line change (~2s poll), and sends an 8s heartbeat fallback (`MEDIA_PUSH_INTERVAL_S`).
 
 Rust `tessara_protocol::agent_ok_line()` returns the same three fields as `agent_hello(ok=True)` before transport newline. Task 1 briefly added a fourth version field; that was removed here to match Python for cutover.
 

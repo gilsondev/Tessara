@@ -3,6 +3,13 @@
 use tessara_protocol::media_line;
 
 pub const MEDIA_PUSH_INTERVAL_S: u64 = 8;
+/// Poll watcher this often when media is enabled; push immediately if wire line changed.
+pub const MEDIA_POLL_INTERVAL_S: u64 = 2;
+
+/// True when `encoded` should be pushed (never pushed before, or differs from last push).
+pub fn media_line_changed(last_pushed: Option<&str>, encoded: &str) -> bool {
+    last_pushed != Some(encoded)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MediaInfo {
@@ -161,11 +168,23 @@ pub fn default_watcher() -> Box<dyn MediaWatcher> {
 
 pub struct MediaCapability {
     watcher: Box<dyn MediaWatcher>,
+    last_pushed: Option<String>,
 }
 
 impl MediaCapability {
     pub fn new(watcher: Box<dyn MediaWatcher>) -> Self {
-        Self { watcher }
+        Self {
+            watcher,
+            last_pushed: None,
+        }
+    }
+
+    pub fn last_pushed_line(&self) -> Option<&str> {
+        self.last_pushed.as_deref()
+    }
+
+    pub fn note_pushed(&mut self, line: &str) {
+        self.last_pushed = Some(line.to_string());
     }
 
     pub fn with_default_watcher() -> Self {
@@ -222,5 +241,14 @@ mod tests {
             encode_media_line(false, "stopped", "", "", ""),
             "MEDIA\tv1\t0\t\t\t\t"
         );
+    }
+
+    #[test]
+    fn media_line_changed_compares_full_wire() {
+        let playing = "MEDIA\tv1\t1\tplaying\tSong\tArtist\tMusic";
+        let stopped = "MEDIA\tv1\t1\tstopped\t\t\t";
+        assert!(media_line_changed(None, playing));
+        assert!(!media_line_changed(Some(playing), playing));
+        assert!(media_line_changed(Some(stopped), playing));
     }
 }
