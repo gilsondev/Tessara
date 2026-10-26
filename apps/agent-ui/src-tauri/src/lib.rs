@@ -1,3 +1,6 @@
+/// Local agentd IPC origin (must match `connect-src` in `tauri.conf.json`).
+pub const AGENTD_IPC_ORIGIN: &str = "http://127.0.0.1:19792";
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {

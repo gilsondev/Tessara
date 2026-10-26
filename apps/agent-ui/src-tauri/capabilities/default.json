@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Main window; fetch to agentd is allowed via CSP connect-src (127.0.0.1:19792 only).",
   "windows": ["main"],
   "permissions": [
     "core:default",

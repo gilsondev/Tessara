@@ -1,3 +1,8 @@
+import { fetchStatus, AGENTD_PORT } from "./ipc.js";
+
+const STATUS_POLL_MS = 2000;
+let statusPollId = null;
+
 const screens = [
   { id: "welcome", title: "Bem-vindo", label: "Welcome", tab: null },
   { id: "scan", title: "Varredura", label: "Varredura", tab: null },
@@ -17,6 +22,156 @@ const screens = [
 const title = document.getElementById("win-title");
 const tabs = document.getElementById("tabs");
 
+function visibleScreenId() {
+  const on = document.querySelector(".screen.on");
+  return on?.dataset.screen ?? null;
+}
+
+function setBannerVariant(banner, variant) {
+  banner.classList.remove("ok", "warn", "err");
+  banner.classList.add(variant);
+}
+
+function setCheckRow(row, { rowClass, mark, sub, pillText, pillClass }) {
+  row.classList.remove("ok", "bad", "warn", "skip");
+  row.classList.add(rowClass);
+  const markEl = row.querySelector(".mark");
+  if (markEl) markEl.textContent = mark;
+  const subEl = row.querySelector("[data-live$='-sub']");
+  if (subEl && sub != null) subEl.textContent = sub;
+  const pill = row.querySelector("[data-live$='-pill']") || row.querySelector(".pill");
+  if (pill) {
+    pill.classList.remove("warn", "neutral");
+    if (pillClass) pill.classList.add(pillClass);
+    pill.innerHTML = `<i></i> ${pillText}`;
+  }
+}
+
+function applyAgentdOffline() {
+  const homeBanner = document.querySelector('[data-live="home-status-banner"]');
+  if (homeBanner) {
+    setBannerVariant(homeBanner, "err");
+    homeBanner.querySelector('[data-live="home-status-title"]').textContent = "Abra o agentd";
+    homeBanner.querySelector('[data-live="home-status-sub"]').textContent =
+      `Não achamos o serviço em 127.0.0.1:${AGENTD_PORT}. Rode mise run agentd-run neste Mac.`;
+  }
+  const homeActions = document.querySelector('[data-live="home-agentd-actions"]');
+  if (homeActions) homeActions.hidden = false;
+
+  const docBanner = document.querySelector('[data-live="doctor-status-banner"]');
+  if (docBanner) {
+    setBannerVariant(docBanner, "err");
+    docBanner.querySelector('[data-live="doctor-status-title"]').textContent = "agentd offline";
+    docBanner.querySelector('[data-live="doctor-status-sub"]').textContent =
+      "Sem o agentd não dá para checar cabo, sync nem cotas.";
+  }
+  const usb = document.querySelector('[data-live="doctor-usb-check"]');
+  if (usb) {
+    setCheckRow(usb, {
+      rowClass: "bad",
+      mark: "!",
+      sub: "agentd offline — não dá para ler o USB agora.",
+      pillText: "Offline",
+      pillClass: "warn",
+    });
+  }
+  const agentd = document.querySelector('[data-live="doctor-agentd-check"]');
+  if (agentd) {
+    setCheckRow(agentd, {
+      rowClass: "bad",
+      mark: "!",
+      sub: "Inicie o agentd (mise run agentd-run) e volte aqui.",
+      pillText: "Ação",
+      pillClass: "warn",
+    });
+  }
+}
+
+function applyAgentdOnline(status) {
+  const usbUp = status.usb === "up";
+  const version = status.version ?? "—";
+
+  const homeBanner = document.querySelector('[data-live="home-status-banner"]');
+  if (homeBanner) {
+    setBannerVariant(homeBanner, usbUp ? "ok" : "warn");
+    homeBanner.querySelector('[data-live="home-status-title"]').textContent = usbUp
+      ? "Painel ligado a este Mac"
+      : "Painel não conectado";
+    homeBanner.querySelector('[data-live="home-status-sub"]').textContent = usbUp
+      ? "Mac do trabalho · música, Focus e cotas atualizando."
+      : `agentd ${version} · aguardando cabo USB neste Mac.`;
+  }
+  const homeActions = document.querySelector('[data-live="home-agentd-actions"]');
+  if (homeActions) homeActions.hidden = true;
+
+  const docBanner = document.querySelector('[data-live="doctor-status-banner"]');
+  if (docBanner) {
+    if (usbUp) {
+      setBannerVariant(docBanner, "ok");
+      docBanner.querySelector('[data-live="doctor-status-title"]').textContent = "Tudo certo no cabo";
+      docBanner.querySelector('[data-live="doctor-status-sub"]').textContent =
+        `agentd ${version} · USB up · demais itens ainda são estáticos no protótipo.`;
+    } else {
+      setBannerVariant(docBanner, "warn");
+      docBanner.querySelector('[data-live="doctor-status-title"]').textContent = "Cabo ausente";
+      docBanner.querySelector('[data-live="doctor-status-sub"]').textContent =
+        `agentd ${version} rodando · plugue o painel neste Mac para sincronizar.`;
+    }
+  }
+  const usb = document.querySelector('[data-live="doctor-usb-check"]');
+  if (usb) {
+    if (usbUp) {
+      setCheckRow(usb, {
+        rowClass: "ok",
+        mark: "✓",
+        sub: `USB up · agentd ${version}`,
+        pillText: "Ok",
+        pillClass: null,
+      });
+    } else {
+      setCheckRow(usb, {
+        rowClass: "warn",
+        mark: "~",
+        sub: "agentd ok · nenhum painel no USB agora.",
+        pillText: "Aguardando",
+        pillClass: "warn",
+      });
+    }
+  }
+  const agentd = document.querySelector('[data-live="doctor-agentd-check"]');
+  if (agentd) {
+    setCheckRow(agentd, {
+      rowClass: "ok",
+      mark: "✓",
+      sub: `agentd ${version} respondeu agora · porta ${AGENTD_PORT}.`,
+      pillText: "Ok",
+      pillClass: null,
+    });
+  }
+}
+
+async function refreshLiveStatus() {
+  if (visibleScreenId() !== "home" && visibleScreenId() !== "doctor") return;
+  try {
+    const status = await fetchStatus();
+    applyAgentdOnline(status);
+  } catch {
+    applyAgentdOffline();
+  }
+}
+
+function ensureStatusPoll() {
+  const id = visibleScreenId();
+  const want = id === "home" || id === "doctor";
+  if (want && statusPollId == null) {
+    refreshLiveStatus();
+    statusPollId = setInterval(refreshLiveStatus, STATUS_POLL_MS);
+  } else if (!want && statusPollId != null) {
+    clearInterval(statusPollId);
+    statusPollId = null;
+  }
+}
+
 function go(id) {
   const meta = screens.find((s) => s.id === id) || screens.find((s) => s.id === "welcome");
   document.querySelectorAll(".screen").forEach((el) => {
@@ -28,9 +183,24 @@ function go(id) {
   if (title) title.textContent = meta.title;
   document.title = `Tessara — ${meta.title}`;
   history.replaceState(null, "", "#" + id);
+  ensureStatusPoll();
 }
 
 document.body.addEventListener("click", (e) => {
+  const retry = e.target.closest("[data-action='retry-agentd']");
+  if (retry) {
+    e.preventDefault();
+    refreshLiveStatus();
+    return;
+  }
+  const help = e.target.closest("[data-action='open-agentd-help']");
+  if (help) {
+    e.preventDefault();
+    window.alert(
+      "No terminal, na pasta do Tessara:\n\nmise run agentd-run\n\nDepois volte ao Início — atualizamos a cada 2 s.",
+    );
+    return;
+  }
   const modeSet = e.target.closest("[data-mode-set]");
   if (modeSet) {
     const screen = modeSet.closest(".screen");
@@ -74,3 +244,4 @@ const hash = location.hash.replace("#", "");
 if (hash && screens.some((s) => s.id === hash)) go(hash);
 
 if (!location.hash.replace("#", "")) go("welcome");
+else ensureStatusPoll();

@@ -31,12 +31,16 @@
             <h2>Tudo certo por aqui.</h2>
             <p>O painel pode viver com mais de um computador. Agora quem manda é este Mac.</p>
           </div>
-          <div class="banner ok">
+          <div class="banner ok" data-live="home-status-banner">
             <span class="dot" aria-hidden="true"></span>
             <div class="copy">
-              <b>Painel ligado a este Mac</b>
-              <span>Mac do trabalho · música, Focus e cotas atualizando.</span>
+              <b data-live="home-status-title">Painel ligado a este Mac</b>
+              <span data-live="home-status-sub">Mac do trabalho · música, Focus e cotas atualizando.</span>
             </div>
+          </div>
+          <div class="actions" data-live="home-agentd-actions" hidden>
+            <button class="btn primary" type="button" data-action="retry-agentd">Tentar de novo</button>
+            <button class="btn ghost" type="button" data-action="open-agentd-help">Como abrir o agentd</button>
           </div>
           <div class="card">
             <div class="machine">
@@ -355,29 +359,29 @@
             <h2>Checagem deste Mac</h2>
             <p>Passamos cabo, autorizações, apps de IA e o que sincroniza. Diz o que está ok e o que só você pode resolver.</p>
           </div>
-          <div class="banner warn">
+          <div class="banner warn" data-live="doctor-status-banner">
             <span class="dot" aria-hidden="true"></span>
             <div class="copy">
-              <b>1 coisa precisa de você</b>
-              <span>Mac do trabalho · checado agora · o resto está ok.</span>
+              <b data-live="doctor-status-title">1 coisa precisa de você</b>
+              <span data-live="doctor-status-sub">Mac do trabalho · checado agora · o resto está ok.</span>
             </div>
           </div>
           <ul class="check">
-            <li class="ok">
+            <li class="ok" data-live="doctor-usb-check">
               <span class="mark" aria-hidden="true">✓</span>
               <div class="copy">
                 <b>Painel no cabo</b>
-                <span>USB ok · handshake · firmware 0.9.4</span>
+                <span data-live="doctor-usb-sub">USB ok · handshake · firmware 0.9.4</span>
               </div>
-              <span class="pill"><i></i> Ok</span>
+              <span class="pill" data-live="doctor-usb-pill"><i></i> Ok</span>
             </li>
-            <li class="ok">
+            <li class="ok" data-live="doctor-agentd-check">
               <span class="mark" aria-hidden="true">✓</span>
               <div class="copy">
                 <b>App em segundo plano</b>
-                <span>Abre com o Mac e está rodando agora</span>
+                <span data-live="doctor-agentd-sub">Abre com o Mac e está rodando agora</span>
               </div>
-              <span class="pill"><i></i> Ok</span>
+              <span class="pill" data-live="doctor-agentd-pill"><i></i> Ok</span>
             </li>
             <li class="bad">
               <span class="mark" aria-hidden="true">!</span>
