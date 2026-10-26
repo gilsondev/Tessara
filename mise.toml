@@ -1,0 +1,15 @@
+# Tessara — toolchain (Agent v2 + legacy Python + UI)
+# Docs: docs/superpowers/specs/2026-10-25-tessera-agent-v2-design.md
+
+[tools]
+rust = "1.83.0"
+node = "22.14.0"
+python = "3.12.9"
+
+[settings]
+# Monorepo: tasks na root; crates em agentd/ depois
+experimental = true
+
+[env]
+_.file = ".env"
+# PYTHONPATH só em tasks legacy
