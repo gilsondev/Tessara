@@ -1,4 +1,4 @@
-import { fetchStatus, AGENTD_PORT } from "./ipc.js";
+import { fetchStatus, AGENTD_PORT, isAgentdOnline, isUsbUp } from "./ipc.js";
 
 const STATUS_POLL_MS = 2000;
 let statusPollId = null;
@@ -88,7 +88,7 @@ function applyAgentdOffline() {
 }
 
 function applyAgentdOnline(status) {
-  const usbUp = status.usb === "up";
+  const usbUp = isUsbUp(status);
   const version = status.version ?? "—";
 
   const homeBanner = document.querySelector('[data-live="home-status-banner"]');
@@ -96,10 +96,10 @@ function applyAgentdOnline(status) {
     setBannerVariant(homeBanner, usbUp ? "ok" : "warn");
     homeBanner.querySelector('[data-live="home-status-title"]').textContent = usbUp
       ? "Painel ligado a este Mac"
-      : "Painel não conectado";
+      : "agentd rodando";
     homeBanner.querySelector('[data-live="home-status-sub"]').textContent = usbUp
       ? "Mac do trabalho · música, Focus e cotas atualizando."
-      : `agentd ${version} · aguardando cabo USB neste Mac.`;
+      : "Painel sem cabo · USB disconnected.";
   }
   const homeActions = document.querySelector('[data-live="home-agentd-actions"]');
   if (homeActions) homeActions.hidden = true;
@@ -113,9 +113,9 @@ function applyAgentdOnline(status) {
         `agentd ${version} · USB up · demais itens ainda são estáticos no protótipo.`;
     } else {
       setBannerVariant(docBanner, "warn");
-      docBanner.querySelector('[data-live="doctor-status-title"]').textContent = "Cabo ausente";
+      docBanner.querySelector('[data-live="doctor-status-title"]').textContent = "agentd rodando";
       docBanner.querySelector('[data-live="doctor-status-sub"]').textContent =
-        `agentd ${version} rodando · plugue o painel neste Mac para sincronizar.`;
+        "Painel sem cabo · USB disconnected.";
     }
   }
   const usb = document.querySelector('[data-live="doctor-usb-check"]');
@@ -154,6 +154,10 @@ async function refreshLiveStatus() {
   if (visibleScreenId() !== "home" && visibleScreenId() !== "doctor") return;
   try {
     const status = await fetchStatus();
+    if (!isAgentdOnline(status)) {
+      applyAgentdOffline();
+      return;
+    }
     applyAgentdOnline(status);
   } catch {
     applyAgentdOffline();

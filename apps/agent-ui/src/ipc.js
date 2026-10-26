@@ -15,5 +15,16 @@ export async function fetchStatus() {
     signal: AbortSignal.timeout(800),
   });
   if (!r.ok) throw new Error(`status ${r.status}`);
-  return r.json();
+  const body = await r.json();
+  if (body?.ok !== true) throw new Error("agentd not ok");
+  return body;
+}
+
+/** agentd reachable and healthy (`ok: true` in /v1/status). */
+export function isAgentdOnline(status) {
+  return status?.ok === true;
+}
+
+export function isUsbUp(status) {
+  return status?.usb === "up";
 }
