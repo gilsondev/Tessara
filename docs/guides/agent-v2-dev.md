@@ -29,14 +29,19 @@ mise run agent-install
 
 Rebuilda agentd + Tessera.app e roda `tools/cutover_agent_v2.sh` (LaunchAgent `com.tessera.agentd` + `/Applications/Tessera.app`). Self-update: Pages `latest.json` + toggle **Atualizar sozinho** (ADR `0003`).
 
-## Pacote SD / portal
+## Release (CI → Pages)
+
+1. `git tag agent-vX.Y.Z && git push origin agent-vX.Y.Z`
+2. Workflow `agent-release.yml` sobe Release + grava `site/public/latest.json`
+3. `pages.yml` publica o site; usuários instalam com o botão ou `install.command`
+
+Build contínuo (sem publicar): `agent-build.yml` em push/PR.
+
+## Offline / SD (opcional)
 
 ```bash
 make pack-agentd
-# → agentd/dist/sd/tessera/agentd/{agentd.tgz,install.command,…}
-# → agentd/dist/sd/tessera/agentd.tgz  (flat — o que o portal PUT/GET usa)
+# → tessera/agentd.tgz flat para PUT no portal (fallback sem internet)
 ```
-
-No painel: página **Agente** → upload `agentd.tgz`, depois `curl -fsSL http://painel/agentd/install.command | bash`.
 
 Finish-gate do **firmware** continua em `make test` / `make e2e` (PlatformIO).

@@ -171,29 +171,27 @@ h1{font-size:30px}
 <h2>Agente Tessera</h2>
 <div class="kv">
 <div><b>Status</b><span id="agent-status" class="off">…</span></div>
-<div><b>Pacote no SD</b><span id="agent-pack-note" class="off">…</span></div>
 </div>
-<p class="note" id="agent-status-hint">Atualiza sozinho a cada poucos segundos. Verde = o agente no Mac falou com o painel via USB.</p>
+<p class="note" id="agent-status-hint">Verde = o Agent no Mac falou com o painel via USB. O pacote vem do site do projeto (GitHub Pages), construído no CI — sem cartão SD.</p>
+</section>
+<section class="card" id="agent-install-box">
+<h2>Instalar no Mac</h2>
+<p class="note">No notebook pluggado: abra <a href="https://gilsondev.github.io/Tessera/" target="_blank" rel="noopener">gilsondev.github.io/Tessera</a> ou cole o comando abaixo. Depois o <b>Status</b> acima deve ir para OK.</p>
+<div class="cmd-row">
+<code id="agent-install-cmd">curl -fsSL https://gilsondev.github.io/Tessera/install.command | bash</code>
+<div class="actions" style="gap:8px;flex-wrap:wrap;margin-top:0">
+<button class="act" type="button" id="agent-copy-cmd">Copiar comando</button>
+<a class="act ghost" href="https://gilsondev.github.io/Tessera/" target="_blank" rel="noopener">Abrir o site</a>
+</div>
+</div>
 </section>
 <section class="card" id="agent-upload-box">
-<h2>Enviar pacote</h2>
-<p class="note">Arquivo <code>agentd.tgz</code> (gere com <code>make pack-agentd</code> / <code>agentd/pack_sd.sh</code>). Cartão SD no aparelho.</p>
+<h2>Offline / SD (opcional)</h2>
+<p class="note">Só se o Mac não tiver internet. Gere com <code>make pack-agentd</code> e envie o <code>agentd.tgz</code> para o cartão.</p>
 <label for="agent-file-tgz">Arquivo</label>
 <input id="agent-file-tgz" type="file" accept=".tgz,.tar.gz,application/gzip">
 <div class="actions"><button class="act" type="button" id="agent-upload">Enviar para o SD</button></div>
-</section>
-<section class="card" id="agent-install-box" style="display:none">
-<h2>Instalar no Mac</h2>
-<p class="note">No Terminal deste Mac: cole o comando (baixa e instala na hora). Depois do install, o <b>Status</b> acima deve ir para OK — comunicando.</p>
-<div class="cmd-row">
-<code id="agent-install-cmd">curl -fsSL … | bash</code>
-<div class="actions" style="gap:8px;flex-wrap:wrap;margin-top:0">
-<button class="act" type="button" id="agent-copy-cmd">Copiar comando</button>
-<a class="act ghost" id="agent-dl" href="/agentd/install.command" download="install-tessera-agent.command">Baixar .command</a>
-<button class="act ghost" type="button" id="agent-reupload">Trocar pacote</button>
-</div>
-<p class="note" id="agent-dl-hint">Se baixar o arquivo: <code style="font-size:12px">bash ~/Downloads/install-tessera-agent.command</code> (não abra com duplo clique).</p>
-</div>
+<p class="note off" id="agent-pack-note">Pacote no SD: …</p>
 </section>
 </div>
 <div class="page" id="page-aitokens">
@@ -461,39 +459,35 @@ const wn=document.getElementById('weather-note');if(wn)wn.textContent=s.weather&
 const ag=s.agent||{};const as=document.getElementById('agent-status');
 const hint=document.getElementById('agent-status-hint');
 if(as){
-if(!ag.ready){as.textContent='Aguardando agente…';as.className='off';
-if(hint)hint.textContent='Rode o comando de instalar (ou confira se o LaunchAgent está ativo). O status muda sozinho quando o Mac falar com o painel.'}
+if(!ag.ready){as.textContent='Aguardando Agent…';as.className='off';
+if(hint)hint.textContent='Instale pelo site do projeto (GitHub Pages). O status muda sozinho quando o Mac falar com o painel.'}
 else if(ag.ok){as.textContent='OK — comunicando';as.className='ok';
-if(hint)hint.textContent='Agente no Mac respondeu via USB. Atualiza a cada poucos segundos.'}
+if(hint)hint.textContent='Agent no Mac respondeu via USB. Atualiza a cada poucos segundos.'}
 else{as.textContent=ag.detail||'Falha';as.className='warn';
 if(hint)hint.textContent=ag.detail==='sem sinal recente'
-?'O agente parou de responder. Confira USB e se o Tessera (agentd) está rodando.'
-:'Handshake recebido, mas o agente reportou falha.'}
+?'O Agent parou de responder. Confira USB e se o Tessera (agentd) está rodando.'
+:'Handshake recebido, mas o Agent reportou falha.'}
 }
 const ap=document.getElementById('agent-pack-note');
-const boxUp=document.getElementById('agent-upload-box');
-const boxIn=document.getElementById('agent-install-box');
-if(ap){if(s.agent_pack){ap.textContent='Pronto';ap.className='ok'}else{ap.textContent='Ausente';ap.className='warn'}}
-if(boxUp&&boxIn){const forceUp=document.body.dataset.agentForceUpload==='1';
-if(s.agent_pack&&!forceUp){boxUp.style.display='none';boxIn.style.display='grid'}
-else{boxUp.style.display='grid';boxIn.style.display=s.agent_pack?'grid':'none'}}
+if(ap){ap.textContent=s.agent_pack
+?(s.agent_pack_version?('Pacote no SD: '+s.agent_pack_version+' (fallback offline)'):'Pacote no SD: presente (fallback offline)')
+:'Pacote no SD: ausente (ok — use o site)';ap.className=s.agent_pack?'ok':'off'}
 const cmdEl=document.getElementById('agent-install-cmd');
-if(cmdEl){cmdEl.textContent=`curl -fsSL ${location.origin}/agentd/install.command | bash`}
+if(cmdEl){cmdEl.textContent='curl -fsSL https://gilsondev.github.io/Tessera/install.command | bash'}
 draw();drawResources();pushOsTheme(false)}
 async function putFile(url,file){const r=await fetch(url,{method:'PUT',headers:{'Content-Type':'application/octet-stream'},body:file});
 if(!r.ok){const t=await r.text();throw new Error(t||('HTTP '+r.status))}return r}
 async function uploadAgentPack(){const tgz=document.getElementById('agent-file-tgz').files[0];
 if(!tgz){toast('Escolha o agentd.tgz');return}
 toast('Enviando…');
-try{await putFile('/agentd/agentd.tgz',tgz);document.body.dataset.agentForceUpload='';
-toast('Pacote pronto — copie o comando de instalar');setTimeout(load,400)}catch(e){toast(e&&e.message?e.message:'Falha no upload')}}
+try{await putFile('/agentd/agentd.tgz',tgz);
+toast('Pacote no SD (fallback). Preferir o site Pages.');setTimeout(load,400)}catch(e){toast(e&&e.message?e.message:'Falha no upload')}}
 async function copyInstallCmd(){
-const text=`curl -fsSL ${location.origin}/agentd/install.command | bash`;
+const text='curl -fsSL https://gilsondev.github.io/Tessera/install.command | bash';
 try{await navigator.clipboard.writeText(text);toast('Comando copiado — cole no Terminal e olhe o Status')}
 catch(e){toast('Selecione o comando e copie (⌘C)')}
 }
 const up=document.getElementById('agent-upload');if(up)up.onclick=uploadAgentPack;
-const re=document.getElementById('agent-reupload');if(re)re.onclick=()=>{document.body.dataset.agentForceUpload='1';load()};
 const cp=document.getElementById('agent-copy-cmd');if(cp)cp.onclick=copyInstallCmd;
 load();setInterval(load,2500)
 </script></body></html>

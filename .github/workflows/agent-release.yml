@@ -85,7 +85,8 @@ jobs:
           fi
           cp -R "$APP" "$OUT/stage/Tessera.app"
 
-          tar -C "$OUT/stage" -czf "$OUT/agentd.tgz" bin
+          # Same layout as agentd/pack_sd.sh: bin/ + Tessera.app inside one tgz for curl|bash install.
+          tar -C "$OUT/stage" -czf "$OUT/agentd.tgz" .
           ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT/Tessera.app.zip"
 
           shasum -a 256 "$OUT/agentd.tgz" | awk '{print $1}' > "$OUT/agentd.tgz.sha256"

@@ -26,4 +26,23 @@ async function loadLatest() {
   }
 }
 
+function wireCopy() {
+  const btn = document.getElementById("copy-cmd");
+  const cmd = document.getElementById("install-cmd");
+  if (!btn || !cmd) return;
+  btn.addEventListener("click", async () => {
+    const text = cmd.textContent || "";
+    try {
+      await navigator.clipboard.writeText(text);
+      btn.textContent = "Copiado";
+      setTimeout(() => {
+        btn.textContent = "Copiar";
+      }, 1600);
+    } catch {
+      btn.textContent = "Selecione e ⌘C";
+    }
+  });
+}
+
 void loadLatest();
+wireCopy();

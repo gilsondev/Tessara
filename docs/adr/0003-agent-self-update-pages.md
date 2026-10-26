@@ -18,6 +18,10 @@ O companion (agentd + Tessera.app) precisa atualizar no Mac do usuário sem depe
 
 ## Consequências
 
-- CI (`agent-release.yml`) deve publicar Release **e** atualizar `site/public/latest.json` no deploy Pages.
+- **1ª instalação** (Mac novo): site Pages — botão ou
+  `curl -fsSL https://gilsondev.github.io/Tessera/install.command | bash`.
+  O painel e o portal apontam para esse URL; cartão SD é só fallback offline.
+- CI `agent-build.yml` compila em todo push/PR relevante; `agent-release.yml` (tag `agent-v*`)
+  publica Release **e** atualiza `site/public/latest.json` no deploy Pages.
 - Notarização Apple fica fase 2; site avisa build não notarizado.
-- Install local de desenvolvimento: `mise run agent-install` (build + cutover), paralelo ao canal de release.
+- Dev local: `mise run agent-install` (build + cutover), paralelo ao canal de release.

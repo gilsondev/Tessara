@@ -7,5 +7,5 @@
     "agentd": "",
     "app": ""
   },
-  "notes": "Placeholder até o primeiro workflow agent-release publicar artefatos."
+  "notes": "Placeholder até a 1ª tag agent-v* publicar artefatos via agent-release.yml. Enquanto isso o botão aponta para /releases/latest."
 }
