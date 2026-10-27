@@ -154,7 +154,7 @@ Base: `apps/agent-ui/` (antes `docs/prototypes/agent-ui/`).
 
 **Hide sticky:** `ensure_media_mac` / `ensure_calendar` no firmware são **one-shot** (`media_mac_restored` / `cal_restored` na NVS). Ocultar no portal/Agente deve persistir após reboot.
 
-**Self-update:** poll `https://gilsondev.github.io/Tessera/latest.json`; com toggle Auto ligado, baixa Release (agentd + Tessera.app), verifica SHA-256 e reinstala sem prompt. Spec site: `2026-10-25-tessera-site-branding-design.md`.
+**Self-update:** poll `https://gilsondev.github.io/Tessara/latest.json`; com toggle Auto ligado, baixa Release (agentd + Tessera.app), verifica SHA-256 e reinstala sem prompt. Spec site: `2026-10-25-tessera-site-branding-design.md`.
 
 ## Doctor
 
