@@ -11,9 +11,12 @@
 #include "ui/palette.h"
 #include "ui/settings_panel.h"
 #include "ui/todoist_panel.h"
+#include "ui/media_page.h"
 #include "ui/weather_page.h"
 #include "mac/focus_snapshot.h"
 #include "media/snapshot.h"
+
+#include <cstdlib>
 
 #include <cstdio>
 #include <cstring>
@@ -130,12 +133,17 @@ void sim_app::paint_fixture(State &app) {
     home::set_calendar(sim_detail::calendar_view(s));
 
     // Sample now-playing and Focus so the current Música | Mac pair is not empty.
+    // SIM_MEDIA_TITLE / SIM_MEDIA_ARTIST override the sample (site screenshots).
+    const char *track = std::getenv("SIM_MEDIA_TITLE");
+    const char *artist = std::getenv("SIM_MEDIA_ARTIST");
+    if (!track || !track[0]) track = "Foco";
+    if (!artist || !artist[0]) artist = "Ambiente";
     media::View playing = {};
     playing.ready = true;
     playing.media.ok = true;
     playing.media.state = media::MediaState::Playing;
-    std::snprintf(playing.media.title, sizeof(playing.media.title), "Foco");
-    std::snprintf(playing.media.artist, sizeof(playing.media.artist), "Ambiente");
+    std::snprintf(playing.media.title, sizeof(playing.media.title), "%s", track);
+    std::snprintf(playing.media.artist, sizeof(playing.media.artist), "%s", artist);
     home::set_media(playing, s.agent_ok);
 
     focus::View focus = {};
@@ -168,6 +176,46 @@ void sim_app::init(State &app, const Scenario &scenario) {
     app.home_ready = true;
 }
 
+namespace {
+
+// Optional 200×200 RGB565 cover (SIM_MEDIA_COVER) for the Música detail screenshot.
+void open_media(lv_event_cb_t on_back) {
+    static uint8_t cover_bytes[media::kCoverBytes];
+    const char *track = std::getenv("SIM_MEDIA_TITLE");
+    const char *artist = std::getenv("SIM_MEDIA_ARTIST");
+    const char *cover_path = std::getenv("SIM_MEDIA_COVER");
+    if (!track || !track[0]) track = "Foco";
+    if (!artist || !artist[0]) artist = "Ambiente";
+
+    media::View view = {};
+    view.ready = true;
+    view.media.ok = true;
+    view.media.state = media::MediaState::Playing;
+    std::snprintf(view.media.title, sizeof(view.media.title), "%s", track);
+    std::snprintf(view.media.artist, sizeof(view.media.artist), "%s", artist);
+
+    if (cover_path && cover_path[0]) {
+        FILE *f = std::fopen(cover_path, "rb");
+        if (f) {
+            const size_t n = std::fread(cover_bytes, 1, sizeof(cover_bytes), f);
+            std::fclose(f);
+            if (n == sizeof(cover_bytes)) {
+                view.cover.ready = true;
+                view.cover.w = media::kCoverEdge;
+                view.cover.h = media::kCoverEdge;
+                view.cover.rgb565 = cover_bytes;
+                std::snprintf(view.cover.key, sizeof(view.cover.key), "shot");
+            }
+        }
+    }
+
+    media_page::begin(on_back, nullptr);
+    media_page::show();
+    media_page::paint(view, true);
+}
+
+}  // namespace
+
 void sim_app::show(State &app, Screen screen) {
     if (settings_panel::visible() && screen != Screen::Settings) {
         settings_panel::close();
@@ -197,6 +245,8 @@ void sim_app::show(State &app, Screen screen) {
         sim_detail::open_calendar(app.scenario, go_home);
     } else if (screen == Screen::Clock) {
         sim_detail::open_clock(app.scenario, go_home);
+    } else if (screen == Screen::Media) {
+        open_media(go_home);
     }
     app.screen = screen;
 }
@@ -229,6 +279,8 @@ sim_app::Screen sim_app::parse_screen(const char *name) {
     if (!std::strcmp(name, "calendar") || !std::strcmp(name, "calendario") || !std::strcmp(name, "agenda"))
         return Screen::Calendar;
     if (!std::strcmp(name, "clock") || !std::strcmp(name, "relogio")) return Screen::Clock;
+    if (!std::strcmp(name, "media") || !std::strcmp(name, "musica") || !std::strcmp(name, "music"))
+        return Screen::Media;
     if (!std::strcmp(name, "settings") || !std::strcmp(name, "ajustes") || !std::strcmp(name, "config"))
         return Screen::Settings;
     return Screen::Home;
@@ -246,6 +298,8 @@ const char *sim_app::screen_name(Screen s) {
             return "calendar";
         case Screen::Clock:
             return "clock";
+        case Screen::Media:
+            return "media";
         case Screen::Settings:
             return "settings";
         case Screen::Home:
