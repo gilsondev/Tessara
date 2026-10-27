@@ -22,7 +22,7 @@ occupies six fields and legacy order is `codex`, `claude`, `cursor`.
 Example:
 
 ```text
-AITOKENS	v1	1	codex	1	pct	72	72% · 91%	14:30	claude	0	none	0	—		cursor	1	pct	87	10% · 13%	28 out
+AITOKENS	v1	1	codex	1	pct	72	72% · 91%	14:30	claude	0	none	0	abra Code		cursor	1	pct	87	10% · 13%	28 out
 ```
 
 ## Collection status
