@@ -1,8 +1,8 @@
 import { defineConfig } from "vite";
 
-// GitHub Pages project site: https://gilsondev.github.io/Tessara/ (repo name)
+// GitHub Pages project site: https://gilsondev.github.io/Tessera/ (repo name)
 export default defineConfig({
-  base: "/Tessara/",
+  base: "/Tessera/",
   publicDir: "public",
   build: {
     outDir: "dist",
