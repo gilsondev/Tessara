@@ -50,6 +50,9 @@ jobs:
         working-directory: agentd
         run: cargo build --release -p agentd
 
+      - name: Bundle agentd into the app
+        run: bash tools/bundle_agentd.sh
+
       - name: Build Tessera.app
         working-directory: apps/agent-ui
         run: npm install && npm run tauri build
@@ -84,6 +87,7 @@ jobs:
             exit 1
           fi
           # Linker signature alone makes a downloaded app look damaged.
+          bash tools/bundle_agentd_into_app.sh "$APP" agentd/target/release/Tessera
           bash tools/sign_macos_app.sh "$APP"
           cp -R "$APP" "$OUT/stage/Tessera.app"
 

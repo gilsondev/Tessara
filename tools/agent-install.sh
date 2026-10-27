@@ -14,6 +14,9 @@ unset CARGO_TARGET_DIR
 echo "agent-install: building agentd…"
 (cd agentd && cargo build --release -p agentd)
 
+echo "agent-install: bundling agentd into the app…"
+bash "$ROOT/tools/bundle_agentd.sh"
+
 echo "agent-install: building Tessera.app…"
 (cd apps/agent-ui && npm install --silent && npm run tauri build)
 
@@ -31,6 +34,7 @@ if [ -z "$APP" ]; then
   echo "agent-install: Tessera.app não encontrado após tauri build" >&2
   exit 1
 fi
+bash "$ROOT/tools/bundle_agentd_into_app.sh" "$APP" "$ROOT/agentd/target/release/Tessera"
 bash "$ROOT/tools/sign_macos_app.sh" "$APP"
 
 export TESSERA_APP="$APP"

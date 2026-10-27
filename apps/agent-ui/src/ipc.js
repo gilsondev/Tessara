@@ -42,7 +42,7 @@ export async function postScan(body = {}) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 2),
+    signal: AbortSignal.timeout(20000),
   });
   if (!r.ok) throw new Error(`scan ${r.status}`);
   return r.json();
@@ -285,6 +285,15 @@ export async function postPanelReboot() {
 
 function tauriInvoke() {
   return window.__TAURI__?.core?.invoke;
+}
+
+/** Copy or download the USB agent, register it with launchd, and wait until it answers. */
+export async function ensureAgentd() {
+  const invoke = tauriInvoke();
+  if (typeof invoke !== "function") {
+    throw new Error("Instalar o agente só funciona no app Tessera.");
+  }
+  return invoke("ensure_agentd");
 }
 
 /** launchd controls. Only the Tessera.app can run these. */

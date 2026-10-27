@@ -15,6 +15,12 @@ if [ -z "$APP" ] || [ ! -d "$APP" ]; then
   exit 1
 fi
 
+# Nested Mach-O has to be signed before the bundle seal.
+for nested in "$APP/Contents/Resources/agentd" "$APP/Contents/Resources/tessera-agentd"; do
+  if [ -f "$nested" ]; then
+    codesign --force --sign - "$nested"
+  fi
+done
 codesign --force --sign - "$APP"
 codesign --verify --strict --verbose=2 "$APP"
 echo "sign: pacote válido — $APP"
