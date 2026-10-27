@@ -3,59 +3,139 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tessera — painel + Agent no Mac</title>
+    <title>Tessera — painel de mesa</title>
     <meta
       name="description"
-      content="Tessera: painel de mesa e companion no Mac. Baixe o Agent e sincronize por USB."
+      content="Tessera: painel de mesa e Agent no Mac. Tarefas, clima, agenda e o que está tocando, ligados por USB."
     />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,640&family=Outfit:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
     <header class="top">
       <a class="brand" href="./">
-        <img src="/mark.svg" width="36" height="36" alt="" />
-        <span>Tessera</span>
+        <img src="/brand/wordmark.svg" alt="Tessera" />
       </a>
       <a class="ghost" href="https://github.com/gilsondev/Tessara">GitHub</a>
     </header>
 
     <main>
       <section class="hero">
-        <p class="eyebrow">Painel + Mac</p>
-        <h1>Tessera</h1>
-        <p class="lede">
-          Peças do mosaico da mesa: o painel JC3248 e o Agent no notebook, ligados por USB.
-        </p>
+        <div class="hero-copy">
+          <p class="eyebrow">Painel de mesa</p>
+          <h1>
+            <img class="hero-mark" src="/brand/wordmark.svg" alt="" />
+            <span class="sr-only">Tessera</span>
+          </h1>
+          <p class="lede">
+            Peças do mosaico da mesa: o painel JC3248 e o Agent no notebook, ligados por USB.
+          </p>
+          <div class="cta">
+            <a class="btn primary" data-download href="https://github.com/gilsondev/Tessara/releases/latest"
+              >Baixar Agent para Mac</a
+            >
+            <p class="meta" data-version>Carregando versão…</p>
+          </div>
+          <p class="note">
+            Ou instale pelo
+            <a href="#baixar">Terminal</a>.
+          </p>
+        </div>
+        <figure class="device">
+          <img src="/shots/home.png" width="320" height="480" alt="Home do painel Tessera: hora, tarefas, clima, tokens, agenda e o Mac." />
+        </figure>
+      </section>
+
+      <section class="band">
+        <h2>O painel</h2>
+        <p class="band-lede">Toque num bloco e a tela abre o detalhe.</p>
+        <ul class="shots">
+          <li>
+            <figure>
+              <img src="/shots/tarefas.png" width="320" height="480" alt="Lista de tarefas de hoje, separada por projeto." />
+              <figcaption>
+                <strong>Tarefas</strong>
+                <span>Hoje, por projeto.</span>
+              </figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img src="/shots/clima.png" width="320" height="480" alt="Clima de hoje e previsão da semana." />
+              <figcaption>
+                <strong>Clima</strong>
+                <span>Agora e a semana.</span>
+              </figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img src="/shots/agenda.png" width="320" height="480" alt="Agenda do dia com o próximo compromisso em destaque." />
+              <figcaption>
+                <strong>Agenda</strong>
+                <span>O próximo e o resto do dia.</span>
+              </figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img src="/shots/mac.png" width="320" height="480" alt="Home com o que está tocando no Mac." />
+              <figcaption>
+                <strong>Mac</strong>
+                <span>O que está tocando.</span>
+              </figcaption>
+            </figure>
+          </li>
+        </ul>
+      </section>
+
+      <section class="band connect">
+        <h2>Como liga</h2>
+        <ol class="steps">
+          <li>
+            <span class="n">1</span>
+            <p>Plugar o painel no Mac, pelo USB.</p>
+          </li>
+          <li>
+            <span class="n">2</span>
+            <p>Instalar o Agent nesta página.</p>
+          </li>
+          <li>
+            <span class="n">3</span>
+            <p>Autorizar o que o sistema pedir. O painel passa a falar sozinho.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="download" id="baixar">
+        <h2>Baixar o Agent</h2>
+        <p class="band-lede">macOS. O painel não precisa de cartão SD.</p>
         <div class="cta">
-          <a class="btn primary" id="download" href="https://github.com/gilsondev/Tessara/releases/latest"
+          <a class="btn primary" data-download href="https://github.com/gilsondev/Tessara/releases/latest"
             >Baixar Agent para Mac</a
           >
-          <p class="meta" id="version-note">Carregando versão…</p>
+          <p class="meta" data-version>Carregando versão…</p>
         </div>
-        <p class="note">
-          Ou no Terminal:
+        <p class="note">No Terminal:</p>
+        <p class="cmd">
           <code id="install-cmd">curl -fsSL https://gilsondev.github.io/Tessara/install.command | bash</code>
           <button type="button" class="ghost" id="copy-cmd">Copiar</button>
         </p>
         <p class="note">
-          Builds ainda <strong>não notarizados</strong> pela Apple — na 1ª abertura, use
+          Builds ainda <strong>não notarizados</strong> pela Apple. Na primeira abertura, use
           Privacidade e Segurança se o Gatekeeper bloquear.
         </p>
-      </section>
-
-      <section class="block">
-        <h2>Começar</h2>
-        <ol>
-          <li>Plugar o painel no Mac (USB).</li>
-          <li>Instalar o Agent por esta página (botão ou comando acima).</li>
-          <li>Autorizar o que a varredura pedir (FDA, Automação, etc.).</li>
-          <li>O painel passa a falar com o Mac sozinho — sem cartão SD.</li>
-        </ol>
       </section>
     </main>
 
     <footer>
+      <img src="/brand/symbol.svg" width="28" height="28" alt="" />
       <span>Tessera</span>
       <span id="footer-ver"></span>
       <a href="https://github.com/gilsondev/Tessara">Código</a>
