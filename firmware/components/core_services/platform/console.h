@@ -32,6 +32,8 @@ public:
     virtual void on_theme(const char *line) = 0;
     // Screen rest test: "", "wake", "saver", "fade", "off".
     virtual void on_rest(const char *arg) = 0;
+    // Clean restart asked by the Mac (`REBOOT`). Does not fix a wedged USB stack.
+    virtual void on_reboot() = 0;
 };
 
 namespace console {

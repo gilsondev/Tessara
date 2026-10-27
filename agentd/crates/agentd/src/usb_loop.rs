@@ -1,7 +1,7 @@
 //! USB session: handshake, panel commands, capability push heartbeats.
 
-use std::io::Read;
-use std::sync::{Arc, RwLock};
+use std::io::{self, Read, Write};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tessera_caps_focus::{
@@ -25,7 +25,7 @@ use tessera_usb::{open_tessera_port, write_handshake, write_lines, PortName, Usb
 
 use tessera_profile::{read_config, ProfilePaths};
 
-use crate::ipc::UsbLink;
+use crate::ipc::UsbHub;
 use crate::logutil::{self, describe_usb, widget_of_line};
 use crate::mac_events;
 
@@ -125,26 +125,62 @@ pub fn run_once(path: &str) -> Result<(), UsbError> {
     Ok(())
 }
 
-fn set_usb_link(link: &Option<Arc<RwLock<UsbLink>>>, up: bool) {
-    if let Some(usb) = link {
-        if let Ok(mut guard) = usb.write() {
-            *guard = if up {
-                UsbLink::Up
-            } else {
-                UsbLink::Disconnected
-            };
+fn set_usb_link(hub: &Option<Arc<UsbHub>>, up: bool) {
+    if let Some(hub) = hub {
+        hub.set_up(up);
+    }
+}
+
+fn take_reboot(hub: &Option<Arc<UsbHub>>) -> bool {
+    hub.as_ref()
+        .is_some_and(|h| h.reboot.swap(false, std::sync::atomic::Ordering::SeqCst))
+}
+
+fn wait_port_drop(port: &mut dyn Read, budget: Duration) -> bool {
+    let start = Instant::now();
+    let mut buf = [0u8; 64];
+    while start.elapsed() < budget {
+        match port.read(&mut buf) {
+            Ok(0) => return true,
+            Err(e) if e.kind() == io::ErrorKind::TimedOut => continue,
+            Err(_) => return true,
+            Ok(_) => {}
         }
     }
+    false
+}
+
+/// Ask the panel to `esp_restart`. Returns true when the cable dropped.
+/// If it stays up, pulse DTR and return false — the chip did not reboot.
+fn restart_panel(mut port: impl Read + Write, path: &str, logs: &Logs) -> bool {
+    logutil::info(logs, "usb: restart do painel (REBOOT)");
+    if write_lines(&mut port, &["REBOOT".to_string()]).is_ok() {
+        log_to_panel(logs, "panel", "reboot", "REBOOT");
+    }
+    let dropped = wait_port_drop(&mut port, Duration::from_millis(1500));
+    drop(port);
+    if dropped {
+        logutil::info(logs, "usb: painel reiniciando");
+        return true;
+    }
+    match tessera_usb::pulse_dtr(path) {
+        Ok(()) => logutil::info(logs, format!("usb: pulso DTR em {path}")),
+        Err(e) => logutil::warn(logs, format!("usb: pulso DTR falhou — {e}")),
+    }
+    false
 }
 
 /// Blocking loop on a fixed serial path (daemon background thread).
 pub fn run_session(
     path: &str,
     profile_paths: ProfilePaths,
-    usb_link: Option<Arc<RwLock<UsbLink>>>,
+    usb_link: Option<Arc<UsbHub>>,
     logs: Logs,
 ) -> Result<(), UsbError> {
     logutil::info(&logs, format!("usb: abrindo sessão {path}"));
+    if let Some(hub) = &usb_link {
+        hub.set_port(path);
+    }
     let mut port = open_tessera_port(path)?;
     write_handshake(&mut port, &agent_ok_line())?;
     set_usb_link(&usb_link, true);
@@ -206,6 +242,24 @@ pub fn run_session(
     };
 
     loop {
+        if take_reboot(&usb_link) {
+            set_usb_link(&usb_link, false);
+            let dropped = restart_panel(port, path, &logs);
+            if let Some(hub) = &usb_link {
+                hub.reboot_result.store(
+                    if dropped {
+                        crate::ipc::REBOOT_DROPPED
+                    } else {
+                        crate::ipc::REBOOT_DTR
+                    },
+                    std::sync::atomic::Ordering::SeqCst,
+                );
+            }
+            return Err(UsbError::Io(io::Error::new(
+                io::ErrorKind::Other,
+                "painel reiniciando",
+            )));
+        }
         if last_config_reload.elapsed() >= Duration::from_secs(CONFIG_RELOAD_S) {
             let (m, f, a, filter, cal, td) = load_caps(&profile_paths);
             if (m, f, a, cal, td)
@@ -515,13 +569,16 @@ pub fn run_session(
                 }
             }
         }
+        if let Some(hub) = &usb_link {
+            hub.touch();
+        }
     }
 }
 
 /// Auto-connect first Tessera port; reconnect on failure (matches legacy Python loop shape).
 pub fn run_auto(
     profile_paths: ProfilePaths,
-    usb_link: Option<Arc<RwLock<UsbLink>>>,
+    usb_link: Option<Arc<UsbHub>>,
     logs: Logs,
 ) {
     logutil::info(&logs, "usb: aguardando painel no cabo…");

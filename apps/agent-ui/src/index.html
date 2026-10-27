@@ -64,6 +64,29 @@
               <div class="meta"><button class="btn ghost" type="button" data-go="machines">Computadores</button></div>
             </div>
           </div>
+          <div class="card">
+            <div class="row control-row">
+              <div class="copy">
+                <h3>Agent</h3>
+                <p class="sub" data-live="daemon-summary">Checando…</p>
+              </div>
+              <div class="actions">
+                <button class="btn ghost" type="button" data-action="agentd-restart">Reiniciar</button>
+                <button class="btn ghost" type="button" data-action="agentd-stop">Parar</button>
+                <button class="btn ghost" type="button" data-action="agentd-start" hidden>Iniciar</button>
+              </div>
+            </div>
+            <div class="row control-row">
+              <div class="copy">
+                <h3>Painel</h3>
+                <p class="sub" data-live="daemon-usb">Checando o cabo…</p>
+              </div>
+              <div class="actions">
+                <button class="btn ghost" type="button" data-action="panel-reboot">Reiniciar</button>
+              </div>
+            </div>
+            <p class="note" data-live="daemon-result" hidden></p>
+          </div>
           <div class="grid two">
             <div class="card">
               <div class="row">

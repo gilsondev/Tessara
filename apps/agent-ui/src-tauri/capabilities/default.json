@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "allow-open-privacy-settings"
+    "allow-open-privacy-settings",
+    "allow-agent-control"
   ]
 }

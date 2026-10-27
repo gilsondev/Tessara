@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-agent-control"
+description = "Start, stop, and restart the Tessera agent, and reset the panel."
+commands.allow = ["agentd_service", "panel_force_reset"]
