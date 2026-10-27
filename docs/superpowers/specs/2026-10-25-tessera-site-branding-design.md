@@ -99,7 +99,7 @@ site/                 # fonte do Pages
 brand/                # SVG master + script de gen
 ```
 
-URL: `https://gilsondev.github.io/Tessara/` (ou custom domain depois).
+URL: `https://gilsondev.github.io/Tessera/` (ou custom domain depois).
 
 ## CI / Release
 

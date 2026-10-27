@@ -15,7 +15,7 @@ use tessera_profile::{read_config, write_config, AgentdConfig, ProfilePaths};
 use crate::logutil;
 
 pub const DEFAULT_MANIFEST_URL: &str =
-    "https://gilsondev.github.io/Tessara/latest.json";
+    "https://gilsondev.github.io/Tessera/latest.json";
 const POLL_INTERVAL: Duration = Duration::from_secs(6 * 3600);
 const STARTUP_DELAY: Duration = Duration::from_secs(20);
 

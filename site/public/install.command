@@ -1,9 +1,9 @@
 #!/bin/bash
 # Tessera Agent — install from GitHub Pages (duplo clique ou: bash install.command)
-# Uso: curl -fsSL https://gilsondev.github.io/Tessara/install.command | bash
+# Uso: curl -fsSL https://gilsondev.github.io/Tessera/install.command | bash
 set -euo pipefail
 
-PAGES="${1:-https://gilsondev.github.io/Tessara}"
+PAGES="${1:-https://gilsondev.github.io/Tessera}"
 MANIFEST="${PAGES%/}/latest.json"
 INSTALL_ROOT="$HOME/.tessera/agentd"
 BIN_DIR="$INSTALL_ROOT/bin"
