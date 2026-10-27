@@ -65,21 +65,27 @@
             </div>
           </div>
           <div class="card">
-            <div class="row">
+            <div class="row control-row">
               <div class="copy">
-                <h3>Agent e painel</h3>
-                <p class="sub" data-live="daemon-summary">Checando o processo…</p>
-                <p class="sub" data-live="daemon-usb">Cabo: checando…</p>
+                <h3>Agent</h3>
+                <p class="sub" data-live="daemon-summary">Checando…</p>
+              </div>
+              <div class="actions">
+                <button class="btn ghost" type="button" data-action="agentd-restart">Reiniciar</button>
+                <button class="btn ghost" type="button" data-action="agentd-stop">Parar</button>
+                <button class="btn ghost" type="button" data-action="agentd-start" hidden>Iniciar</button>
               </div>
             </div>
-            <div class="actions">
-              <button class="btn ghost" type="button" data-action="agentd-restart">Reiniciar o Agent</button>
-              <button class="btn danger" type="button" data-action="agentd-kill">Forçar término</button>
-              <button class="btn ghost" type="button" data-action="agentd-stop">Parar</button>
-              <button class="btn ghost" type="button" data-action="agentd-start">Iniciar</button>
-              <button class="btn primary" type="button" data-action="panel-reboot">Reiniciar o painel</button>
+            <div class="row control-row">
+              <div class="copy">
+                <h3>Painel</h3>
+                <p class="sub" data-live="daemon-usb">Checando o cabo…</p>
+              </div>
+              <div class="actions">
+                <button class="btn ghost" type="button" data-action="panel-reboot">Reiniciar</button>
+              </div>
             </div>
-            <p class="note" data-live="daemon-result">Forçar término encerra o processo e o macOS sobe de novo. Parar deixa desligado até Iniciar.</p>
+            <p class="note" data-live="daemon-result" hidden></p>
           </div>
           <div class="grid two">
             <div class="card">

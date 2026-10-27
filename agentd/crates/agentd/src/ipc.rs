@@ -1,7 +1,7 @@
 //! Localhost HTTP IPC for companion UI (127.0.0.1 only).
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -45,7 +45,14 @@ pub struct UsbHub {
     /// Unix seconds of the last finished USB-loop turn. `0` means never.
     pub last_unix: AtomicU64,
     pub reboot: AtomicBool,
+    /// See `REBOOT_*`. The USB loop writes the outcome; IPC waits on it.
+    pub reboot_result: AtomicU8,
 }
+
+pub const REBOOT_IDLE: u8 = 0;
+pub const REBOOT_PENDING: u8 = 1;
+pub const REBOOT_DROPPED: u8 = 2;
+pub const REBOOT_DTR: u8 = 3;
 
 impl UsbHub {
     pub fn new() -> Self {
@@ -54,6 +61,7 @@ impl UsbHub {
             port: RwLock::new(String::new()),
             last_unix: AtomicU64::new(0),
             reboot: AtomicBool::new(false),
+            reboot_result: AtomicU8::new(REBOOT_IDLE),
         }
     }
 
@@ -568,16 +576,38 @@ async fn v1_panel_reboot(State(state): State<AppState>) -> Json<RebootResponse> 
             method: None,
         });
     }
+    state.usb.reboot_result.store(REBOOT_PENDING, Ordering::SeqCst);
     state.usb.reboot.store(true, Ordering::SeqCst);
     state.logs.append(format!(
         "{} INFO  usb: restart do painel pedido pela janela",
         crate::logutil::stamp()
     ));
-    Json(RebootResponse {
-        ok: true,
-        reason: None,
-        method: Some("reboot"),
-    })
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+    loop {
+        let result = state.usb.reboot_result.load(Ordering::SeqCst);
+        if result == REBOOT_DROPPED {
+            return Json(RebootResponse {
+                ok: true,
+                reason: None,
+                method: Some("reboot"),
+            });
+        }
+        if result == REBOOT_DTR {
+            return Json(RebootResponse {
+                ok: true,
+                reason: None,
+                method: Some("dtr"),
+            });
+        }
+        if std::time::Instant::now() >= deadline {
+            return Json(RebootResponse {
+                ok: false,
+                reason: Some("timeout"),
+                method: None,
+            });
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
 }
 
 async fn v1_panel_state() -> Json<crate::panel::PanelState> {

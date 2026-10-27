@@ -150,8 +150,9 @@ fn wait_port_drop(port: &mut dyn Read, budget: Duration) -> bool {
     false
 }
 
-/// Ask the panel to `esp_restart`. If the cable stays up, pulse DTR.
-fn restart_panel(mut port: impl Read + Write, path: &str, logs: &Logs) -> UsbError {
+/// Ask the panel to `esp_restart`. Returns true when the cable dropped.
+/// If it stays up, pulse DTR and return false — the chip did not reboot.
+fn restart_panel(mut port: impl Read + Write, path: &str, logs: &Logs) -> bool {
     logutil::info(logs, "usb: restart do painel (REBOOT)");
     if write_lines(&mut port, &["REBOOT".to_string()]).is_ok() {
         log_to_panel(logs, "panel", "reboot", "REBOOT");
@@ -160,16 +161,13 @@ fn restart_panel(mut port: impl Read + Write, path: &str, logs: &Logs) -> UsbErr
     drop(port);
     if dropped {
         logutil::info(logs, "usb: painel reiniciando");
-    } else {
-        match tessera_usb::pulse_dtr(path) {
-            Ok(()) => logutil::info(logs, format!("usb: pulso DTR em {path}")),
-            Err(e) => logutil::warn(logs, format!("usb: pulso DTR falhou — {e}")),
-        }
+        return true;
     }
-    UsbError::Io(io::Error::new(
-        io::ErrorKind::Other,
-        "painel reiniciando",
-    ))
+    match tessera_usb::pulse_dtr(path) {
+        Ok(()) => logutil::info(logs, format!("usb: pulso DTR em {path}")),
+        Err(e) => logutil::warn(logs, format!("usb: pulso DTR falhou — {e}")),
+    }
+    false
 }
 
 /// Blocking loop on a fixed serial path (daemon background thread).
@@ -246,7 +244,21 @@ pub fn run_session(
     loop {
         if take_reboot(&usb_link) {
             set_usb_link(&usb_link, false);
-            return Err(restart_panel(port, path, &logs));
+            let dropped = restart_panel(port, path, &logs);
+            if let Some(hub) = &usb_link {
+                hub.reboot_result.store(
+                    if dropped {
+                        crate::ipc::REBOOT_DROPPED
+                    } else {
+                        crate::ipc::REBOOT_DTR
+                    },
+                    std::sync::atomic::Ordering::SeqCst,
+                );
+            }
+            return Err(UsbError::Io(io::Error::new(
+                io::ErrorKind::Other,
+                "painel reiniciando",
+            )));
         }
         if last_config_reload.elapsed() >= Duration::from_secs(CONFIG_RELOAD_S) {
             let (m, f, a, filter, cal, td) = load_caps(&profile_paths);

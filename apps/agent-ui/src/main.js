@@ -549,62 +549,148 @@ function formatUsbAge(secs) {
 
 function setDaemonResult(text) {
   const el = document.querySelector('[data-live="daemon-result"]');
-  if (el) el.textContent = text;
+  if (!el) return;
+  if (!text) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  el.hidden = false;
+  el.textContent = text;
+}
+
+function controlError(err) {
+  const msg = String(err?.message || err || "");
+  if (/not allowed by ACL/i.test(msg)) {
+    return "Este app ainda não pode controlar o Agent.";
+  }
+  return msg || "Não consegui.";
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function showAgentButtons(running) {
+  const restart = document.querySelector("[data-action='agentd-restart']");
+  const stop = document.querySelector("[data-action='agentd-stop']");
+  const start = document.querySelector("[data-action='agentd-start']");
+  if (restart) restart.hidden = !running;
+  if (stop) stop.hidden = !running;
+  if (start) start.hidden = running;
 }
 
 async function refreshDaemonCard(status) {
   const summary = document.querySelector('[data-live="daemon-summary"]');
   const usb = document.querySelector('[data-live="daemon-usb"]');
+  let running = false;
   if (summary) {
     try {
       const report = await agentdService("status");
-      summary.textContent = report?.message || "Sem resposta do processo.";
+      running = report?.ok === true;
+      summary.textContent = running ? "No ar" : "Parado";
     } catch (err) {
-      summary.textContent = String(err?.message || err);
+      summary.textContent = controlError(err);
     }
   }
+  showAgentButtons(running);
   if (!usb) return;
   if (!status) {
-    usb.textContent = "Cabo: sem resposta do Agent, então a última troca não está visível.";
+    usb.textContent = "Sem informação do cabo";
     return;
   }
-  const port = status.port ? ` · ${status.port}` : "";
   if (isUsbUp(status)) {
     const age = Number(status.last_usb_age_s);
     const stale = Number.isFinite(age) && age > 60;
-    usb.textContent = stale
-      ? `Cabo aberto, mas sem troca ${formatUsbAge(age)}${port}`
-      : `Cabo aberto · última troca ${formatUsbAge(age)}${port}`;
+    usb.textContent = stale ? `Sem resposta ${formatUsbAge(age)}` : "Conectado";
     return;
   }
-  usb.textContent = status.port
-    ? `Cabo desconectado · última porta ${status.port}`
-    : "Cabo desconectado";
+  usb.textContent = "Sem cabo";
+}
+
+async function waitUntilUsbUp(ms) {
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    try {
+      const status = await fetchStatus();
+      lastStatus = status;
+      if (isUsbUp(status)) return true;
+    } catch {
+      /* agent still coming back */
+    }
+    await sleep(700);
+  }
+  return false;
+}
+
+async function waitForAgent(ms) {
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    try {
+      const status = await fetchStatus();
+      lastStatus = status;
+      if (isAgentdOnline(status)) return true;
+    } catch {
+      /* still down */
+    }
+    await sleep(700);
+  }
+  return false;
+}
+
+async function controlAgent(action) {
+  const pending = {
+    restart: "Reiniciando o Agent…",
+    stop: "Parando o Agent…",
+    start: "Iniciando o Agent…",
+  };
+  setDaemonResult(pending[action] || "Executando…");
+  try {
+    const reply = await agentdService(action);
+    if (action === "stop") {
+      setDaemonResult(reply?.ok ? "Agent parado." : reply?.message || "Não consegui parar o Agent.");
+      return;
+    }
+    if (!reply?.ok) {
+      setDaemonResult(reply?.message || "Não consegui.");
+      return;
+    }
+    const online = await waitForAgent(12000);
+    setDaemonResult(online ? "Agent no ar." : reply?.message || "O Agent não voltou.");
+  } catch (err) {
+    setDaemonResult(controlError(err));
+  } finally {
+    refreshLiveStatus();
+  }
 }
 
 async function rebootPanel() {
-  setDaemonResult("Pedindo restart ao painel…");
-  const age = Number(lastStatus?.last_usb_age_s);
-  const stuck = isUsbUp(lastStatus) && Number.isFinite(age) && age > 60;
-  if (!stuck && isAgentdOnline(lastStatus)) {
-    try {
-      const reply = await postPanelReboot();
-      if (reply?.ok) {
-        setDaemonResult(
-          "Painel reiniciando. Se a tela não cair, o Agent força o reset pelo cabo.",
-        );
-        return;
-      }
-    } catch {
-      /* fall through to the cable pulse */
-    }
-  }
-  setDaemonResult("O cabo não responde. Encerrando o Agent e forçando o reset pelo USB…");
+  setDaemonResult("Reiniciando o painel…");
   try {
-    const reply = await panelForceReset();
-    setDaemonResult(reply?.message || "Reset pedido.");
+    let reply = null;
+    if (isAgentdOnline(lastStatus) && isUsbUp(lastStatus)) {
+      reply = await postPanelReboot();
+    }
+    if (!reply?.ok) {
+      const forced = await panelForceReset();
+      const back = forced?.ok ? await waitUntilUsbUp(20000) : false;
+      setDaemonResult(
+        back
+          ? "Painel voltou no cabo."
+          : forced?.message || "Não consegui reiniciar o painel.",
+      );
+      return;
+    }
+    if (reply.method === "dtr") {
+      setDaemonResult("A tela não caiu. O painel ignorou o restart.");
+      return;
+    }
+    const back = await waitUntilUsbUp(20000);
+    setDaemonResult(
+      back ? "Painel reiniciou e voltou no cabo." : "O painel caiu e o cabo ainda não voltou.",
+    );
   } catch (err) {
-    setDaemonResult(String(err?.message || err));
+    setDaemonResult(controlError(err));
   } finally {
     refreshLiveStatus();
   }
@@ -666,7 +752,7 @@ function applyAgentdOnline(status) {
       homeBanner.querySelector('[data-live="home-status-title"]').textContent =
         "O Agent parou de falar com o painel";
       homeBanner.querySelector('[data-live="home-status-sub"]').textContent =
-        "Force o término do Agent ou reinicie o painel. O processo ainda pode aparecer no ar.";
+        "Reinicie o Agent ou o painel. O processo ainda pode aparecer no ar.";
     } else if (usbUp) {
       homeBanner.hidden = true;
     } else {
@@ -1926,16 +2012,11 @@ document.body.addEventListener("click", (e) => {
     return;
   }
   const daemon = e.target.closest(
-    "[data-action='agentd-restart'], [data-action='agentd-kill'], [data-action='agentd-stop'], [data-action='agentd-start']",
+    "[data-action='agentd-restart'], [data-action='agentd-stop'], [data-action='agentd-start']",
   );
   if (daemon) {
     e.preventDefault();
-    const action = daemon.dataset.action.replace("agentd-", "");
-    setDaemonResult("Executando…");
-    agentdService(action)
-      .then((reply) => setDaemonResult(reply?.message || "Pronto."))
-      .catch((err) => setDaemonResult(String(err?.message || err)))
-      .finally(() => refreshLiveStatus());
+    void controlAgent(daemon.dataset.action.replace("agentd-", ""));
     return;
   }
   const panelReboot = e.target.closest("[data-action='panel-reboot']");

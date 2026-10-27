@@ -277,7 +277,7 @@ export async function openPrivacySettings(pane) {
 export async function postPanelReboot() {
   const r = await fetch(agentdUrl("/v1/panel/reboot"), {
     method: "POST",
-    signal: AbortSignal.timeout(IPC_TIMEOUT_MS),
+    signal: AbortSignal.timeout(12000),
   });
   if (!r.ok) throw new Error(`reboot ${r.status}`);
   return r.json();
