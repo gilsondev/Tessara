@@ -1,10 +1,10 @@
 {
-  "version": "0.1.4",
-  "released_at": "2026-10-27T14:25:10Z",
-  "agentd_url": "https://github.com/gilsondev/Tessera/releases/download/agent-v0.1.4/agentd.tgz",
-  "app_url": "https://github.com/gilsondev/Tessera/releases/download/agent-v0.1.4/Tessera.app.zip",
+  "version": "0.2.0",
+  "released_at": "2026-10-27T20:00:47Z",
+  "agentd_url": "https://github.com/gilsondev/Tessera/releases/download/agent-v0.2.0/agentd.tgz",
+  "app_url": "https://github.com/gilsondev/Tessera/releases/download/agent-v0.2.0/Tessera.app.zip",
   "sha256": {
-    "agentd": "1b8923aa07652f076bff5a29c92cefe010544fcb7d03af26a54f1f545cbb40d5",
-    "app": "5cc6f87f949038042c21d2564247ad8ad8c52314b73dd13fcd71b14d438d3663"
+    "agentd": "630122dcc65765f46c6b00a275fb2159e7c4f358253df333bbe5bfb765b0f6de",
+    "app": "fa5ffbcf002292ee13f291ed4be91733ff86a90b0c502a25260a45a471f0e027"
   }
 }
