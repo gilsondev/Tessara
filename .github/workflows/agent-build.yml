@@ -33,6 +33,9 @@ jobs:
         with:
           install: true
 
+      - name: Stamp manifests from VERSION
+        run: python3 tools/stamp_agent_version.py --root . --version "$(tr -d '[:space:]' < VERSION)"
+
       - name: Test agentd
         working-directory: agentd
         run: cargo test --workspace

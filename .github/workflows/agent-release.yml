@@ -25,6 +25,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Tag must be on main
+        if: startsWith(github.ref, 'refs/tags/agent-v')
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
+
       - uses: jdx/mise-action@v2
         with:
           install: true
@@ -41,6 +48,18 @@ jobs:
           fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $V"
+
+      - name: Stamp manifests from the release version
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          FILE="$(tr -d '[:space:]' < VERSION)"
+          if [ "$FILE" != "$VER" ]; then
+            echo "VERSION ($FILE) diferente da tag ou do input ($VER)" >&2
+            exit 1
+          fi
+          python3 tools/stamp_agent_version.py --root . --version "$VER"
 
       - name: Test agentd
         working-directory: agentd
@@ -178,6 +197,8 @@ jobs:
       actions: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/download-artifact@v4
         with:
           name: latest-json
