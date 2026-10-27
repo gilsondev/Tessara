@@ -339,41 +339,218 @@ struct ClaudeStatus {
     reset_label: Option<String>,
 }
 
-/// Reads Claude Code's statusLine output. Claude Desktop cache support is
-/// intentionally read-only: the legacy cache is accepted when it uses this
-/// same JSON shape, but stale values are not published.
-pub fn read_claude_status(tessera_home: &Path) -> AiTokenSource {
-    let status = tessera_home.join("claude_status.json");
-    let cache = tessera_home.join("claude_usage_cache.json");
-    for path in [status, cache] {
-        let Ok(raw) = fs::read_to_string(path) else {
-            continue;
-        };
-        let Ok(value) = serde_json::from_str::<ClaudeStatus>(&raw) else {
-            continue;
-        };
-        let Some(used) = value.percent_used else {
-            continue;
-        };
-        let fresh = value.generated_at.is_none_or(|at| now_s() - at <= 120.0);
-        if !fresh || !used.is_finite() {
+const CLAUDE_STATUSLINE_MAX_AGE_S: f64 = 120.0;
+const CLAUDE_DESKTOP_MAX_AGE_S: f64 = 24.0 * 3600.0;
+const CLAUDE_LAST_KNOWN_MAX_AGE_S: f64 = 7.0 * 24.0 * 3600.0;
+
+struct ClaudeReading {
+    observed_at: f64,
+    used: f64,
+    reset: String,
+}
+
+/// Claude Code statusLine, Claude Desktop local storage, then the last reading
+/// kept for a week. The panel shows percent remaining.
+pub fn read_claude(home: &Path) -> AiTokenSource {
+    let tessera = home.join(".tessera");
+    let now = now_s();
+    let mut live: Vec<ClaudeReading> = Vec::new();
+    if let Some(reading) = read_claude_desktop(home, now) {
+        live.push(reading);
+    }
+    if let Some(reading) = read_claude_json(
+        &tessera.join("claude_status.json"),
+        now,
+        CLAUDE_STATUSLINE_MAX_AGE_S,
+    ) {
+        live.push(reading);
+    }
+    if let Some(best) = live.into_iter().max_by(|a, b| {
+        a.observed_at
+            .partial_cmp(&b.observed_at)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    }) {
+        return claude_source(best);
+    }
+    let remembered = [
+        read_claude_json(
+            &tessera.join("claude_usage_cache.json"),
+            now,
+            CLAUDE_LAST_KNOWN_MAX_AGE_S,
+        ),
+        read_claude_json(
+            &tessera.join("claude_status.json"),
+            now,
+            CLAUDE_LAST_KNOWN_MAX_AGE_S,
+        ),
+    ];
+    remembered
+        .into_iter()
+        .flatten()
+        .max_by(|a, b| {
+            a.observed_at
+                .partial_cmp(&b.observed_at)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(claude_source)
+        .unwrap_or_else(|| AiTokenSource::unavailable("claude"))
+}
+
+fn claude_source(reading: ClaudeReading) -> AiTokenSource {
+    let remaining = (100.0 - reading.used).round().clamp(0.0, 100.0) as i32;
+    AiTokenSource::available(
+        "claude",
+        SourceKind::Pct,
+        remaining,
+        format!("{remaining}%"),
+        reading.reset.chars().take(15).collect::<String>(),
+    )
+}
+
+fn read_claude_json(path: &Path, now: f64, max_age: f64) -> Option<ClaudeReading> {
+    let raw = fs::read_to_string(path).ok()?;
+    let value: ClaudeStatus = serde_json::from_str(&raw).ok()?;
+    let used = norm_used_percent(value.percent_used?)?;
+    let observed = value.generated_at.unwrap_or(now);
+    let age = now - observed;
+    if age > max_age || age < -60.0 {
+        return None;
+    }
+    Some(ClaudeReading {
+        observed_at: observed,
+        used,
+        reset: value.reset_label.unwrap_or_default(),
+    })
+}
+
+fn read_claude_desktop(home: &Path, now: f64) -> Option<ClaudeReading> {
+    let dir = home.join("Library/Application Support/Claude/Local Storage/leveldb");
+    let entries = fs::read_dir(&dir).ok()?;
+    let mut best: Option<ClaudeReading> = None;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if matches!(name.as_ref(), "CURRENT" | "LOCK" | "LOG" | "LOG.old")
+            || name.starts_with("MANIFEST")
+        {
             continue;
         }
-        let remaining = (100.0 - used).round().clamp(0.0, 100.0) as i32;
-        return AiTokenSource::available(
-            "claude",
-            SourceKind::Pct,
-            remaining,
-            format!("{remaining}%"),
-            value
-                .reset_label
-                .unwrap_or_default()
-                .chars()
-                .take(15)
-                .collect::<String>(),
-        );
+        if path.extension().and_then(|ext| ext.to_str()) != Some("log")
+            && path.extension().and_then(|ext| ext.to_str()) != Some("ldb")
+            && !name.starts_with(|c: char| c.is_ascii_digit())
+        {
+            continue;
+        }
+        let Ok(blob) = fs::read(&path) else {
+            continue;
+        };
+        let mtime = entry
+            .metadata()
+            .ok()
+            .and_then(|meta| meta.modified().ok())
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(now);
+        if let Some(reading) = claude_from_desktop_blob(&blob, mtime, now) {
+            if best
+                .as_ref()
+                .is_none_or(|prev| reading.observed_at >= prev.observed_at)
+            {
+                best = Some(reading);
+            }
+        }
     }
-    AiTokenSource::unavailable("claude")
+    best
+}
+
+fn claude_from_desktop_blob(blob: &[u8], mtime: f64, now: f64) -> Option<ClaudeReading> {
+    let key = b"\"utilization\"";
+    let mut from = 0;
+    let mut best: Option<ClaudeReading> = None;
+    while let Some(rel) = blob[from..]
+        .windows(key.len())
+        .position(|window| window == key)
+    {
+        let at = from + rel;
+        let used = norm_used_percent(number_after_key(&blob[at + key.len()..])?)?;
+        let window_end = (at + 240).min(blob.len());
+        let window_start = at.saturating_sub(240);
+        let nearby = &blob[window_start..window_end];
+        let resets = number_after_key_in(nearby, b"\"resetsAt\"");
+        let mut observed = number_after_key_in(nearby, b"\"observedAt\"").unwrap_or(mtime);
+        if observed > 1.0e12 {
+            observed /= 1000.0;
+        }
+        let age = now - observed;
+        if (-300.0..=CLAUDE_DESKTOP_MAX_AGE_S).contains(&age)
+            && best
+                .as_ref()
+                .is_none_or(|prev| observed >= prev.observed_at)
+        {
+            best = Some(ClaudeReading {
+                observed_at: observed,
+                used,
+                reset: reset_label(resets),
+            });
+        }
+        from = at + key.len();
+    }
+    best
+}
+
+fn number_after_key_in(blob: &[u8], key: &[u8]) -> Option<f64> {
+    let rel = blob.windows(key.len()).position(|window| window == key)?;
+    number_after_key(&blob[rel + key.len()..])
+}
+
+fn number_after_key(bytes: &[u8]) -> Option<f64> {
+    let mut i = 0;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i < bytes.len() && bytes[i] == b':' {
+        i += 1;
+    }
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    let start = i;
+    if i < bytes.len() && (bytes[i] == b'+' || bytes[i] == b'-') {
+        i += 1;
+    }
+    let mut saw = false;
+    while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
+        saw = true;
+        i += 1;
+    }
+    if !saw {
+        return None;
+    }
+    std::str::from_utf8(&bytes[start..i])
+        .ok()?
+        .parse::<f64>()
+        .ok()
+}
+
+fn norm_used_percent(raw: f64) -> Option<f64> {
+    if !raw.is_finite() || raw < 0.0 {
+        return None;
+    }
+    let used = if raw <= 1.5 { raw * 100.0 } else { raw };
+    Some(used.clamp(0.0, 100.0))
+}
+
+fn reset_label(resets: Option<f64>) -> String {
+    let Some(mut ts) = resets else {
+        return String::new();
+    };
+    if ts > 1.0e12 {
+        ts /= 1000.0;
+    }
+    chrono::DateTime::from_timestamp(ts as i64, 0)
+        .map(|dt| dt.with_timezone(&chrono::Local).format("%H:%M").to_string())
+        .unwrap_or_default()
 }
 
 /// Codex auth → ChatGPT WHAM usage (same shape as the legacy Python collector).
@@ -417,7 +594,7 @@ fn collect_sources_with_cursor(
 ) -> Vec<AiTokenSource> {
     vec![
         read_codex_auth(home),
-        read_claude_status(&home.join(".tessera")),
+        read_claude(home),
         read_cursor(resolver, cursor_env),
     ]
 }
@@ -640,6 +817,71 @@ mod tests {
             "display={}",
             source.display
         );
+    }
+
+    #[test]
+    fn claude_keeps_last_known_reading_for_a_week() {
+        let temp = tempfile::tempdir().unwrap();
+        let tessera = temp.path().join(".tessera");
+        fs::create_dir_all(&tessera).unwrap();
+        let generated = now_s() - 36.0 * 3600.0;
+        fs::write(
+            tessera.join("claude_usage_cache.json"),
+            format!(
+                r#"{{"generated_at":{generated},"percent_used":8,"reset_label":"19:50","source":"claude_desktop_local"}}"#
+            ),
+        )
+        .unwrap();
+        let source = read_claude(temp.path());
+        assert!(source.available);
+        assert_eq!(source.value, 92);
+        assert_eq!(source.display, "92%");
+        assert_eq!(source.reset, "19:50");
+    }
+
+    #[test]
+    fn claude_statusline_beats_an_older_cache() {
+        let temp = tempfile::tempdir().unwrap();
+        let tessera = temp.path().join(".tessera");
+        fs::create_dir_all(&tessera).unwrap();
+        let now = now_s();
+        fs::write(
+            tessera.join("claude_usage_cache.json"),
+            format!(
+                r#"{{"generated_at":{},"percent_used":8,"reset_label":"19:50"}}"#,
+                now - 3600.0
+            ),
+        )
+        .unwrap();
+        fs::write(
+            tessera.join("claude_status.json"),
+            format!(
+                r#"{{"generated_at":{},"percent_used":40,"reset_label":"06:10"}}"#,
+                now - 30.0
+            ),
+        )
+        .unwrap();
+        let source = read_claude(temp.path());
+        assert_eq!(source.value, 60);
+        assert_eq!(source.reset, "06:10");
+    }
+
+    #[test]
+    fn claude_desktop_blob_reports_remaining() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp
+            .path()
+            .join("Library/Application Support/Claude/Local Storage/leveldb");
+        fs::create_dir_all(&dir).unwrap();
+        let observed = (now_s() * 1000.0) as u64;
+        fs::write(
+            dir.join("000001.log"),
+            format!(r#"noise "utilization":25,"observedAt":{observed},"resetsAt":1793200000"#),
+        )
+        .unwrap();
+        let source = read_claude(temp.path());
+        assert!(source.available, "display={}", source.display);
+        assert_eq!(source.value, 75);
     }
 
     #[test]
