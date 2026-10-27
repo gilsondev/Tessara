@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/gilsondev/Tessera/compare/agent-v0.2.0...agent-v0.2.1) (2026-10-27)
+
+
+### Bug fixes
+
+* **agent:** dispatch the release build without a git checkout ([a18b279](https://github.com/gilsondev/Tessera/commit/a18b2790353b1b7910c3739b99cb28c75ef366c7))
+* **agent:** dispatch the release build without a git checkout ([4deb6dc](https://github.com/gilsondev/Tessera/commit/4deb6dc8eb6f3cae2c9628449c55269b5e631b0b))
+
 ## [0.2.0](https://github.com/gilsondev/Tessera/compare/agent-v0.1.5...agent-v0.2.0) (2026-10-27)
 
 
