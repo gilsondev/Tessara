@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Como usar — Tessera</title>
+    <meta
+      name="description"
+      content="Como instalar o Agent e o que cada bloco do painel faz. O Tessera é o software; a tela em que ele aparece é uma peça à parte."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,640&family=Outfit:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <script>
+      (function () {
+        var saved = localStorage.getItem("tessera-theme");
+        var theme =
+          saved ||
+          (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="index.html">
+        <img class="mark-light" src="brand/wordmark.svg" alt="Tessera" />
+        <img class="mark-dark" src="brand/wordmark-dark.svg" alt="" />
+      </a>
+      <nav class="top-links">
+        <a class="ghost" href="index.html">Início</a>
+        <button type="button" class="ghost" id="theme-toggle">Escuro</button>
+        <a class="ghost" href="https://github.com/gilsondev/Tessera">GitHub</a>
+      </nav>
+    </header>
+
+    <main class="doc">
+      <p class="eyebrow">Como usar</p>
+      <h1 class="doc-title">O painel e o Agent</h1>
+      <p class="band-lede">
+        Tessera é o software do painel e a janela no Mac. A tela, o toque e o USB ficam no
+        aparelho que estiver ligado.
+      </p>
+      <nav class="toc" aria-label="Nesta página">
+        <a href="#agente">O Agent</a>
+        <a href="#instalar">Instalar</a>
+        <a href="#agent-faz">O que o Agent faz</a>
+        <a href="#tela">A tela</a>
+      </nav>
+
+      <section class="band" id="agente">
+        <h2>O Agent</h2>
+        <p>
+          O Agent fica no Mac. Enquanto o cabo USB está ligado, ele manda hora, tarefas, clima,
+          agenda, música e o estado do Mac para o painel. A janela mostra se o aparelho está
+          ligado e guarda os ajustes dele.
+        </p>
+        <p>
+          O painel não precisa de cartão SD para isso. O que aparece na mesa chega pelo Agent.
+        </p>
+      </section>
+
+      <section class="band" id="instalar">
+        <h2>Instalar e atualizar</h2>
+        <ol class="steps doc-steps">
+          <li>
+            <span class="n">1</span>
+            <p>Na <a href="index.html#baixar">página inicial</a>, baixe o Agent para Mac ou use o comando do Terminal.</p>
+          </li>
+          <li>
+            <span class="n">2</span>
+            <p>Abra o app. O build ainda não é notarizado: se o Gatekeeper barrar, libere em Privacidade e Segurança.</p>
+          </li>
+          <li>
+            <span class="n">3</span>
+            <p>Plugar o painel. Para a agenda, ligue o Acesso Total ao Disco do Tessera Agent.</p>
+          </li>
+        </ol>
+        <p>
+          O botão e o instalador leem a versão publicada no site. Em Atualizar sozinho, o Agent
+          passa a buscar a próxima sozinho.
+        </p>
+      </section>
+
+      <section class="band" id="agent-faz">
+        <h2>O que o Agent faz</h2>
+        <h3>Início</h3>
+        <p>
+          Mostra a ligação com o painel, a música que está tocando e o Focus. Com o cabo solto, o
+          painel deixa de receber o que vem deste Mac.
+        </p>
+        <h3>Painel</h3>
+        <p>
+          Orientação, brilho, aparência e quais blocos ficam na home. O que você marca aqui vale
+          na próxima conversa pelo USB. Atualizar / acordar pede ao aparelho para buscar de novo.
+        </p>
+        <h3>Blocos</h3>
+        <ul>
+          <li><strong>Hora e data.</strong> O relógio da home e o formato da data.</li>
+          <li><strong>Tarefas.</strong> Listas do Todoist. O número na home aparece quando todas as listas visíveis responderam.</li>
+          <li><strong>Clima.</strong> O lugar se define no Mac. O aparelho não tem GPS.</li>
+          <li><strong>Agenda.</strong> Compromissos dos calendários Google que já estão no app Calendário do Mac. O Acesso Total ao Disco é o que permite essa leitura.</li>
+          <li><strong>Música.</strong> A capa e a faixa que o Mac está tocando.</li>
+          <li><strong>Tokens.</strong> Cotas do Codex, do Claude e do Cursor. O Claude mostra a porcentagem depois que uma sessão do Claude Code responde.</li>
+          <li><strong>Mac.</strong> O Focus e o estado desta máquina.</li>
+        </ul>
+      </section>
+
+      <section class="band" id="tela">
+        <h2>A tela</h2>
+        <p>
+          A home é uma grade de blocos. Um toque abre o detalhe daquele bloco: a lista de tarefas,
+          o clima da semana, a agenda, a música ou as cotas. Brilho, orientação e aparência também
+          existem no próprio aparelho.
+        </p>
+        <p>
+          Os blocos e a home não sabem qual tela está ligada. Um aparelho novo traz a tela, o toque
+          e o USB dele. O que aparece na mesa, o detalhe de cada bloco e a janela do Agent
+          continuam os mesmos.
+        </p>
+        <div class="cta">
+          <a class="btn primary" data-download href="https://github.com/gilsondev/Tessera/releases/latest"
+            >Baixar Agent para Mac</a
+          >
+          <p class="meta" data-version>Carregando versão…</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <img class="mark-light" src="brand/symbol.svg" width="28" height="28" alt="" />
+      <img class="mark-dark" src="brand/symbol-dark.svg" width="28" height="28" alt="" />
+      <span>Tessera</span>
+      <span id="footer-ver"></span>
+      <a href="index.html">Início</a>
+    </footer>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
