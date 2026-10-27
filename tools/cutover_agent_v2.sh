@@ -124,7 +124,9 @@ if [ -f "$ICNS_SRC" ]; then
 else
   echo "cutover: aviso — sem $ICNS_SRC (ícone FDA pode ficar genérico)" >&2
 fi
-cat > "$AGENTD_APP/Contents/Info.plist" <<'PLIST'
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+AGENT_VERSION="$(tr -d '[:space:]' < "$REPO_ROOT/VERSION")"
+cat > "$AGENTD_APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -137,7 +139,7 @@ cat > "$AGENTD_APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key><string>Tessera Agent</string>
   <key>CFBundleDisplayName</key><string>Tessera Agent</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleShortVersionString</key><string>$AGENT_VERSION</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>NSHighResolutionCapable</key><true/>

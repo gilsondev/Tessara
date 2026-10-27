@@ -111,6 +111,17 @@ class StampTest(unittest.TestCase):
             self.assertEqual(done.returncode, 2)
             self.assertIn("0.1.5", (root / "agentd" / "Cargo.toml").read_text(encoding="utf-8"))
 
+    def test_sources_do_not_hardcode_a_plist_version(self):
+        install = (ROOT / "site" / "public" / "install.command").read_text(encoding="utf-8")
+        cutover = (ROOT / "tools" / "cutover_agent_v2.sh").read_text(encoding="utf-8")
+        service = (ROOT / "apps" / "agent-ui" / "src-tauri" / "src" / "service.rs").read_text(encoding="utf-8")
+        self.assertNotIn("<string>0.1</string>", install)
+        self.assertIn("$VER", install)
+        self.assertNotIn("<string>0.1.0</string>", cutover)
+        self.assertIn('VERSION', cutover)
+        self.assertNotIn('<string>0.1</string>', service)
+        self.assertIn('include_str!("../../../../VERSION")', service)
+
 
 if __name__ == "__main__":
     unittest.main()

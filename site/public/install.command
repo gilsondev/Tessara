@@ -88,7 +88,7 @@ APP="$INSTALL_ROOT/Tessera Agent.app"
 mkdir -p "$APP/Contents/MacOS"
 cp "$AGENTD" "$APP/Contents/MacOS/Tessera"
 chmod 755 "$APP/Contents/MacOS/Tessera"
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -97,7 +97,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key><string>Tessera Agent</string>
   <key>CFBundleDisplayName</key><string>Tessera Agent</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1</string>
+  <key>CFBundleShortVersionString</key><string>$VER</string>
   <key>LSUIElement</key><true/>
 </dict></plist>
 PLIST

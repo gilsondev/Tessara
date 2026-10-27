@@ -11,6 +11,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 const LABEL: &str = "com.tessera.agentd";
 const MANIFEST_URL: &str = "https://gilsondev.github.io/Tessera/latest.json";
+const AGENT_VERSION: &str = include_str!("../../../../VERSION");
 
 #[derive(Serialize)]
 pub struct ServiceResult {
@@ -387,6 +388,24 @@ fn place_agent_binary(src: &Path) -> Result<PathBuf, String> {
     wrap_agent_app(&dest)
 }
 
+fn agent_plist() -> String {
+    let version = AGENT_VERSION.trim();
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleExecutable</key><string>Tessera</string>
+  <key>CFBundleIdentifier</key><string>dev.tessera.agentd</string>
+  <key>CFBundleName</key><string>Tessera Agent</string>
+  <key>CFBundleDisplayName</key><string>Tessera Agent</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>{version}</string>
+  <key>LSUIElement</key><true/>
+</dict></plist>
+"#
+    )
+}
+
 /// Stable TCC identity. Launchd runs this bundle, not the menu-bar app.
 fn wrap_agent_app(bin: &Path) -> Result<PathBuf, String> {
     let home = home_dir()?;
@@ -401,19 +420,7 @@ fn wrap_agent_app(bin: &Path) -> Result<PathBuf, String> {
         .permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&exe, perms).map_err(|e| e.to_string())?;
-    let plist = r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>CFBundleExecutable</key><string>Tessera</string>
-  <key>CFBundleIdentifier</key><string>dev.tessera.agentd</string>
-  <key>CFBundleName</key><string>Tessera Agent</string>
-  <key>CFBundleDisplayName</key><string>Tessera Agent</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1</string>
-  <key>LSUIElement</key><true/>
-</dict></plist>
-"#;
-    std::fs::write(app.join("Contents/Info.plist"), plist)
+    std::fs::write(app.join("Contents/Info.plist"), agent_plist())
         .map_err(|e| format!("Info.plist: {e}"))?;
     let _ = Command::new("/usr/bin/codesign")
         .args(["--force", "--sign", "-", "--"])
