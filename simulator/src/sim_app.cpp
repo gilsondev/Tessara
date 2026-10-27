@@ -12,6 +12,8 @@
 #include "ui/settings_panel.h"
 #include "ui/todoist_panel.h"
 #include "ui/weather_page.h"
+#include "mac/focus_snapshot.h"
+#include "media/snapshot.h"
 
 #include <cstdio>
 #include <cstring>
@@ -126,6 +128,22 @@ void sim_app::paint_fixture(State &app) {
     home::set_weather(sim_detail::weather_view(s));
     home::set_aitokens(sim_detail::aitokens_view(s));
     home::set_calendar(sim_detail::calendar_view(s));
+
+    // Sample now-playing and Focus so the current Música | Mac pair is not empty.
+    media::View playing = {};
+    playing.ready = true;
+    playing.media.ok = true;
+    playing.media.state = media::MediaState::Playing;
+    std::snprintf(playing.media.title, sizeof(playing.media.title), "Foco");
+    std::snprintf(playing.media.artist, sizeof(playing.media.artist), "Ambiente");
+    home::set_media(playing, s.agent_ok);
+
+    focus::View focus = {};
+    focus.ready = true;
+    focus.ok = true;
+    std::snprintf(focus.active_id, sizeof(focus.active_id), "work");
+    std::snprintf(focus.active_name, sizeof(focus.active_name), "Trabalho");
+    home::set_mac(focus, s.agent_ok);
 }
 
 void sim_app::init(State &app, const Scenario &scenario) {

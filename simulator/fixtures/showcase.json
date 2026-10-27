@@ -1,0 +1,88 @@
+{
+  "name": "showcase",
+  "wifi": {
+    "online": true,
+    "rssi": -48,
+    "ssid": "CasaFibra",
+    "ip": "192.168.15.42"
+  },
+  "battery_percent": 80,
+  "clock": {
+    "hour": 14,
+    "minute": 30,
+    "wday": 5,
+    "day": 24,
+    "month": 9,
+    "ok": true
+  },
+  "todoist": {
+    "total": 11,
+    "pending": false,
+    "lists": [
+      {
+        "name": "Hoje",
+        "query": "today | overdue",
+        "tasks": [
+          { "id": "8991001", "content": "Standup Lab 10h", "priority": 3, "meta": "hoje 10:00" },
+          { "id": "8991002", "content": "Flash firmware no JC3248", "priority": 4, "meta": "hoje" },
+          { "id": "8991003", "content": "Revisar PRs do painel", "priority": 4, "meta": "atrasado" }
+        ]
+      },
+      {
+        "name": "Casa",
+        "query": "@Casa",
+        "tasks": [
+          { "id": "8992001", "content": "Comprar café", "priority": 1, "meta": "amanhã" },
+          { "id": "8992002", "content": "Trocar filtro do ar", "priority": 2, "meta": "26 out" }
+        ]
+      },
+      {
+        "name": "Computador",
+        "query": "@Computador",
+        "tasks": [
+          { "id": "8993001", "content": "Atualizar Tessera docs", "priority": 2, "meta": "hoje" },
+          { "id": "8993002", "content": "Rodar verify_all antes do flash", "priority": 3, "meta": "hoje 18:00" }
+        ]
+      }
+    ]
+  },
+  "weather": {
+    "placed": true,
+    "ready": true,
+    "stale": false,
+    "failed": false,
+    "temp_c": 24,
+    "code": 0,
+    "place": "São Paulo",
+    "hi_c": 28,
+    "lo_c": 18
+  },
+  "aitokens": {
+    "ready": true,
+    "stale": false,
+    "codex_5h": 100,
+    "codex_week": 88,
+    "claude_pct": 70,
+    "cursor_a": 3,
+    "cursor_b": 13,
+    "codex_reset": "5h",
+    "claude_reset": "5h"
+  },
+  "agent": {
+    "ready": true,
+    "ok": true,
+    "detail": "",
+    "pack_on_sd": true
+  },
+  "dashboard": [
+    "org.tessera.greeting",
+    "org.tessera.date",
+    "org.tessera.clock",
+    "org.tessera.todoist",
+    "org.tessera.weather",
+    "org.tessera.aitokens",
+    "org.tessera.calendar",
+    "org.tessera.media",
+    "org.tessera.mac"
+  ]
+}
