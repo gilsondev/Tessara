@@ -34,6 +34,7 @@ With a board (after host gate is green): `make flash` then `make device`.
 3. Attach or point to simulator screenshots under `$SIM_OUT` when UI changes.
 4. State that `make finish-host` passed (and `make flash` / device notes if hardware was used).
 5. Keep comments and new docs in **English**.
+6. Agent version: do not bump `VERSION`, Cargo, npm, or `tauri.conf.json` in a feature PR. `feat:` and `fix:` on `main` are what open the release PR.
 
 ## License
 
