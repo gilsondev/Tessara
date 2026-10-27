@@ -183,12 +183,12 @@ h1{font-size:30px}
 </section>
 <section class="card" id="agent-install-box">
 <h2>Instalar no Mac</h2>
-<p class="note">No notebook pluggado: abra <a href="https://gilsondev.github.io/Tessera/" target="_blank" rel="noopener">gilsondev.github.io/Tessera</a> ou cole o comando abaixo. Depois o <b>Status</b> acima deve ir para OK.</p>
+<p class="note">No notebook pluggado: abra <a href="https://gilsondev.github.io/Tessara/" target="_blank" rel="noopener">gilsondev.github.io/Tessara</a> ou cole o comando abaixo. Depois o <b>Status</b> acima deve ir para OK.</p>
 <div class="cmd-row">
-<code id="agent-install-cmd">curl -fsSL https://gilsondev.github.io/Tessera/install.command | bash</code>
+<code id="agent-install-cmd">curl -fsSL https://gilsondev.github.io/Tessara/install.command | bash</code>
 <div class="actions" style="gap:8px;flex-wrap:wrap;margin-top:0">
 <button class="act" type="button" id="agent-copy-cmd">Copiar comando</button>
-<a class="act ghost" href="https://gilsondev.github.io/Tessera/" target="_blank" rel="noopener">Abrir o site</a>
+<a class="act ghost" href="https://gilsondev.github.io/Tessara/" target="_blank" rel="noopener">Abrir o site</a>
 </div>
 </div>
 </section>
@@ -480,7 +480,7 @@ if(ap){ap.textContent=s.agent_pack
 ?(s.agent_pack_version?('Pacote no SD: '+s.agent_pack_version+' (fallback offline)'):'Pacote no SD: presente (fallback offline)')
 :'Pacote no SD: ausente (ok — use o site)';ap.className=s.agent_pack?'ok':'off'}
 const cmdEl=document.getElementById('agent-install-cmd');
-if(cmdEl){cmdEl.textContent='curl -fsSL https://gilsondev.github.io/Tessera/install.command | bash'}
+if(cmdEl){cmdEl.textContent='curl -fsSL https://gilsondev.github.io/Tessara/install.command | bash'}
 draw();drawResources();pushOsTheme(false)}
 async function putFile(url,file){const r=await fetch(url,{method:'PUT',headers:{'Content-Type':'application/octet-stream'},body:file});
 if(!r.ok){const t=await r.text();throw new Error(t||('HTTP '+r.status))}return r}
@@ -490,7 +490,7 @@ toast('Enviando…');
 try{await putFile('/agentd/agentd.tgz',tgz);
 toast('Pacote no SD (fallback). Preferir o site Pages.');setTimeout(load,400)}catch(e){toast(e&&e.message?e.message:'Falha no upload')}}
 async function copyInstallCmd(){
-const text='curl -fsSL https://gilsondev.github.io/Tessera/install.command | bash';
+const text='curl -fsSL https://gilsondev.github.io/Tessara/install.command | bash';
 try{await navigator.clipboard.writeText(text);toast('Comando copiado — cole no Terminal e olhe o Status')}
 catch(e){toast('Selecione o comando e copie (⌘C)')}
 }

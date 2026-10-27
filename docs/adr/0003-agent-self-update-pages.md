@@ -19,7 +19,7 @@ O companion (agentd + Tessera.app) precisa atualizar no Mac do usuário sem depe
 ## Consequências
 
 - **1ª instalação** (Mac novo): site Pages — botão ou
-  `curl -fsSL https://gilsondev.github.io/Tessera/install.command | bash`.
+  `curl -fsSL https://gilsondev.github.io/Tessara/install.command | bash`.
   O painel e o portal apontam para esse URL; cartão SD é só fallback offline.
 - CI `agent-build.yml` compila em todo push/PR relevante; `agent-release.yml` (tag `agent-v*`)
   publica Release **e** atualiza `site/public/latest.json` no deploy Pages.
