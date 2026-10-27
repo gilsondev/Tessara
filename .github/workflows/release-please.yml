@@ -19,9 +19,18 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # A GITHUB_TOKEN tag push does not start other workflows.
+      # A GITHUB_TOKEN tag push does not start other workflows. gh needs a
+      # checkout; this job has none, so call the API directly.
       - name: Build the tagged agent
         if: ${{ steps.release.outputs.release_created == 'true' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run agent-release.yml --ref "${{ steps.release.outputs.tag_name }}"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = '${{ steps.release.outputs.tag_name }}';
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'agent-release.yml',
+              ref: tag,
+            });
+            core.info(`dispatched agent-release.yml at ${tag}`);
