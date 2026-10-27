@@ -9,16 +9,16 @@ use axum::extract::{Query, State};
 use axum::http::Method;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use tower_http::cors::{Any, CorsLayer};
+use serde::{Deserialize, Serialize};
 use tessera_doctor::{prepare_permission, DoctorDeps, DoctorReport, PreparePermission};
 use tessera_logbuf::SharedLogBuf;
-use serde::{Deserialize, Serialize};
 use tessera_profile::{
     load_or_init_with_paths, read_scan_json, write_config, write_machine_display_name,
     write_scan_json, AgentdConfig, ProfilePaths,
 };
 use tessera_scan::{run_scan, ScanConfigEnabled, ScanItem, ScanResult, ScanRoots};
 use tokio::net::TcpListener;
+use tower_http::cors::{Any, CorsLayer};
 
 pub const DEFAULT_IPC_PORT: u16 = 19792;
 
@@ -320,7 +320,9 @@ fn persist_scan(
     ))
 }
 
-async fn v1_status(State(state): State<AppState>) -> Result<Json<StatusResponse>, (axum::http::StatusCode, String)> {
+async fn v1_status(
+    State(state): State<AppState>,
+) -> Result<Json<StatusResponse>, (axum::http::StatusCode, String)> {
     let usb = state.usb.link();
     let (config, machine) = profile_snapshot(&state.profile_paths).map_err(internal)?;
     Ok(Json(StatusResponse {
@@ -341,7 +343,8 @@ async fn v1_health() -> Json<HealthResponse> {
 async fn v1_scan_last(
     State(state): State<AppState>,
 ) -> Result<Json<ScanResponse>, (axum::http::StatusCode, String)> {
-    let last = read_scan_json(&state.profile_paths.scan_json()).map_err(|e| internal(e.to_string()))?;
+    let last =
+        read_scan_json(&state.profile_paths.scan_json()).map_err(|e| internal(e.to_string()))?;
     match last {
         Some(value) => {
             let result: ScanResult =
@@ -458,10 +461,7 @@ struct LogsResponse {
     lines: Vec<String>,
 }
 
-async fn v1_logs(
-    State(state): State<AppState>,
-    Query(q): Query<LogsQuery>,
-) -> Json<LogsResponse> {
+async fn v1_logs(State(state): State<AppState>, Query(q): Query<LogsQuery>) -> Json<LogsResponse> {
     let tail = q.tail.unwrap_or(200).clamp(1, 2000);
     let mut lines = state.logs.tail(tail);
     if lines.is_empty() {
@@ -495,11 +495,7 @@ pub fn router(state: AppState) -> Router {
     // Companion UI (Tauri WKWebView) is cross-origin → need CORS on localhost IPC.
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::OPTIONS,
-        ])
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers(Any);
 
     Router::new()
@@ -518,12 +514,77 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/panel/reboot", post(v1_panel_reboot))
         .route("/v1/panel/token", post(v1_panel_token))
         .route("/v1/panel/weather", post(v1_panel_weather))
-        .route("/v1/panel/calendar/selection", post(v1_panel_calendar_selection))
-        .route("/v1/panel/calendar/add_account", post(v1_panel_calendar_add))
+        .route(
+            "/v1/panel/calendar/selection",
+            post(v1_panel_calendar_selection),
+        )
+        .route(
+            "/v1/panel/calendar/add_account",
+            post(v1_panel_calendar_add),
+        )
+        .route("/v1/calendar/client", post(v1_calendar_client))
+        .route("/v1/calendar/auth/start", post(v1_calendar_auth_start))
+        .route("/v1/calendar/auth", get(v1_calendar_auth))
+        .route("/v1/calendar/selection", post(v1_calendar_selection))
         .route("/v1/logs", get(v1_logs))
         .route("/v1/update", get(v1_update_get).post(v1_update_post))
         .layer(cors)
         .with_state(state)
+}
+
+fn calendar_paths(state: &AppState) -> tessera_caps_calendar::CalendarPaths {
+    let mut paths = tessera_caps_calendar::CalendarPaths::default_home();
+    paths.root = state.profile_paths.tessera_root.join("calendar");
+    paths
+}
+
+#[derive(Deserialize)]
+struct CalendarClientBody {
+    raw: String,
+}
+
+async fn v1_calendar_client(
+    State(state): State<AppState>,
+    Json(body): Json<CalendarClientBody>,
+) -> Result<Json<tessera_caps_calendar::AuthStatus>, (axum::http::StatusCode, String)> {
+    let paths = calendar_paths(&state);
+    tessera_caps_calendar::import_client_json(&paths, &body.raw).map_err(internal)?;
+    Ok(Json(tessera_caps_calendar::auth_status(&paths)))
+}
+
+async fn v1_calendar_auth_start(
+    State(state): State<AppState>,
+    body: String,
+) -> Json<tessera_caps_calendar::AuthStatus> {
+    let paths = calendar_paths(&state);
+    let source = if body.contains("\"tessera\"") {
+        tessera_caps_calendar::ClientSource::Tessera
+    } else {
+        tessera_caps_calendar::ClientSource::Imported
+    };
+    match tessera_caps_calendar::start_with(&paths, source) {
+        Ok(status) => Json(status),
+        Err(message) => Json(tessera_caps_calendar::AuthStatus::NeedClient { message }),
+    }
+}
+
+async fn v1_calendar_auth(State(state): State<AppState>) -> Json<tessera_caps_calendar::LocalSnapshot> {
+    let paths = calendar_paths(&state);
+    Json(tessera_caps_calendar::current_snapshot(&paths))
+}
+
+#[derive(Deserialize)]
+struct CalendarSelectionBody {
+    ids: Vec<String>,
+}
+
+async fn v1_calendar_selection(
+    State(state): State<AppState>,
+    Json(body): Json<CalendarSelectionBody>,
+) -> Result<Json<tessera_caps_calendar::LocalSnapshot>, (axum::http::StatusCode, String)> {
+    let paths = calendar_paths(&state);
+    tessera_caps_calendar::save_selection(&paths, &body.ids).map_err(internal)?;
+    Ok(Json(tessera_caps_calendar::refresh_local(&paths)))
 }
 
 async fn v1_update_get(State(state): State<AppState>) -> Json<crate::update::UpdateStatus> {
@@ -576,7 +637,10 @@ async fn v1_panel_reboot(State(state): State<AppState>) -> Json<RebootResponse> 
             method: None,
         });
     }
-    state.usb.reboot_result.store(REBOOT_PENDING, Ordering::SeqCst);
+    state
+        .usb
+        .reboot_result
+        .store(REBOOT_PENDING, Ordering::SeqCst);
     state.usb.reboot.store(true, Ordering::SeqCst);
     state.logs.append(format!(
         "{} INFO  usb: restart do painel pedido pela janela",
@@ -818,10 +882,7 @@ async fn v1_panel_calendar_selection(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<crate::panel::PanelState>, (axum::http::StatusCode, String)> {
-    let sel = body
-        .get("selection")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let sel = body.get("selection").and_then(|v| v.as_str()).unwrap_or("");
     state.logs.append(format!(
         "{} INFO  panel Mac→painel · calendar · calendários={}",
         crate::logutil::stamp(),
@@ -876,9 +937,8 @@ mod tests {
 
     fn test_state(dir: &tempfile::TempDir) -> AppState {
         let paths = ProfilePaths::from_tessera_root(dir.path());
-        let logs = Arc::new(
-            tessera_logbuf::LogBuf::with_file(paths.agentd_log(), 100).expect("test log"),
-        );
+        let logs =
+            Arc::new(tessera_logbuf::LogBuf::with_file(paths.agentd_log(), 100).expect("test log"));
         AppState::new(paths, logs)
     }
 

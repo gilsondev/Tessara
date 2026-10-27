@@ -19,7 +19,8 @@ struct Summary {
 
 Summary summarize(const ListTally *rows, int count);
 
-// Home card label: ellipsis while any visible list is still loading; the number only when all are ready.
+// Home card label: empty while any visible list is still loading (the tile shows a spinner).
+// The number appears only when every visible list is ready.
 void format_home_count(const Summary &summary, char *out, size_t cap);
 
 // A network result is stamped when it is sent. Leaving Todoist bumps the gate, so a late result is dropped.

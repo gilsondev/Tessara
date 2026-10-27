@@ -1,3 +1,4 @@
+mod claude_hook;
 mod ipc;
 mod logutil;
 mod mac_events;
@@ -8,7 +9,11 @@ mod usb_loop;
 use clap::Parser;
 
 #[derive(Parser, Debug)]
-#[command(name = "Tessera", version, about = "Companion Tessera — sync Mac ↔ painel")]
+#[command(
+    name = "Tessera",
+    version,
+    about = "Companion Tessera — sync Mac ↔ painel"
+)]
 struct Args {
     /// Print AGENT handshake line and exit (for golden/CI)
     #[arg(long)]
@@ -65,6 +70,16 @@ async fn main() {
         "agentd: machine {} ({})",
         profile.display_name, profile.machine_id
     );
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = std::path::PathBuf::from(home);
+        claude_hook::ensure(&home);
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(30));
+                claude_hook::ensure(&home);
+            }
+        });
+    }
 
     if args.once {
         let port = match args.port {
@@ -113,9 +128,7 @@ async fn main() {
     } else {
         usb_loop::print_candidate_ports();
         let logs_usb = logs.clone();
-        std::thread::spawn(move || {
-            usb_loop::run_auto(profile_paths, Some(usb_link), logs_usb)
-        });
+        std::thread::spawn(move || usb_loop::run_auto(profile_paths, Some(usb_link), logs_usb));
     }
 
     if let Err(e) = ipc::run_ipc_server(app_state).await {

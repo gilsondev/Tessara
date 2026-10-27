@@ -378,6 +378,17 @@ public:
         Serial.println(line);
     }
 
+    // Spinner on the tile and the list until every visible list has left Empty.
+    // A reply that never came still counts as loading; Failed is settled.
+    bool todoist_lists_loading() const {
+        if (!tile_on(dashboard::id_todoist())) return false;
+        if (!todoist_answered_) return true;
+        for (int i = 0; i < task_store::view_count(); ++i) {
+            if (task_store::state(i) == task_store::State::Empty) return true;
+        }
+        return false;
+    }
+
     void paint_summary() {
         if (!tile_on(dashboard::id_todoist())) return;
         todoist::ListTally rows[kMaxViews];
@@ -390,7 +401,7 @@ public:
             rows[i].count = tasks;
         }
         todoist::Summary summary = todoist::summarize(rows, count);
-        ui::set_summary(summary.total, summary.pending);
+        ui::set_summary(summary.total, todoist_lists_loading());
     }
 
     void on_settings_changed(const DeviceSettings &next) override {
@@ -688,7 +699,11 @@ public:
             task_store::fail(view, "Sem resposta do Mac.");
             changed = true;
         }
-        if (changed) ui::view_changed(ui::active_view());
+        if (changed) {
+            ui::view_changed(ui::active_view());
+            paint_summary();
+            if (ui::loader_visible()) ui::hide_loader();
+        }
     }
 
     void seed_todoist_token_to_agent() {
@@ -703,6 +718,7 @@ public:
     void ingest_todoist_usb(const todoist_bridge::Snapshot &snap) {
         todoist_awaiting_ = false;
         todoist_quiet_since_ = 0;
+        todoist_answered_ = true;
         if (!snap.linked) {
             // Stay in Views until a linked snapshot builds chips — otherwise we skip
             // set_views and the horizontal list slide never mounts.
@@ -744,7 +760,7 @@ public:
             ui::view_changed(ui::active_view());
         }
         if (refreshing_) finish_refresh();
-        if (ui::loader_visible()) ui::hide_loader();
+        else if (ui::loader_visible() && !todoist_lists_loading()) ui::hide_loader();
         paint_summary();
         publish();
     }
@@ -1517,6 +1533,7 @@ private:
         int selected = apply_visible(active_name);
         publish();
         bool first = phase_ != Phase::Running || !todoist_ui_mounted_;
+        todoist_answered_ = true;
         phase_ = Phase::Running;
         if (first || refreshing_) {
             ui::set_views(selected);
@@ -1533,6 +1550,7 @@ private:
     }
 
     void on_tasks(const net_worker::Result &result) {
+        todoist_answered_ = true;
         int view = view_for(result);
         bool fresh = todoist::accept(gate_, inflight_gen_);
         if (result.ok) {
@@ -1548,13 +1566,13 @@ private:
         }
         if (view >= 0 && wanted_ == view) wanted_ = -1;
         if (fresh && view >= 0) ui::view_changed(view);
-        else if (!fresh && ui::loader_visible()) ui::hide_loader();
+        else if (!fresh && ui::loader_visible() && !todoist_lists_loading()) ui::hide_loader();
         paint_summary();
         if (refreshing_ && refresh_next_ >= 0 && view == refresh_order(refresh_next_)) {
             ++refresh_next_;
             if (refresh_next_ >= task_store::view_count()) finish_refresh();
             else report_refresh();
-        } else if (ui::loader_visible() && view == ui::active_view()) {
+        } else if (ui::loader_visible() && !todoist_lists_loading()) {
             ui::hide_loader();
         }
     }
@@ -1702,6 +1720,8 @@ private:
     bool todoist_token_seeded_ = false;
     bool todoist_ui_mounted_ = false;
     bool todoist_awaiting_ = false;
+    // False until the first catalog or USB snapshot. The tile spinner stays up until then.
+    bool todoist_answered_ = false;
     uint32_t todoist_ask_at_ = 0;
     // First ask still unanswered; zero once a bundle lands.
     uint32_t todoist_quiet_since_ = 0;

@@ -73,12 +73,16 @@ void test_calendar_day_labels(void) {
     calendar::day_label(buf, sizeof(buf), 3, -1, 0);
     TEST_ASSERT_EQUAL_STRING("Em 3 dias", buf);
 
-    calendar::day_prefix(buf, sizeof(buf), 0, 1);
+    calendar::day_prefix(buf, sizeof(buf), 0, 27, 10, 2026);
     TEST_ASSERT_EQUAL_STRING("", buf);
-    calendar::day_prefix(buf, sizeof(buf), 1, 1);
-    TEST_ASSERT_EQUAL_STRING("Amanhã", buf);
-    calendar::day_prefix(buf, sizeof(buf), 3, 1);
-    TEST_ASSERT_EQUAL_STRING("Qui", buf);
+    calendar::day_prefix(buf, sizeof(buf), 1, 27, 10, 2026);
+    TEST_ASSERT_EQUAL_STRING("Amanhã:", buf);
+    calendar::day_prefix(buf, sizeof(buf), 3, 27, 10, 2026);
+    TEST_ASSERT_EQUAL_STRING("30/10:", buf);
+    calendar::day_prefix(buf, sizeof(buf), 6, 27, 10, 2026);
+    TEST_ASSERT_EQUAL_STRING("02/11:", buf);
+    calendar::day_prefix(buf, sizeof(buf), 3, 30, 12, 2026);
+    TEST_ASSERT_EQUAL_STRING("02/01:", buf);
 }
 
 void test_calendar_no_events_has_no_next_day(void) {
@@ -92,6 +96,33 @@ void test_calendar_rejects_non_calendar(void) {
     TEST_ASSERT_FALSE(calendar::apply_line(v, "AITOKENS\tv1\t1", 1));
     TEST_ASSERT_FALSE(calendar::apply_line(v, "CALENDAR_CATALOG\tv1\t1", 1));
     TEST_ASSERT_FALSE(v.ready);
+}
+
+void test_calendar_drops_glued_focus_line(void) {
+    calendar::View v = {};
+    const char *clean =
+        "CALENDAR\tv1\t1\t1\t0000\t0000\t1\tFeriado\t\t0\tEA4335\t0";
+    TEST_ASSERT_TRUE(calendar::apply_line(v, clean, 10));
+    TEST_ASSERT_EQUAL_INT(1, v.event_count);
+
+    // Newline lost: the Focus push sticks to the holiday line.
+    const char *glued =
+        "CALENDAR\tv1\t1\t1\t0000\t0000\t1\tFeriado\t\t0\tEA4335\t0FOCUS\tv1\t1\t1\tPessoal";
+    TEST_ASSERT_TRUE(calendar::apply_line(v, glued, 20));
+    TEST_ASSERT_EQUAL_INT(1, v.event_count);
+    TEST_ASSERT_EQUAL_STRING("Feriado", v.events[0].title);
+    TEST_ASSERT_EQUAL_INT(0, v.events[0].day_offset);
+
+    // The protocol word itself must not become the tile text, nor wipe the holiday.
+    const char *only_focus = "CALENDAR\tv1\t1\t1\t0000\t0000\t1\tFOCUS\tv1\t1\t1\tPessoal";
+    TEST_ASSERT_FALSE(calendar::apply_line(v, only_focus, 30));
+    TEST_ASSERT_EQUAL_STRING("Feriado", v.events[0].title);
+
+    const char *stuck = "CALENDAR\tv1\t1\t1\t0000\t0000\t1\tDia todoFOCUS\tv1\t1";
+    calendar::View fresh = {};
+    TEST_ASSERT_TRUE(calendar::apply_line(fresh, stuck, 40));
+    TEST_ASSERT_EQUAL_INT(1, fresh.event_count);
+    TEST_ASSERT_EQUAL_STRING("Dia todo", fresh.events[0].title);
 }
 
 void test_calendar_unlinked_and_stale(void) {

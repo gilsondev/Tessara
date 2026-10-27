@@ -44,7 +44,10 @@ export async function postScan(body = {}) {
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(20000),
   });
-  if (!r.ok) throw new Error(`scan ${r.status}`);
+  if (!r.ok) {
+    const detail = (await r.text().catch(() => "")).trim();
+    throw new Error(detail || `A varredura falhou (${r.status}).`);
+  }
   return r.json();
 }
 
@@ -200,6 +203,47 @@ export async function postCalendarSelection(selection) {
   return r.json();
 }
 
+export async function postCalendarClient(raw) {
+  const r = await fetch(agentdUrl("/v1/calendar/client"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ raw }),
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 2),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+export async function postCalendarAuthStart(source) {
+  const r = await fetch(agentdUrl("/v1/calendar/auth/start"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source: source || "json" }),
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 2),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+export async function fetchCalendarAuth() {
+  const r = await fetch(agentdUrl("/v1/calendar/auth"), {
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS),
+  });
+  if (!r.ok) throw new Error(`calendar/auth ${r.status}`);
+  return r.json();
+}
+
+export async function postCalendarSelectionLocal(ids) {
+  const r = await fetch(agentdUrl("/v1/calendar/selection"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 2),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
 export async function postCalendarAddAccount() {
   const r = await fetch(agentdUrl("/v1/panel/calendar/add_account"), {
     method: "POST",
@@ -257,11 +301,9 @@ export async function preparePermission(pane) {
  */
 export async function openPrivacySettings(pane) {
   const prep = await preparePermission(pane);
-  // Reveal Tessera.app (brand icon) in Finder for FDA — never a Terminal binary.
-  const reveal =
-    pane === "full_disk_access" || pane === "automation"
-      ? prep.binary_path || null
-      : null;
+  // Disco completo já lista o agente depois que ele lê um arquivo protegido.
+  // O usuário só liga o interruptor. Finder fica para Automação, se precisar arrastar.
+  const reveal = pane === "automation" ? prep.binary_path || null : null;
   const invoke = window.__TAURI__?.core?.invoke;
   if (typeof invoke === "function") {
     await invoke("open_privacy_settings", {

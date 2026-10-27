@@ -40,6 +40,36 @@ uint32_t parse_rgb(const char *text) {
     return static_cast<uint32_t>(strtoul(text, nullptr, 16)) & 0xFFFFFFu;
 }
 
+bool hhmm_field(const char *text) {
+    if (!text || std::strlen(text) != 4) return false;
+    for (int i = 0; i < 4; ++i) {
+        if (text[i] < '0' || text[i] > '9') return false;
+    }
+    return true;
+}
+
+// USB sometimes delivers the next capability on the same line (newline dropped).
+// Those headers are uppercase protocol words, not event titles.
+char *protocol_leak(char *text) {
+    if (!text || !text[0]) return nullptr;
+    static const char *kTokens[] = {
+        "FOCUS", "AITOKENS", "AITOKEN", "CALENDAR", "TODOIST", "MEDIA", "THEME", "AGENT", "COVER",
+    };
+    char *found = nullptr;
+    for (const char *token : kTokens) {
+        if (char *at = std::strstr(text, token)) {
+            if (!found || at < found) found = at;
+        }
+    }
+    return found;
+}
+
+void trim_tail(char *text) {
+    if (!text) return;
+    size_t n = std::strlen(text);
+    while (n > 0 && (text[n - 1] == ' ' || text[n - 1] == '\t')) text[--n] = '\0';
+}
+
 }  // namespace
 
 bool calendar::apply_line(View &view, const char *line, uint32_t now_ms) {
@@ -66,39 +96,74 @@ bool calendar::apply_line(View &view, const char *line, uint32_t now_ms) {
     if (!next_field(&cursor, field, sizeof(field))) return false;
     next.linked = field[0] == '1';
 
+    bool saw_leak = false;
     while (next.event_count < kMaxEvents) {
-        char start[8];
+        char start[16];
         char end[8];
         char allday[4];
         char title[kTitleMax];
         char location[kLocationMax];
         char duration[12];
-        char color[12];
-        char day[8];
+        char color[16];
+        char day[24];
         if (!next_field(&cursor, start, sizeof(start)) || !start[0]) break;
-        // HHMM starts with digit — stop if stream drifted into another capability.
-        if (start[0] < '0' || start[0] > '9') break;
+        // A full HHMM, not merely a leading digit: "0FOCUS" is a glued next line.
+        if (!hhmm_field(start)) {
+            if (protocol_leak(start)) saw_leak = true;
+            break;
+        }
         if (!next_field(&cursor, end, sizeof(end))) break;
+        if (!hhmm_field(end)) {
+            saw_leak = true;
+            break;
+        }
         if (!next_field(&cursor, allday, sizeof(allday))) break;
         if (!next_field(&cursor, title, sizeof(title))) break;
-        if (!next_field(&cursor, location, sizeof(location))) location[0] = '\0';
-        if (!next_field(&cursor, duration, sizeof(duration))) duration[0] = '\0';
-        if (!next_field(&cursor, color, sizeof(color))) color[0] = '\0';
-        // Optional day_offset (0=today). If the next token looks like HHMM, it's the next event.
-        day[0] = '0';
-        day[1] = '\0';
-        char *before_day = cursor;
-        if (next_field(&cursor, day, sizeof(day)) && day[0]) {
-            const bool looks_hhmm = strlen(day) == 4 && day[0] >= '0' && day[0] <= '9' &&
-                                   day[1] >= '0' && day[1] <= '9';
-            if (looks_hhmm) {
-                cursor = before_day;
+        if (char *junk = protocol_leak(title)) {
+            *junk = '\0';
+            trim_tail(title);
+            saw_leak = true;
+        }
+        if (!title[0]) break;
+        if (saw_leak) {
+            location[0] = '\0';
+            duration[0] = '\0';
+            color[0] = '\0';
+            day[0] = '0';
+            day[1] = '\0';
+        } else {
+            if (!next_field(&cursor, location, sizeof(location))) location[0] = '\0';
+            if (char *junk = protocol_leak(location)) {
+                *junk = '\0';
+                trim_tail(location);
+                saw_leak = true;
+            }
+            if (!next_field(&cursor, duration, sizeof(duration))) duration[0] = '\0';
+            if (!next_field(&cursor, color, sizeof(color))) color[0] = '\0';
+            if (protocol_leak(color)) {
+                color[0] = '\0';
+                saw_leak = true;
+            }
+            // Optional day_offset (0=today). If the next token looks like HHMM, it's the next event.
+            day[0] = '0';
+            day[1] = '\0';
+            char *before_day = cursor;
+            if (!saw_leak && next_field(&cursor, day, sizeof(day)) && day[0]) {
+                if (char *junk = protocol_leak(day)) {
+                    *junk = '\0';
+                    trim_tail(day);
+                    saw_leak = true;
+                }
+                if (hhmm_field(day)) {
+                    cursor = before_day;
+                    day[0] = '0';
+                    day[1] = '\0';
+                }
+            }
+            if (!day[0]) {
                 day[0] = '0';
                 day[1] = '\0';
             }
-        } else {
-            day[0] = '0';
-            day[1] = '\0';
         }
 
         Event &e = next.events[next.event_count++];
@@ -117,7 +182,11 @@ bool calendar::apply_line(View &view, const char *line, uint32_t now_ms) {
             e.duration_min = e.end_min - e.start_min;
         }
         e.color_rgb = parse_rgb(color);
+        if (saw_leak) break;
     }
+
+    // A glued line that yielded nothing must not wipe events already on the tile.
+    if (saw_leak && next.event_count == 0 && view.event_count > 0) return false;
 
     view = next;
     return true;
@@ -175,20 +244,39 @@ void calendar::day_label(char *out, size_t cap, int day_offset, int weekday_toda
     else snprintf(out, cap, "%s", head);
 }
 
-void calendar::day_prefix(char *out, size_t cap, int day_offset, int weekday_today) {
+static int days_in_month(int year, int month) {
+    static const int kDays[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (month < 1 || month > 12) return 30;
+    int days = kDays[month];
+    const bool leap = month == 2 && (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+    if (leap) days = 29;
+    return days;
+}
+
+void calendar::day_prefix(char *out, size_t cap, int day_offset, int day, int month, int year) {
     if (!out || cap == 0) return;
     out[0] = '\0';
     if (day_offset <= 0) return;
     if (day_offset == 1) {
-        snprintf(out, cap, "Amanhã");
+        snprintf(out, cap, "Amanhã:");
         return;
     }
-    if (weekday_today < 0) {
-        snprintf(out, cap, "+%dd", day_offset);
-        return;
+    if (day < 1 || month < 1 || month > 12 || year < 1970) return;
+    int d = day;
+    int m = month;
+    int y = year;
+    for (int i = 0; i < day_offset; ++i) {
+        ++d;
+        if (d > days_in_month(y, m)) {
+            d = 1;
+            ++m;
+            if (m > 12) {
+                m = 1;
+                ++y;
+            }
+        }
     }
-    static const char *kShort[7] = {"Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"};
-    snprintf(out, cap, "%s", kShort[(weekday_today + day_offset) % 7]);
+    snprintf(out, cap, "%02d/%02d:", d, m);
 }
 
 bool calendar::refresh_age(View &view, uint32_t now_ms) {

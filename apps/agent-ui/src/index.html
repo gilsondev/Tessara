@@ -129,7 +129,7 @@
           <div class="hero">
             <p class="eyebrow">Neste Mac · 3 de 4</p>
             <h2>Faltam autorizações do Mac</h2>
-            <p>Cada botão abre a tela certa. O Tessera já deve aparecer na lista — você só liga o interruptor.</p>
+            <p>Um interruptor só. «Tessera Agent» já está na lista de Disco completo — é só ligar. O app da pasta Aplicativos é só esta janela.</p>
           </div>
           <ul class="steps" data-live="setup-steps"></ul>
           <p class="note" data-live="setup-hint" hidden></p>
@@ -364,10 +364,8 @@
               <div class="widget-page" data-widget-page-id="org.tessera.calendar">
                 <div class="card">
                   <h3>Agenda</h3>
-                  <p class="sub" data-live="widgets-calendar-note">Contas Google via USB. Somente leitura.</p>
-                  <div class="actions" style="margin-bottom:12px">
-                    <button class="btn primary" type="button" data-action="calendar-add-account">Adicionar conta</button>
-                  </div>
+                  <p class="sub">Fonte: calendários do Google que o app Calendário já sincroniza.</p>
+                  <p class="sub" data-live="widgets-calendar-note">Verificando a agenda do Mac…</p>
                   <div data-live="widgets-calendar-list"></div>
                   <div class="field">
                     <h4>Altura do tile</h4>
@@ -379,7 +377,7 @@
                       <button type="button" data-tile-value="XL">XL</button>
                     </div>
                   </div>
-                  <p class="note">Desmarcar todos os calendários de uma conta esconde os eventos dela. Remover OAuth completo ainda é no browser do Mac na autorização.</p>
+                  <p class="note">Desmarcar um calendário tira os eventos dele do painel. A checagem continua mesmo assim.</p>
                 </div>
               </div>
               <div class="widget-page" data-widget-page-id="org.tessera.media">
@@ -435,7 +433,7 @@
               <div class="cap">
                 <div class="copy">
                   <h3>Agenda</h3>
-                  <p class="sub" data-live="mac-calendar-sub">Próximos eventos (Google Calendar)</p>
+                  <p class="sub" data-live="mac-calendar-sub">Verificando a agenda do Mac…</p>
                 </div>
                 <button class="toggle" type="button" aria-pressed="false" data-cap-toggle="calendar"></button>
               </div>
@@ -649,6 +647,7 @@
           <p class="note" data-live="agent-install-note"></p>
           <div class="actions">
             <button class="btn primary" type="button" data-action="retry-agent-install" hidden>Tentar de novo</button>
+            <button class="btn primary" type="button" data-action="install-continue-scan" hidden>Seguir para a varredura</button>
             <button class="btn ghost" type="button" data-go="home">Agora não</button>
           </div>
         </div>
@@ -710,6 +709,12 @@
               <span data-live="scan-auth-sub"></span>
             </div>
           </div>
+          <div class="card" data-live="scan-calendar" hidden>
+            <h3>Agenda no Mac</h3>
+            <p class="sub">Fonte: calendários do Google que o app Calendário já sincroniza.</p>
+            <p class="sub" data-live="scan-calendar-health">Verificando a agenda do Mac…</p>
+            <div data-live="scan-calendar-list"></div>
+          </div>
           <div class="actions">
             <button class="btn primary" type="button" data-action="scan-continue-setup">Resolver autorizações</button>
             <button class="btn ghost" type="button" data-action="scan-save-home">Salvar no perfil e usar</button>
@@ -734,7 +739,7 @@
             </div>
           </div>
           <div class="actions">
-            <button class="btn primary" type="button" data-go="scan">Começar neste Mac</button>
+            <button class="btn primary" type="button" data-go="setup-agent">Começar neste Mac</button>
             <button class="btn ghost" type="button" data-go="machines">Ver computadores</button>
           </div>
         </div>

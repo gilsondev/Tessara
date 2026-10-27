@@ -58,7 +58,7 @@ pub fn settings_url_for(pane: &str) -> Option<&'static str> {
             Some("x-apple.systempreferences:com.apple.LoginItems-Settings.extension")
         }
         "calendar" => Some(
-            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Calendars",
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles",
         ),
         _ => None,
     }
@@ -74,14 +74,17 @@ pub struct PreparePermission {
     pub hint: String,
 }
 
-/// Path shown in Privacy / Finder: prefer the agentd **app bundle** (Tessera icon).
-/// Falls back to the bare `bin/Tessera` for older installs.
+/// Path shown in Privacy / Finder. The LaunchAgent runs `Tessera Agent.app`.
+/// Older installs may still have `Tessera.app` or a bare binary.
 pub fn agentd_identity_path(home: &Path) -> std::path::PathBuf {
-    let app = home.join(".tessera/agentd/Tessera.app");
-    if app.join("Contents/MacOS/Tessera").is_file() {
-        return app;
+    let root = home.join(".tessera/agentd");
+    for name in ["Tessera Agent.app", "Tessera.app"] {
+        let app = root.join(name);
+        if app.join("Contents/MacOS/Tessera").is_file() {
+            return app;
+        }
     }
-    home.join(".tessera/agentd/bin/Tessera")
+    root.join("bin/Tessera")
 }
 
 /// Touch protected APIs so **Tessera** shows up in the Privacy list (toggle still off
@@ -96,21 +99,16 @@ pub fn prepare_permission(pane: &str, home: &Path) -> Result<PreparePermission, 
         "full_disk_access" => {
             // Reading Focus DBs registers this process with TCC (denied → listed).
             // LaunchAgent must run Contents/MacOS/Tessera inside Tessera.app for the brand icon.
-            let _ = std::fs::File::open(
-                home.join("Library/DoNotDisturb/DB/ModeConfigurations.json"),
-            );
+            let _ =
+                std::fs::File::open(home.join("Library/DoNotDisturb/DB/ModeConfigurations.json"));
             let _ = std::fs::File::open(home.join("Library/DoNotDisturb/DB/Assertions.json"));
-            let _ = std::fs::File::open(
-                home.join("Library/Application Support/com.apple.TCC/TCC.db"),
-            );
+            let _ =
+                std::fs::File::open(home.join("Library/Application Support/com.apple.TCC/TCC.db"));
         }
         "automation" => {
             // Harmless AppleEvent so Tessera appears under Automation → Shortcuts.
             let _ = Command::new("osascript")
-                .args([
-                    "-e",
-                    "tell application \"System Events\" to get name",
-                ])
+                .args(["-e", "tell application \"System Events\" to get name"])
                 .output();
         }
         "login_items" | "calendar" => {}
@@ -119,14 +117,17 @@ pub fn prepare_permission(pane: &str, home: &Path) -> Result<PreparePermission, 
 
     let hint = match pane {
         "full_disk_access" => {
-            "Na lista, ligue «Tessera» (ícone do produto — não o Terminal). Se faltar, use + e escolha Tessera.app."
+            "Na lista, ligue «Tessera Agent». Ele já aparece aí. O Tessera da pasta Aplicativos é só a janela."
                 .into()
         }
         "automation" => {
             "Em Automação, expanda Tessera e marque Shortcuts / System Events.".into()
         }
         "login_items" => "Confirme que Tessera aparece em Itens de Abertura / Em segundo plano.".into(),
-        "calendar" => "Autorize Tessera a ver o Calendário.".into(),
+        "calendar" => {
+            "A agenda sai do app Calendário. Se a checagem falhar, ligue Tessera Agent em Acesso Total ao Disco."
+                .into()
+        }
         _ => "Ligue a permissão para Tessera e volte ao app.".into(),
     };
 
@@ -210,14 +211,8 @@ pub fn run_doctor(deps: &DoctorDeps) -> DoctorReport {
 }
 
 fn summarize(checks: &[DoctorCheck]) -> String {
-    let bad = checks
-        .iter()
-        .filter(|c| c.level == "bad")
-        .count();
-    let warn = checks
-        .iter()
-        .filter(|c| c.level == "warn")
-        .count();
+    let bad = checks.iter().filter(|c| c.level == "bad").count();
+    let warn = checks.iter().filter(|c| c.level == "warn").count();
     match (bad, warn) {
         (0, 0) => "Tudo certo".to_string(),
         (1, _) => "1 coisa precisa de você".to_string(),
@@ -286,7 +281,7 @@ fn check_files(deps: &DoctorDeps) -> DoctorCheck {
             "files",
             "bad",
             "Acesso aos arquivos",
-            "Marque «Tessera» (não o Terminal) em Privacidade → Disco completo.",
+            "Na lista de Disco completo, ligue «Tessera Agent». Ele já aparece aí.",
             Some("setup"),
             Some("full_disk_access"),
         )
@@ -456,9 +451,7 @@ fn probe_full_disk_access(roots: &ScanRoots) -> bool {
     let mode_db = roots
         .home
         .join("Library/DoNotDisturb/DB/ModeConfigurations.json");
-    let assertions = roots
-        .home
-        .join("Library/DoNotDisturb/DB/Assertions.json");
+    let assertions = roots.home.join("Library/DoNotDisturb/DB/Assertions.json");
     file_readable(&mode_db) || file_readable(&assertions)
 }
 
@@ -501,12 +494,19 @@ fn probe_media(enabled: bool, scan: &ScanResult) -> (&'static str, String) {
     let mut cap = MediaCapability::with_default_watcher();
     let line = cap.build_line();
     if line.contains("\t0\t") {
-        return ("warn", "Watcher indisponível · reinstale ou autorize".into());
+        return (
+            "warn",
+            "Watcher indisponível · reinstale ou autorize".into(),
+        );
     }
     let parts: Vec<&str> = line.split('\t').collect();
     let state = parts.get(3).copied().unwrap_or("stopped");
     let app = parts.get(6).copied().unwrap_or("").trim();
-    let label = if app.is_empty() { "App de música" } else { app };
+    let label = if app.is_empty() {
+        "App de música"
+    } else {
+        app
+    };
     ("ok", format!("{label} detectado · agora: {state}"))
 }
 
@@ -606,7 +606,10 @@ mod tests {
         let files = report.checks.iter().find(|c| c.id == "files").unwrap();
         assert_eq!(files.level, "bad");
         assert_eq!(files.settings_pane.as_deref(), Some("full_disk_access"));
-        assert!(files.settings_url.as_ref().is_some_and(|u| u.contains("Privacy_AllFiles")));
+        assert!(files
+            .settings_url
+            .as_ref()
+            .is_some_and(|u| u.contains("Privacy_AllFiles")));
     }
 
     #[test]
@@ -615,14 +618,29 @@ mod tests {
         let prep = prepare_permission("full_disk_access", dir.path()).unwrap();
         assert!(prep.ok);
         assert!(prep.settings_url.contains("Privacy_AllFiles"));
-        // No Tessera.app bundle in the temp home → bare binary path.
         assert!(prep.binary_path.ends_with(".tessera/agentd/bin/Tessera"));
+        assert!(prep.hint.contains("Tessera Agent"));
+    }
+
+    #[test]
+    fn prepare_full_disk_prefers_agent_app() {
+        let dir = tempfile::tempdir().unwrap();
+        let macos = dir
+            .path()
+            .join(".tessera/agentd/Tessera Agent.app/Contents/MacOS");
+        std::fs::create_dir_all(&macos).unwrap();
+        std::fs::write(macos.join("Tessera"), b"bin").unwrap();
+        let prep = prepare_permission("full_disk_access", dir.path()).unwrap();
+        assert!(prep.binary_path.ends_with("Tessera Agent.app"));
     }
 
     #[test]
     fn push_warn_when_usb_down() {
         let report = run_doctor(&fake_deps(false, true, 0));
-        assert_eq!(report.checks.iter().find(|c| c.id == "push").unwrap().level, "warn");
+        assert_eq!(
+            report.checks.iter().find(|c| c.id == "push").unwrap().level,
+            "warn"
+        );
     }
 
     #[test]

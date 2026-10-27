@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agentd"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "axum",
  "clap",
@@ -1341,7 +1341,7 @@ dependencies = [
 
 [[package]]
 name = "tessera-caps-aitokens"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "chrono",
  "rusqlite",
@@ -1353,18 +1353,19 @@ dependencies = [
 
 [[package]]
 name = "tessera-caps-calendar"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "ureq",
 ]
 
 [[package]]
 name = "tessera-caps-focus"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -1373,7 +1374,7 @@ dependencies = [
 
 [[package]]
 name = "tessera-caps-media"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "image",
  "tessera-protocol",
@@ -1382,7 +1383,7 @@ dependencies = [
 
 [[package]]
 name = "tessera-caps-todoist"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -1392,7 +1393,7 @@ dependencies = [
 
 [[package]]
 name = "tessera-doctor"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -1404,7 +1405,7 @@ dependencies = [
 
 [[package]]
 name = "tessera-logbuf"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "serde",
  "tempfile",
@@ -1412,7 +1413,7 @@ dependencies = [
 
 [[package]]
 name = "tessera-profile"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "dirs",
  "hostname",
@@ -1426,11 +1427,11 @@ dependencies = [
 
 [[package]]
 name = "tessera-protocol"
-version = "0.1.4"
+version = "0.1.5"
 
 [[package]]
 name = "tessera-scan"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -1441,7 +1442,7 @@ dependencies = [
 
 [[package]]
 name = "tessera-usb"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "serialport",
  "tessera-protocol",

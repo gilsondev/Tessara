@@ -11,8 +11,8 @@ import {
   postPanelRefresh,
   postPanelToken,
   postPanelWeather,
-  postCalendarSelection,
-  postCalendarAddAccount,
+  fetchCalendarAuth,
+  postCalendarSelectionLocal,
   fetchUpdate,
   postUpdate,
   postScan,
@@ -62,7 +62,7 @@ const SCAN_META = {
   codex: { title: "Codex / ChatGPT", detail: "Cotas Codex / ChatGPT neste Mac" },
   media: { title: "Música", detail: "Spotify ou Apple Music neste Mac" },
   focus: { title: "Focus", detail: "Modos de concentração do macOS" },
-  calendar: { title: "Agenda", detail: "Próximos eventos (Google Calendar)" },
+  calendar: { title: "Agenda", detail: "Calendários do Google no app Calendário" },
 };
 
 const screens = [
@@ -166,10 +166,15 @@ function renderDoctorChecks(checks) {
 function renderSetupSteps(checks) {
   const list = document.querySelector('[data-live="setup-steps"]');
   if (!list) return;
-  const needed = (checks ?? []).filter((c) => {
+  let needed = (checks ?? []).filter((c) => {
     const l = String(c.level ?? "").toLowerCase();
     return c.settings_pane && (l === "bad" || l === "warn" || l === "error" || l === "fail");
   });
+  const fda = needed.filter((c) => c.settings_pane === "full_disk_access");
+  if (fda.length) {
+    const files = fda.find((c) => c.id === "files") || fda[0];
+    needed = [files, ...needed.filter((c) => c.settings_pane !== "full_disk_access")];
+  }
   if (!needed.length) {
     list.innerHTML = `<li class="done">
               <span class="n">✓</span>
@@ -262,11 +267,44 @@ function applyUsbPill(kind, label) {
   if (kind) pill.classList.add(kind);
 }
 
-function scanStateUi(state) {
-  const s = String(state ?? "").toLowerCase();
+function scanStateUi(item) {
+  const id = String(item?.id ?? "");
+  const s = String(item?.state ?? "").toLowerCase();
+  if (id === "calendar" && s === "ready") {
+    return { needClass: "ok", needText: "Saudável", canEnable: true, defaultOn: true };
+  }
+  if (id === "calendar" && s === "needs_auth") {
+    return {
+      needClass: "",
+      needText: "Checagem da agenda falhou",
+      canEnable: true,
+      defaultOn: true,
+    };
+  }
+  if (id === "calendar") {
+    return {
+      needClass: "skip",
+      needText: "Não achamos a agenda do Mac",
+      canEnable: false,
+      defaultOn: false,
+    };
+  }
+  if (id === "claude" && s === "needs_auth") {
+    return {
+      needClass: "",
+      needText: "Abra o Claude Code uma vez",
+      canEnable: true,
+      defaultOn: true,
+    };
+  }
   if (s === "ready") return { needClass: "ok", needText: "Pronto", canEnable: true, defaultOn: true };
   if (s === "needs_auth") {
-    return { needClass: "", needText: "Pede autorização", canEnable: true, defaultOn: true };
+    return {
+      needClass: "",
+      needText: "Aguardando acesso aos arquivos",
+      canEnable: true,
+      defaultOn: true,
+    };
   }
   return { needClass: "skip", needText: "Não achamos", canEnable: false, defaultOn: false };
 }
@@ -281,7 +319,7 @@ function renderScanFound(found) {
   list.innerHTML = found
     .map((item) => {
       const meta = SCAN_META[item.id] || { title: item.id, detail: "" };
-      const ui = scanStateUi(item.state);
+      const ui = scanStateUi(item);
       const on = item.enabled !== false && ui.defaultOn;
       const disabled = ui.canEnable ? "" : " disabled style=\"opacity:.45\"";
       const pressed = on && ui.canEnable ? "true" : "false";
@@ -300,26 +338,32 @@ function renderScanFound(found) {
   const needsAuth = found.filter((f) => String(f.state).toLowerCase() === "needs_auth");
   const banner = document.querySelector('[data-live="scan-auth-banner"]');
   if (banner) {
-    if (needsAuth.length) {
+    const bits = [];
+    const fda = needsAuth.filter((f) => f.id === "cursor" || f.id === "focus");
+    if (fda.length) {
+      bits.push(
+        `Acesso aos arquivos para ${fda.map((f) => SCAN_META[f.id]?.title || f.id).join(" e ")}`,
+      );
+    }
+    if (needsAuth.some((f) => f.id === "claude")) bits.push("Claude: abra o Claude Code uma vez");
+    if (needsAuth.some((f) => f.id === "calendar")) {
+      bits.push("Agenda: a checagem dos calendários do Google no Mac falhou");
+    }
+    if (bits.length) {
       banner.hidden = false;
-      const titles = needsAuth
-        .map((f) => SCAN_META[f.id]?.title || f.id)
-        .join(", ");
       const titleEl = banner.querySelector('[data-live="scan-auth-title"]');
       const subEl = banner.querySelector('[data-live="scan-auth-sub"]');
-      if (titleEl) {
-        titleEl.textContent =
-          needsAuth.length === 1
-            ? "1 autorização em falta"
-            : `${needsAuth.length} autorizações em falta`;
-      }
-      if (subEl) {
-        subEl.textContent = `${titles} — marque Tessera em Ajustes do Mac.`;
-      }
+      if (titleEl) titleEl.textContent = bits.length === 1 ? "Falta um passo" : "Faltam alguns passos";
+      if (subEl) subEl.textContent = bits.join(". ") + ".";
     } else {
       banner.hidden = true;
     }
   }
+  const cal = found.find((f) => f.id === "calendar");
+  const card = document.querySelector('[data-live="scan-calendar"]');
+  const calState = String(cal?.state ?? "").toLowerCase();
+  if (card) card.hidden = !cal || calState === "missing";
+  if (card && !card.hidden) void paintCalendarHealth();
 }
 
 function collectScanToggles() {
@@ -339,6 +383,16 @@ async function persistScanChoices({ setupCompleted, displayName } = {}) {
   const result = await postScan(body);
   lastScan = result;
   renderScanFound(result.found);
+  const enabled = (id) => toggles.find((item) => item.id === id)?.enabled;
+  try {
+    await postPanelSettings({
+      show_aitokens_cursor: !!enabled("cursor"),
+      show_aitokens_claude: !!enabled("claude"),
+      show_aitokens_codex: !!enabled("codex"),
+    });
+  } catch {
+    /* painel offline — a coleta neste Mac já ficou salva */
+  }
   try {
     const status = await fetchStatus();
     applyMachineName(status);
@@ -856,8 +910,9 @@ async function refreshMacScreen() {
     setCapToggle(
       "calendar",
       !!calendar?.enabled && calendar.state !== "missing",
-      "Próximos eventos (Google Calendar)",
+      "",
     );
+    void paintCalendarHealth();
 
     for (const id of ["cursor", "claude", "codex"]) {
       const it = item(id);
@@ -1062,52 +1117,81 @@ function paintCalendarTile(state) {
   });
 }
 
-function paintCalendarList(state) {
-  const box = document.querySelector('[data-live="widgets-calendar-list"]');
-  if (!box) return;
-  const cal = state?.calendar || {};
-  const rows = (cal.calendars || []).filter(
-    (r) => r && r.id && String(r.account || "").includes("@"),
-  );
-  if (!rows.length) {
-    box.innerHTML = `<p class="note">Nenhum calendário ainda. Adicione uma conta Google.</p>`;
-    return;
+function paintCalendarList() {
+  void paintCalendarHealth();
+}
+
+function paintCalendarSnapshot(st) {
+  const text = st?.message || "Verificando a agenda do Mac…";
+  const ok = !!st?.ok;
+  for (const sel of [
+    '[data-live="scan-calendar-health"]',
+    '[data-live="widgets-calendar-note"]',
+    '[data-live="mac-calendar-sub"]',
+  ]) {
+    const el = document.querySelector(sel);
+    if (!el) continue;
+    el.textContent = text;
+    el.classList.toggle("need", !ok);
+    el.classList.toggle("ok", ok);
   }
+  const rows = Array.isArray(st?.calendars) ? st.calendars : [];
   const by = {};
   const order = [];
   rows.forEach((r) => {
-    const a = r.account;
+    const a = r.account || "Google";
     if (!by[a]) {
       by[a] = [];
       order.push(a);
     }
     by[a].push(r);
   });
-  box.innerHTML = order
-    .map((acc) => {
-      const items = by[acc]
-        .map((r) => {
-          const color = String(r.color || "1A73E8").replace(/^#/, "");
-          return `<label class="cap" style="margin-top:8px">
-            <div class="copy" style="display:flex;align-items:center;gap:8px">
-              <i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#${escapeHtml(color)};flex:none"></i>
-              <h3 style="margin:0;font-size:14px">${escapeHtml(r.name || r.id)}</h3>
-            </div>
-            <input type="checkbox" data-cal-id="${escapeHtml(r.id)}" ${r.selected ? "checked" : ""} />
-          </label>`;
+  const html = rows.length
+    ? order
+        .map((acc) => {
+          const items = by[acc]
+            .map((r) => {
+              const color = String(r.color || "1A73E8").replace(/^#/, "");
+              return `<label class="cap" data-cal-local style="margin-top:8px">
+                <div class="copy" style="display:flex;align-items:center;gap:8px">
+                  <i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#${escapeHtml(color)};flex:none"></i>
+                  <h3 style="margin:0;font-size:14px">${escapeHtml(r.name || r.id)}</h3>
+                </div>
+                <input type="checkbox" data-cal-id="${escapeHtml(r.id)}" ${r.selected ? "checked" : ""} />
+              </label>`;
+            })
+            .join("");
+          return `<div class="agenda-acct"><h4>${escapeHtml(acc)}</h4>${items}</div>`;
         })
-        .join("");
-      return `<div class="agenda-acct"><h4>${escapeHtml(acc)}</h4>${items}</div>`;
-    })
-    .join("");
+        .join("")
+    : "";
+  for (const sel of ['[data-live="scan-calendar-list"]', '[data-live="widgets-calendar-list"]']) {
+    const box = document.querySelector(sel);
+    if (box) box.innerHTML = html;
+  }
 }
 
-async function saveAgendaSelection() {
-  const ids = [
-    ...document.querySelectorAll('[data-live="widgets-calendar-list"] input[data-cal-id]:checked'),
-  ].map((i) => i.dataset.calId);
-  const state = await postCalendarSelection(ids.join(","));
-  applyWidgetsScreen(state);
+async function paintCalendarHealth() {
+  try {
+    paintCalendarSnapshot(await fetchCalendarAuth());
+  } catch (err) {
+    paintCalendarSnapshot({
+      ok: false,
+      message: "O agente não respondeu a checagem da agenda.",
+      calendars: [],
+    });
+    console.warn(err);
+  }
+}
+
+async function saveAgendaSelection(from) {
+  const root = from?.closest(
+    "[data-live='scan-calendar-list'], [data-live='widgets-calendar-list']",
+  );
+  const ids = [...(root?.querySelectorAll("input[data-cal-id]:checked") || [])].map(
+    (i) => i.dataset.calId,
+  );
+  paintCalendarSnapshot(await postCalendarSelectionLocal(ids));
 }
 
 function setSelectedWidget(id) {
@@ -1185,16 +1269,6 @@ function applyWidgetsScreen(state) {
       ? "Token configurado neste painel. Cole um novo abaixo só para trocar."
       : "Cole o token da API do Todoist (Ajustes → Integrações → Desenvolvedor).";
   }
-  const calNote = document.querySelector('[data-live="widgets-calendar-note"]');
-  if (calNote) {
-    const cal = state.calendar || {};
-    if (cal.auth_pending) calNote.textContent = "Autorize no browser do Mac.";
-    else if (cal.linked)
-      calNote.textContent = cal.ready
-        ? "Contas ligadas · eventos ok."
-        : "Contas ligadas · aguardando eventos.";
-    else calNote.textContent = "Nenhuma conta ainda — toque em Adicionar conta.";
-  }
   const mediaStatus = document.querySelector('[data-live="widgets-media-status"]');
   if (mediaStatus) {
     mediaStatus.textContent =
@@ -1212,6 +1286,7 @@ async function refreshWidgetsScreen() {
   try {
     const state = await fetchPanelState();
     applyWidgetsScreen(state);
+    void paintCalendarHealth();
   } catch (err) {
     applyWidgetsScreen({
       ok: false,
@@ -1452,7 +1527,10 @@ function ensurePolls() {
     }, STATUS_POLL_MS);
   } else if (id === "scan-result") {
     void refreshScanResultScreen();
-    statusPollId = setInterval(() => void refreshLiveStatus(), STATUS_POLL_MS);
+    statusPollId = setInterval(() => {
+      void refreshLiveStatus();
+      void paintCalendarHealth();
+    }, STATUS_POLL_MS);
   } else if (id === "activity" && activityMode() === "simple") {
     void refreshActivitySimple();
     statusPollId = setInterval(() => {
@@ -1706,6 +1784,22 @@ async function waitForAgentStatus(ms = 20000) {
   return null;
 }
 
+/** USB handshake can land a few seconds after the agent answers. */
+async function waitForUsb(ms = 8000) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < ms) {
+    try {
+      last = await fetchStatus();
+      if (isUsbUp(last)) return last;
+    } catch {
+      /* agent dipped */
+    }
+    await sleep(500);
+  }
+  return last;
+}
+
 async function finishSetupOrScan(status) {
   if (status?.setup_completed) {
     go("home");
@@ -1721,7 +1815,9 @@ async function runAgentInstallIfNeeded(id) {
   const sub = document.querySelector('[data-live="agent-install-sub"]');
   const note = document.querySelector('[data-live="agent-install-note"]');
   const retry = document.querySelector("[data-action='retry-agent-install']");
+  const cont = document.querySelector("[data-action='install-continue-scan']");
   if (retry) retry.hidden = true;
+  if (cont) cont.hidden = true;
   bindInstallEvents();
   if (title) title.textContent = "Preparando o agente";
   if (sub) sub.textContent = "O app instala o programa que fala com o painel pelo USB.";
@@ -1747,25 +1843,36 @@ async function runAgentInstallIfNeeded(id) {
         "O agente foi instalado, mas ainda não respondeu. Confira o login deste usuário e tente de novo.",
       );
     }
-    const usbUp = isUsbUp(status);
+    paintInstallSteps([
+      { state: "done", title: "Instalado neste Mac", detail: report.message || "Agente ligado" },
+      { state: "done", title: "Agente respondendo", detail: "Dá para varrer este Mac" },
+      { state: "now", title: "Procurando o painel no USB", detail: "O cabo precisa estar encaixado neste Mac" },
+    ]);
+    if (note) note.textContent = "Procurando o painel no cabo…";
+    const seen = (await waitForUsb()) || status;
+    const usbUp = isUsbUp(seen);
     paintInstallSteps([
       { state: "done", title: "Instalado neste Mac", detail: report.message || "Agente ligado" },
       { state: "done", title: "Agente respondendo", detail: "Dá para varrer este Mac" },
       {
-        state: "done",
+        state: usbUp ? "done" : "bad",
         title: usbUp ? "Painel encontrado no cabo" : "Painel ainda não apareceu no USB",
         detail: usbUp
-          ? status.port || "Cabo falando com este Mac"
-          : "Seguimos assim mesmo. Dá para encaixar o cabo depois.",
+          ? seen.port || "Cabo falando com este Mac"
+          : "Encaixe o cabo direto na porta, sem hub, e tente de novo. A varredura do Mac não depende disso.",
       },
     ]);
     if (note) {
       note.textContent = usbUp
         ? "Painel no cabo. Seguindo para a varredura."
-        : "Agente no ar. O cabo ainda não apareceu — a varredura continua, e o painel entra quando o USB responder.";
+        : "O agente está no ar, mas o cabo não respondeu. Encaixe o painel direto na porta e tente de novo, ou siga para a varredura.";
     }
-    await sleep(700);
-    if (visibleScreenId() === "setup-agent") finishSetupOrScan(status);
+    if (usbUp) {
+      await sleep(900);
+      if (visibleScreenId() === "setup-agent") finishSetupOrScan(seen);
+    } else if (cont) {
+      cont.hidden = false;
+    }
   } catch (err) {
     const message = String(err?.message ?? err);
     if (title) title.textContent = "O agente não ficou pronto";
@@ -1793,7 +1900,12 @@ async function runScanIfNeeded(id) {
     if (gen !== scanGen || visibleScreenId() !== "scan") return;
     applyMachineName(status);
     paintScanSteps("apps");
-    setScanCopy("Varrendo este computador…", "Apps, música e o que o Mac ainda precisa autorizar.");
+    setScanCopy("Varrendo este computador…", "Apps e música neste Mac.");
+    paintScanSteps("auth");
+    setScanCopy(
+      "Conferindo autorizações do Mac",
+      "O agente lê o que já está no disco. Nenhum pedido aparece nesta etapa. Se faltar permissão, a próxima tela diz qual ligar.",
+    );
     const result = await postScan({});
     if (gen !== scanGen || visibleScreenId() !== "scan") return;
     lastScan = result;
@@ -1805,15 +1917,22 @@ async function runScanIfNeeded(id) {
   } catch (err) {
     if (gen !== scanGen || visibleScreenId() !== "scan") return;
     const offline = agentUnreachable(err);
-    const where = offline ? "agent" : "auth";
-    paintScanSteps(where, true);
+    const message = String(err?.message ?? err).trim();
+    if (offline) {
+      paintScanSteps("agent", true);
+      setScanCopy(
+        "A varredura nem começou",
+        "O agente não está no ar. Sem ele não dá para ler apps, autorizações nem o painel no USB.",
+      );
+      showScanRetry("install");
+      return;
+    }
+    paintScanSteps("auth", true);
     setScanCopy(
-      offline ? "A varredura nem começou" : "A varredura não terminou",
-      offline
-        ? "O agente não está no ar. Sem ele não dá para ler apps, autorizações nem o painel no USB."
-        : String(err?.message ?? err),
+      "A leitura das autorizações parou",
+      message || "O agente não devolveu o que o Mac deixa ler. Tente de novo.",
     );
-    showScanRetry(offline ? "install" : "retry");
+    showScanRetry("retry");
   }
 }
 
@@ -2101,22 +2220,6 @@ document.body.addEventListener("click", (e) => {
       .catch((err) => window.alert(String(err?.message ?? err)));
     return;
   }
-  const calAdd = e.target.closest("[data-action='calendar-add-account']");
-  if (calAdd) {
-    e.preventDefault();
-    void postCalendarAddAccount()
-      .then((state) => {
-        applyWidgetsScreen(state);
-        window.alert("Abrindo autorização no browser do Mac…");
-      })
-      .catch((err) =>
-        window.alert(
-          String(err?.message ?? err) +
-            "\n\nLigue o cabo ou a rede do painel.",
-        ),
-      );
-    return;
-  }
   const tileBtn = e.target.closest("[data-tile-value]");
   if (tileBtn) {
     e.preventDefault();
@@ -2269,6 +2372,12 @@ document.body.addEventListener("click", (e) => {
     void runAgentInstallIfNeeded("setup-agent");
     return;
   }
+  const installContinue = e.target.closest("[data-action='install-continue-scan']");
+  if (installContinue) {
+    e.preventDefault();
+    go("scan");
+    return;
+  }
   const scanInstall = e.target.closest("[data-action='scan-install-agent']");
   if (scanInstall) {
     e.preventDefault();
@@ -2367,7 +2476,7 @@ document.body.addEventListener("click", (e) => {
 document.body.addEventListener("change", (e) => {
   const calCheck = e.target.closest("[data-cal-id]");
   if (calCheck) {
-    void saveAgendaSelection().catch((err) => {
+    void saveAgendaSelection(calCheck).catch((err) => {
       void refreshWidgetsScreen();
       window.alert(String(err?.message ?? err));
     });
@@ -2402,24 +2511,24 @@ document.body.addEventListener("change", (e) => {
 
 async function bootScreen() {
   const hash = location.hash.replace("#", "");
+  let status = null;
+  try {
+    status = await fetchStatus();
+    lastStatus = status;
+    applyMachineName(status);
+  } catch {
+    status = null;
+  }
+  // First open installs the USB agent and says so. A saved screen must not skip that.
+  if (!status?.setup_completed) {
+    go("setup-agent");
+    return;
+  }
   if (hash && screens.some((s) => s.id === hash)) {
     go(hash);
     return;
   }
-  try {
-    const status = await fetchStatus();
-    lastStatus = status;
-    applyMachineName(status);
-    // Clean install: setup_completed stays false until the wizard writes the profile.
-    if (status?.setup_completed) {
-      go("home");
-      return;
-    }
-  } catch {
-    go("setup-agent");
-    return;
-  }
-  go("welcome");
+  go("home");
 }
 
 void bootScreen();
