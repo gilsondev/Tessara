@@ -59,6 +59,7 @@ jobs:
             if [ -d "$cand" ]; then APP="$cand"; break; fi
           done
           test -n "$APP"
+          bash tools/sign_macos_app.sh "$APP"
           cp -R "$APP" "$OUT/stage/Tessera.app"
           tar -C "$OUT/stage" -czf "$OUT/agentd.tgz" .
           tar -tzf "$OUT/agentd.tgz" | head
