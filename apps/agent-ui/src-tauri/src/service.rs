@@ -1,13 +1,16 @@
 //! launchd controls for the Tessera agent. These run in the menu-bar app so a
 //! wedged agentd can still be stopped. The agent process is never asked to kill itself.
 
-use std::path::PathBuf;
+use std::os::unix::fs::{symlink, PermissionsExt};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
 use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager};
 
 const LABEL: &str = "com.tessera.agentd";
+const MANIFEST_URL: &str = "https://gilsondev.github.io/Tessera/latest.json";
 
 #[derive(Serialize)]
 pub struct ServiceResult {
@@ -223,6 +226,7 @@ fn agent_binary() -> Result<PathBuf, String> {
     }
     let home = std::env::var("HOME").map_err(|_| "HOME não está definido".to_string())?;
     let candidates = [
+        PathBuf::from(&home).join(".tessera/agentd/bin/Tessera"),
         PathBuf::from(&home).join(".tessera/agentd/bin/agentd"),
         PathBuf::from(&home).join(".tessera/agentd/Tessera.app/Contents/MacOS/Tessera"),
     ];
@@ -285,6 +289,274 @@ fn force_reset() -> ServiceResult {
         }
         Err(e) => fail(format!("Não consegui pulsar o cabo: {e}. {}", started.message)),
     }
+}
+
+#[derive(Serialize, Clone)]
+struct InstallEvent {
+    step: &'static str,
+    message: String,
+}
+
+fn emit_install(app: &AppHandle, step: &'static str, message: impl Into<String>) {
+    let _ = app.emit(
+        "agentd-install",
+        InstallEvent {
+            step,
+            message: message.into(),
+        },
+    );
+}
+
+fn ipc_up() -> bool {
+    let out = Command::new("/usr/bin/curl")
+        .args([
+            "-fsS",
+            "--max-time",
+            "1",
+            "http://127.0.0.1:19792/v1/status",
+        ])
+        .output();
+    match out {
+        Ok(out) if out.status.success() => {
+            String::from_utf8_lossy(&out.stdout).contains("\"ok\":true")
+        }
+        _ => false,
+    }
+}
+
+fn home_dir() -> Result<PathBuf, String> {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .map_err(|_| "HOME não está definido".into())
+}
+
+fn installed_agent_bin() -> Result<PathBuf, String> {
+    Ok(home_dir()?.join(".tessera/agentd/bin/Tessera"))
+}
+
+fn bundled_agent_bin(app: &AppHandle) -> Option<PathBuf> {
+    let mut cands = Vec::new();
+    if let Ok(dir) = app.path().resource_dir() {
+        cands.push(dir.join("tessera-agentd"));
+        cands.push(dir.join("agentd"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(res) = exe.parent().and_then(|p| p.parent()) {
+            cands.push(res.join("Resources/tessera-agentd"));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+fn trusted_download(url: &str) -> bool {
+    url.starts_with("https://github.com/gilsondev/Tessera/releases/download/")
+        || url.starts_with("https://github.com/gilsondev/Tessara/releases/download/")
+}
+
+fn run_ok(cmd: &mut Command) -> Result<(), String> {
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let text = output_text(&out);
+    Err(if text.is_empty() {
+        format!("comando falhou ({})", out.status)
+    } else {
+        text
+    })
+}
+
+fn place_agent_binary(src: &Path) -> Result<PathBuf, String> {
+    let dest = installed_agent_bin()?;
+    if let Some(dir) = dest.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("criar pasta do agente: {e}"))?;
+    }
+    std::fs::copy(src, &dest).map_err(|e| format!("copiar agente: {e}"))?;
+    let mut perms = std::fs::metadata(&dest)
+        .map_err(|e| format!("ler permissões: {e}"))?
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&dest, perms).map_err(|e| format!("chmod: {e}"))?;
+    if let Some(dir) = dest.parent() {
+        let link = dir.join("agentd");
+        let _ = std::fs::remove_file(&link);
+        symlink("Tessera", &link).map_err(|e| format!("atalho agentd: {e}"))?;
+    }
+    Ok(dest)
+}
+
+fn write_plist(bin: &Path) -> Result<(), String> {
+    let home = home_dir()?;
+    let plist = plist_path()?;
+    if let Some(dir) = plist.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("LaunchAgents: {e}"))?;
+    }
+    let install_root = home.join(".tessera/agentd");
+    let log = home.join(".tessera/agentd.log");
+    std::fs::create_dir_all(&install_root).map_err(|e| format!("pasta do agente: {e}"))?;
+    let body = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>{label}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{bin}</string>
+  </array>
+  <key>WorkingDirectory</key><string>{workdir}</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>5</integer>
+  <key>StandardOutPath</key><string>{log}</string>
+  <key>StandardErrorPath</key><string>{log}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key><string>{home}</string>
+  </dict>
+</dict>
+</plist>
+"#,
+        label = LABEL,
+        bin = bin.display(),
+        workdir = install_root.display(),
+        log = log.display(),
+        home = home.display(),
+    );
+    std::fs::write(&plist, body).map_err(|e| format!("gravar plist: {e}"))?;
+    Ok(())
+}
+
+fn download_agent_binary() -> Result<PathBuf, String> {
+    let tmp = std::env::temp_dir().join(format!("tessera-agent-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).map_err(|e| format!("pasta temporária: {e}"))?;
+    let manifest = tmp.join("latest.json");
+    run_ok(
+        Command::new("/usr/bin/curl")
+            .args(["-fsSL", MANIFEST_URL, "-o"])
+            .arg(&manifest),
+    )
+    .map_err(|e| format!("não baixei a lista de versões: {e}"))?;
+    let raw = std::fs::read_to_string(&manifest).map_err(|e| e.to_string())?;
+    let doc: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("lista de versões inválida: {e}"))?;
+    let url = doc
+        .get("agentd_url")
+        .and_then(|v| v.as_str())
+        .ok_or("latest.json sem agentd_url")?;
+    if !trusted_download(url) {
+        return Err("o endereço do agente não é o release do Tessera".into());
+    }
+    let expect = doc
+        .pointer("/sha256/agentd")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let tgz = tmp.join("agentd.tgz");
+    run_ok(
+        Command::new("/usr/bin/curl")
+            .args(["-fsSL", url, "-o"])
+            .arg(&tgz),
+    )
+    .map_err(|e| format!("não baixei o agente: {e}"))?;
+    if !expect.is_empty() {
+        let out = Command::new("/usr/bin/shasum")
+            .args(["-a", "256"])
+            .arg(&tgz)
+            .output()
+            .map_err(|e| format!("shasum: {e}"))?;
+        let got = String::from_utf8_lossy(&out.stdout);
+        let got = got.split_whitespace().next().unwrap_or("");
+        if !out.status.success() || !got.eq_ignore_ascii_case(&expect) {
+            return Err("o arquivo baixado não confere com o checksum".into());
+        }
+    }
+    let stage = tmp.join("stage");
+    std::fs::create_dir_all(&stage).map_err(|e| format!("pasta do pacote: {e}"))?;
+    run_ok(
+        Command::new("/usr/bin/tar")
+            .args(["-xzf"])
+            .arg(&tgz)
+            .arg("-C")
+            .arg(&stage),
+    )
+    .map_err(|e| format!("abrir pacote: {e}"))?;
+    let src = ["bin/Tessera", "bin/agentd"]
+        .into_iter()
+        .map(|rel| stage.join(rel))
+        .find(|p| p.is_file())
+        .ok_or_else(|| "o pacote não tem bin/Tessera".to_string())?;
+    let dest = place_agent_binary(&src)?;
+    let _ = std::fs::remove_dir_all(&tmp);
+    Ok(dest)
+}
+
+fn ensure_binary(app: &AppHandle) -> Result<PathBuf, String> {
+    let dest = installed_agent_bin()?;
+    if dest.is_file() {
+        emit_install(app, "fetch", "O agente já está neste Mac.");
+        return Ok(dest);
+    }
+    if let Some(bundled) = bundled_agent_bin(app) {
+        emit_install(app, "fetch", "Copiando o agente que veio com o app…");
+        return place_agent_binary(&bundled);
+    }
+    emit_install(app, "fetch", "Baixando o agente do site do Tessera…");
+    download_agent_binary()
+}
+
+fn launch_installed(bin: &Path) -> Result<(), String> {
+    write_plist(bin)?;
+    if let Ok(target) = target() {
+        let _ = launchctl(&["bootout", &target]);
+    }
+    bootstrap()?;
+    if let Ok(target) = target() {
+        let _ = launchctl(&["kickstart", &target]);
+    }
+    Ok(())
+}
+
+fn wait_for_ipc() -> bool {
+    for _ in 0..24 {
+        if ipc_up() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    false
+}
+
+/// Install the USB agent if this Mac only has the menu-bar app, then start it.
+#[tauri::command]
+pub fn ensure_agentd(app: AppHandle) -> ServiceResult {
+    emit_install(&app, "check", "Conferindo se o agente já responde…");
+    if ipc_up() {
+        emit_install(&app, "ready", "O agente já está no ar.");
+        return ok("O agente já está no ar.");
+    }
+    let bin = match ensure_binary(&app) {
+        Ok(bin) => bin,
+        Err(e) => {
+            emit_install(&app, "error", e.clone());
+            return fail(e);
+        }
+    };
+    emit_install(&app, "register", "Registrando para abrir com o Mac…");
+    if let Err(e) = launch_installed(&bin) {
+        emit_install(&app, "error", e.clone());
+        return fail(e);
+    }
+    emit_install(&app, "start", "Esperando o agente responder…");
+    if wait_for_ipc() {
+        emit_install(&app, "ready", "Agente no ar.");
+        return ok("Agente no ar.");
+    }
+    let msg = "O agente foi instalado, mas não respondeu. Veja ~/.tessera/agentd.log".to_string();
+    emit_install(&app, "error", msg.clone());
+    fail(msg)
 }
 
 #[tauri::command]

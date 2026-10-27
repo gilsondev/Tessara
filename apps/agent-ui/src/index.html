@@ -149,14 +149,14 @@
           <div class="card">
             <div class="row">
               <div class="copy">
-                <h3>Procurando o painel…</h3>
-                <p class="sub">Deixe o cabo bem encaixado. Pode levar alguns segundos.</p>
+                <h3 data-live="cable-title">Procurando o painel…</h3>
+                <p class="sub" data-live="cable-sub">Deixe o cabo bem encaixado. Pode levar alguns segundos.</p>
               </div>
-              <div class="meta"><span class="pill warn"><i></i> Aguardando</span></div>
+              <div class="meta"><span class="pill warn" data-live="cable-pill"><i></i> Aguardando</span></div>
             </div>
           </div>
           <div class="actions">
-            <button class="btn primary" type="button" data-go="home">Simular “encontrei”</button>
+            <button class="btn primary" type="button" data-go="home">Continuar</button>
             <button class="btn ghost" type="button" data-go="setup">Voltar</button>
           </div>
           <p class="note">Se não achar: troque a porta USB, evite hub sem energia, ou toque em “Ver atividade”.</p>
@@ -638,6 +638,21 @@
           </div>
         </div>
 
+        <!-- INSTALL AGENT -->
+        <div class="screen" data-screen="setup-agent">
+          <div class="hero">
+            <p class="eyebrow">Neste Mac</p>
+            <h2 data-live="agent-install-title">Preparando o agente</h2>
+            <p data-live="agent-install-sub">O app instala o programa que fala com o painel pelo USB. Nada disso vai para a nuvem.</p>
+          </div>
+          <ul class="steps" data-live="agent-install-steps"></ul>
+          <p class="note" data-live="agent-install-note"></p>
+          <div class="actions">
+            <button class="btn primary" type="button" data-action="retry-agent-install" hidden>Tentar de novo</button>
+            <button class="btn ghost" type="button" data-go="home">Agora não</button>
+          </div>
+        </div>
+
         <!-- SCAN -->
         <div class="screen" data-screen="scan">
           <div class="progress" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i></div>
@@ -648,17 +663,19 @@
           </div>
           <div class="scan-box">
             <div class="scan-ring" aria-hidden="true"></div>
-            <h3>Varrendo este computador…</h3>
-            <p>Leva poucos segundos. Nada é enviado para a nuvem.</p>
-            <div class="scan-list">
-              <div class="done">Apps de IA</div>
-              <div class="done">Música e Focus</div>
-              <div class="now">Autorizações do Mac</div>
-              <div>Resumo para você confirmar</div>
+            <h3 data-live="scan-heading">Varrendo este computador…</h3>
+            <p data-live="scan-status">Leva poucos segundos. Nada é enviado para a nuvem.</p>
+            <div class="scan-list" data-live="scan-steps">
+              <div data-scan-step="agent">Agente neste Mac</div>
+              <div data-scan-step="apps">Apps de IA</div>
+              <div data-scan-step="media">Música e Focus</div>
+              <div data-scan-step="auth">Autorizações do Mac</div>
+              <div data-scan-step="summary">Resumo para você confirmar</div>
             </div>
           </div>
           <div class="actions">
-            <button class="btn primary" type="button" data-go="scan-result">Mostrar resultado</button>
+            <button class="btn primary" type="button" data-action="retry-scan" hidden>Tentar de novo</button>
+            <button class="btn primary" type="button" data-action="scan-install-agent" hidden>Instalar o agente</button>
             <button class="btn ghost" type="button" data-go="home">Cancelar</button>
           </div>
         </div>
@@ -704,7 +721,7 @@
           <div class="hero">
             <p class="eyebrow">Bem-vindo</p>
             <h2>Um painel. Os Macs que você usa.</h2>
-            <p>Na primeira abertura criamos o perfil deste computador, varremos o que há nele e pedimos só o que faltar autorizar.</p>
+            <p>Na primeira abertura instalamos o agente neste Mac, varremos o que há nele e pedimos só o que faltar autorizar.</p>
           </div>
           <div class="grid two">
             <div class="card">

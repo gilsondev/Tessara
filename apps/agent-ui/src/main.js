@@ -19,6 +19,7 @@ import {
   openPrivacySettings,
   postPanelReboot,
   agentdService,
+  ensureAgentd,
   panelForceReset,
   AGENTD_PORT,
   isAgentdOnline,
@@ -66,6 +67,7 @@ const SCAN_META = {
 
 const screens = [
   { id: "welcome", title: "Bem-vindo", label: "Welcome", tab: null },
+  { id: "setup-agent", title: "Instalar o agente", label: "Agente", tab: null },
   { id: "scan", title: "Varredura", label: "Varredura", tab: null },
   { id: "scan-result", title: "O que achamos", label: "Achados", tab: null },
   { id: "setup", title: "Autorizações", label: "Autorizar", tab: null },
@@ -1351,10 +1353,40 @@ async function refreshLiveStatus({ homeOnly = false } = {}) {
       );
       applyMachineName(status);
     }
+    paintCable(status);
   } catch {
     if (onHome) applyAgentdOffline();
     else applyUsbPill("err", "Painel: desconhecido");
+    paintCable(null);
   }
+}
+
+function paintCable(status) {
+  if (visibleScreenId() !== "setup-cable") return;
+  const title = document.querySelector('[data-live="cable-title"]');
+  const sub = document.querySelector('[data-live="cable-sub"]');
+  const pill = document.querySelector('[data-live="cable-pill"]');
+  if (!title || !sub || !pill) return;
+  if (!isAgentdOnline(status)) {
+    title.textContent = "O agente ainda não respondeu";
+    sub.textContent = "Sem o agente em segundo plano o USB não aparece.";
+    pill.className = "pill warn";
+    pill.innerHTML = "<i></i> Sem agente";
+    return;
+  }
+  if (isUsbUp(status)) {
+    title.textContent = "Painel encontrado no cabo";
+    sub.textContent = status.port
+      ? `Porta ${status.port}`
+      : "O cabo está falando com este Mac.";
+    pill.className = "pill";
+    pill.innerHTML = "<i></i> Conectado";
+    return;
+  }
+  title.textContent = "Ainda não vi o painel";
+  sub.textContent = "Encaixe o USB direto no Mac. Hub sem energia costuma esconder o cabo.";
+  pill.className = "pill warn";
+  pill.innerHTML = "<i></i> Aguardando";
 }
 
 async function refreshActivityLog() {
@@ -1572,19 +1604,216 @@ async function refreshPanelScreen() {
   }
 }
 
+const SCAN_STEPS = ["agent", "apps", "media", "auth", "summary"];
+let scanGen = 0;
+let agentInstallRunning = false;
+
+function paintScanSteps(active, failed = false) {
+  const idx = SCAN_STEPS.indexOf(active);
+  document.querySelectorAll("[data-scan-step]").forEach((el) => {
+    const i = SCAN_STEPS.indexOf(el.dataset.scanStep);
+    el.classList.toggle("done", i >= 0 && i < idx);
+    el.classList.toggle("now", i === idx && !failed);
+    el.classList.toggle("bad", i === idx && failed);
+  });
+}
+
+function setScanCopy(heading, status) {
+  const h = document.querySelector('[data-live="scan-heading"]');
+  const p = document.querySelector('[data-live="scan-status"]');
+  if (h) h.textContent = heading;
+  if (p) p.textContent = status;
+}
+
+function showScanRetry(mode) {
+  const retry = document.querySelector("[data-action='retry-scan']");
+  const install = document.querySelector("[data-action='scan-install-agent']");
+  if (retry) retry.hidden = mode !== "retry";
+  if (install) install.hidden = mode !== "install";
+}
+
+function agentUnreachable(err) {
+  const msg = String(err?.message ?? err);
+  const name = String(err?.name ?? "");
+  return (
+    name === "TimeoutError" ||
+    name === "AbortError" ||
+    /failed to fetch|networkerror|load failed|timed out|aborted|agentd not ok/i.test(msg)
+  );
+}
+
+function bindInstallEvents() {
+  const listen = window.__TAURI__?.event?.listen;
+  if (typeof listen !== "function" || bindInstallEvents.done) return;
+  bindInstallEvents.done = true;
+  const order = ["check", "fetch", "register", "start", "ready"];
+  listen("agentd-install", (ev) => {
+    if (visibleScreenId() !== "setup-agent") return;
+    const step = String(ev.payload?.step ?? "");
+    const message = String(ev.payload?.message ?? "");
+    const note = document.querySelector('[data-live="agent-install-note"]');
+    if (note && message) note.textContent = message;
+    const titles = [
+      "Instalando neste Mac",
+      "Esperando ele responder",
+      "Procurando o painel no USB",
+    ];
+    let active = 0;
+    if (step === "register" || step === "start") active = 1;
+    if (step === "ready") active = 2;
+    paintInstallSteps(
+      titles.map((title, i) => ({
+        state: step === "error" && i === 0 ? "bad" : i < active ? "done" : i === active ? "now" : "wait",
+        title,
+        detail: i === active ? message : "",
+      })),
+    );
+    if (!order.includes(step) && step !== "error" && message) {
+      const sub = document.querySelector('[data-live="agent-install-sub"]');
+      if (sub) sub.textContent = message;
+    }
+  });
+}
+
+function paintInstallSteps(items) {
+  const list = document.querySelector('[data-live="agent-install-steps"]');
+  if (!list) return;
+  list.innerHTML = items
+    .map((item, i) => {
+      const mark = item.state === "done" ? "✓" : item.state === "bad" ? "!" : String(i + 1);
+      return `<li class="${escapeHtml(item.state)}">
+              <span class="n">${mark}</span>
+              <div class="copy">
+                <b>${escapeHtml(item.title)}</b>
+                <span>${escapeHtml(item.detail ?? "")}</span>
+              </div>
+            </li>`;
+    })
+    .join("");
+}
+
+async function waitForAgentStatus(ms = 20000) {
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    try {
+      const status = await fetchStatus();
+      if (isAgentdOnline(status)) return status;
+    } catch {
+      /* agent still coming up */
+    }
+    await sleep(500);
+  }
+  return null;
+}
+
+async function finishSetupOrScan(status) {
+  if (status?.setup_completed) {
+    go("home");
+    return;
+  }
+  go("scan");
+}
+
+async function runAgentInstallIfNeeded(id) {
+  if (id !== "setup-agent" || agentInstallRunning) return;
+  agentInstallRunning = true;
+  const title = document.querySelector('[data-live="agent-install-title"]');
+  const sub = document.querySelector('[data-live="agent-install-sub"]');
+  const note = document.querySelector('[data-live="agent-install-note"]');
+  const retry = document.querySelector("[data-action='retry-agent-install']");
+  if (retry) retry.hidden = true;
+  bindInstallEvents();
+  if (title) title.textContent = "Preparando o agente";
+  if (sub) sub.textContent = "O app instala o programa que fala com o painel pelo USB.";
+  if (note) note.textContent = "";
+  paintInstallSteps([
+    { state: "now", title: "Instalando neste Mac", detail: "Copiando o agente e ligando em segundo plano" },
+    { state: "wait", title: "Esperando ele responder", detail: "A porta local abre em alguns segundos" },
+    { state: "wait", title: "Procurando o painel no USB", detail: "O cabo precisa estar encaixado" },
+  ]);
+  try {
+    const report = await ensureAgentd();
+    if (!report?.ok) {
+      throw new Error(report?.message || "Não consegui instalar o agente.");
+    }
+    paintInstallSteps([
+      { state: "done", title: "Instalado neste Mac", detail: report.message || "Agente ligado" },
+      { state: "now", title: "Esperando ele responder", detail: "A porta local abre em alguns segundos" },
+      { state: "wait", title: "Procurando o painel no USB", detail: "O cabo precisa estar encaixado" },
+    ]);
+    const status = await waitForAgentStatus();
+    if (!status) {
+      throw new Error(
+        "O agente foi instalado, mas ainda não respondeu. Confira o login deste usuário e tente de novo.",
+      );
+    }
+    const usbUp = isUsbUp(status);
+    paintInstallSteps([
+      { state: "done", title: "Instalado neste Mac", detail: report.message || "Agente ligado" },
+      { state: "done", title: "Agente respondendo", detail: "Dá para varrer este Mac" },
+      {
+        state: "done",
+        title: usbUp ? "Painel encontrado no cabo" : "Painel ainda não apareceu no USB",
+        detail: usbUp
+          ? status.port || "Cabo falando com este Mac"
+          : "Seguimos assim mesmo. Dá para encaixar o cabo depois.",
+      },
+    ]);
+    if (note) {
+      note.textContent = usbUp
+        ? "Painel no cabo. Seguindo para a varredura."
+        : "Agente no ar. O cabo ainda não apareceu — a varredura continua, e o painel entra quando o USB responder.";
+    }
+    await sleep(700);
+    if (visibleScreenId() === "setup-agent") finishSetupOrScan(status);
+  } catch (err) {
+    const message = String(err?.message ?? err);
+    if (title) title.textContent = "O agente não ficou pronto";
+    if (sub) sub.textContent = message;
+    paintInstallSteps([
+      { state: "bad", title: "Instalação parou", detail: message },
+      { state: "wait", title: "Esperando ele responder", detail: "" },
+      { state: "wait", title: "Procurando o painel no USB", detail: "" },
+    ]);
+    if (note) note.textContent = "Nada foi varrido. Sem o agente o painel no USB também não aparece.";
+    if (retry) retry.hidden = false;
+  } finally {
+    agentInstallRunning = false;
+  }
+}
+
 async function runScanIfNeeded(id) {
   if (id !== "scan") return;
+  const gen = ++scanGen;
+  showScanRetry(false);
+  setScanCopy("Varrendo este computador…", "Falando com o agente neste Mac.");
+  paintScanSteps("agent");
   try {
     const status = await fetchStatus();
+    if (gen !== scanGen || visibleScreenId() !== "scan") return;
     applyMachineName(status);
+    paintScanSteps("apps");
+    setScanCopy("Varrendo este computador…", "Apps, música e o que o Mac ainda precisa autorizar.");
     const result = await postScan({});
+    if (gen !== scanGen || visibleScreenId() !== "scan") return;
     lastScan = result;
-    // Short beat so the “varrendo” screen is visible, then show real profile data.
+    paintScanSteps("summary");
+    setScanCopy("Varredura pronta", "Nada foi enviado para a nuvem.");
     setTimeout(() => {
-      if (visibleScreenId() === "scan") go("scan-result");
-    }, 900);
-  } catch {
-    /* offline — stay on scan; user can cancel */
+      if (gen === scanGen && visibleScreenId() === "scan") go("scan-result");
+    }, 600);
+  } catch (err) {
+    if (gen !== scanGen || visibleScreenId() !== "scan") return;
+    const offline = agentUnreachable(err);
+    const where = offline ? "agent" : "auth";
+    paintScanSteps(where, true);
+    setScanCopy(
+      offline ? "A varredura nem começou" : "A varredura não terminou",
+      offline
+        ? "O agente não está no ar. Sem ele não dá para ler apps, autorizações nem o painel no USB."
+        : String(err?.message ?? err),
+    );
+    showScanRetry(offline ? "install" : "retry");
   }
 }
 
@@ -1600,6 +1829,7 @@ function go(id) {
   document.title = `Tessera — ${meta.title}`;
   history.replaceState(null, "", "#" + id);
   ensurePolls();
+  void runAgentInstallIfNeeded(id);
   void runScanIfNeeded(id);
 }
 
@@ -2032,6 +2262,33 @@ document.body.addEventListener("click", (e) => {
     else refreshLiveStatus();
     return;
   }
+  const retryInstall = e.target.closest("[data-action='retry-agent-install']");
+  if (retryInstall) {
+    e.preventDefault();
+    agentInstallRunning = false;
+    void runAgentInstallIfNeeded("setup-agent");
+    return;
+  }
+  const scanInstall = e.target.closest("[data-action='scan-install-agent']");
+  if (scanInstall) {
+    e.preventDefault();
+    go("setup-agent");
+    return;
+  }
+  const retryScan = e.target.closest("[data-action='retry-scan']");
+  if (retryScan) {
+    e.preventDefault();
+    void (async () => {
+      try {
+        await fetchStatus();
+      } catch {
+        go("setup-agent");
+        return;
+      }
+      void runScanIfNeeded("scan");
+    })();
+    return;
+  }
   const copyLog = e.target.closest("[data-action='copy-log']");
   if (copyLog) {
     e.preventDefault();
@@ -2045,7 +2302,7 @@ document.body.addEventListener("click", (e) => {
   if (help) {
     e.preventDefault();
     window.alert(
-      "O companion em segundo plano (Tessera) precisa estar rodando.\n\nSe instalou pelo cartão SD, rode de novo o install.command.\nOu, em desenvolvimento: mise run agentd-run\n\nDepois toque em Tentar de novo.",
+      "O agente em segundo plano precisa estar rodando para ver o painel no USB.\n\nNa primeira abertura o próprio app instala esse agente. Se ele não subiu, feche e abra o Tessera de novo.",
     );
     return;
   }
@@ -2159,7 +2416,8 @@ async function bootScreen() {
       return;
     }
   } catch {
-    /* agentd offline — show welcome */
+    go("setup-agent");
+    return;
   }
   go("welcome");
 }

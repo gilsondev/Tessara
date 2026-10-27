@@ -41,6 +41,9 @@ jobs:
         working-directory: agentd
         run: cargo build --release -p agentd
 
+      - name: Bundle agentd into the app
+        run: bash tools/bundle_agentd.sh
+
       - name: Build Tessera.app
         working-directory: apps/agent-ui
         run: npm install && npm run tauri build
@@ -50,6 +53,8 @@ jobs:
           set -euo pipefail
           OUT="$RUNNER_TEMP/tessera-smoke"
           mkdir -p "$OUT/stage/bin"
+          # tauri build can overwrite agentd/target/release/Tessera (same binary name).
+          cargo build --release -p agentd --manifest-path agentd/Cargo.toml
           install -m 755 agentd/target/release/Tessera "$OUT/stage/bin/Tessera"
           ln -sfn Tessera "$OUT/stage/bin/agentd"
           APP=""
@@ -59,6 +64,7 @@ jobs:
             if [ -d "$cand" ]; then APP="$cand"; break; fi
           done
           test -n "$APP"
+          bash tools/bundle_agentd_into_app.sh "$APP" agentd/target/release/Tessera
           bash tools/sign_macos_app.sh "$APP"
           cp -R "$APP" "$OUT/stage/Tessera.app"
           tar -C "$OUT/stage" -czf "$OUT/agentd.tgz" .

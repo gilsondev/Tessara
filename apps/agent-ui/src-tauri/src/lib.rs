@@ -97,6 +97,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_privacy_settings,
             service::agentd_service,
+            service::ensure_agentd,
             service::panel_force_reset
         ])
         .setup(|app| {

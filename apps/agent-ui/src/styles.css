@@ -732,6 +732,7 @@
   }
   .steps li.done .n { background: var(--ok-bg); color: var(--ok); }
   .steps li.now .n { background: var(--teal); color: #fff; }
+  .steps li.bad .n { background: var(--err-bg, #fde8e6); color: var(--err, #b42318); }
   .steps .copy { min-width: 0; }
   .steps b {
     display: block;
@@ -1121,6 +1122,10 @@
     background: var(--teal);
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--teal) 18%, transparent);
   }
+  .scan-list div.bad { color: var(--err, #b42318); font-weight: 650; }
+  .scan-list div.bad::before { background: var(--err, #b42318); }
+  .scan-list div.bad { color: var(--err); font-weight: 650; }
+  .scan-list div.bad::before { background: var(--err); box-shadow: none; }
 
   .titlebar { display: none; }
   .body { flex: 1; overflow: auto; }

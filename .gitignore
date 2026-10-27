@@ -8,6 +8,7 @@ agent/dist/
 agentd/dist/
 agentd/target/
 apps/agent-ui/src-tauri/target/
+apps/agent-ui/src-tauri/resources/agentd
 apps/agent-ui/src-tauri/src-tauri/
 agent/.venv/
 tmp/
