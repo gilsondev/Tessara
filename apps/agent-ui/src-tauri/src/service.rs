@@ -11,6 +11,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 const LABEL: &str = "com.tessera.agentd";
 const MANIFEST_URL: &str = "https://gilsondev.github.io/Tessera/latest.json";
+const AGENT_VERSION: &str = include_str!("../../../../VERSION");
 
 #[derive(Serialize)]
 pub struct ServiceResult {
@@ -371,7 +372,9 @@ fn place_agent_binary(src: &Path) -> Result<PathBuf, String> {
     if let Some(dir) = dest.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("criar pasta do agente: {e}"))?;
     }
-    std::fs::copy(src, &dest).map_err(|e| format!("copiar agente: {e}"))?;
+    if src != dest {
+        std::fs::copy(src, &dest).map_err(|e| format!("copiar agente: {e}"))?;
+    }
     let mut perms = std::fs::metadata(&dest)
         .map_err(|e| format!("ler permissões: {e}"))?
         .permissions();
@@ -382,7 +385,48 @@ fn place_agent_binary(src: &Path) -> Result<PathBuf, String> {
         let _ = std::fs::remove_file(&link);
         symlink("Tessera", &link).map_err(|e| format!("atalho agentd: {e}"))?;
     }
-    Ok(dest)
+    wrap_agent_app(&dest)
+}
+
+fn agent_plist() -> String {
+    let version = AGENT_VERSION.trim();
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleExecutable</key><string>Tessera</string>
+  <key>CFBundleIdentifier</key><string>dev.tessera.agentd</string>
+  <key>CFBundleName</key><string>Tessera Agent</string>
+  <key>CFBundleDisplayName</key><string>Tessera Agent</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>{version}</string>
+  <key>LSUIElement</key><true/>
+</dict></plist>
+"#
+    )
+}
+
+/// Stable TCC identity. Launchd runs this bundle, not the menu-bar app.
+fn wrap_agent_app(bin: &Path) -> Result<PathBuf, String> {
+    let home = home_dir()?;
+    let app = home.join(".tessera/agentd/Tessera Agent.app");
+    let exe = app.join("Contents/MacOS/Tessera");
+    if let Some(dir) = exe.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("criar Tessera Agent.app: {e}"))?;
+    }
+    std::fs::copy(bin, &exe).map_err(|e| format!("copiar para o app do agente: {e}"))?;
+    let mut perms = std::fs::metadata(&exe)
+        .map_err(|e| e.to_string())?
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&exe, perms).map_err(|e| e.to_string())?;
+    std::fs::write(app.join("Contents/Info.plist"), agent_plist())
+        .map_err(|e| format!("Info.plist: {e}"))?;
+    let _ = Command::new("/usr/bin/codesign")
+        .args(["--force", "--sign", "-", "--"])
+        .arg(&app)
+        .status();
+    Ok(exe)
 }
 
 fn write_plist(bin: &Path) -> Result<(), String> {
@@ -497,7 +541,7 @@ fn ensure_binary(app: &AppHandle) -> Result<PathBuf, String> {
     let dest = installed_agent_bin()?;
     if dest.is_file() {
         emit_install(app, "fetch", "O agente já está neste Mac.");
-        return Ok(dest);
+        return wrap_agent_app(&dest);
     }
     if let Some(bundled) = bundled_agent_bin(app) {
         emit_install(app, "fetch", "Copiando o agente que veio com o app…");

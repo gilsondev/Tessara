@@ -2,6 +2,7 @@
 #include "ui/tile_icons.h"
 #include "ui/home.h"
 
+#include "calendar/snapshot.h"
 #include "clock_summary.h"
 #include "domain/dashboard_layout.h"
 #include "domain/home_tile_size.h"
@@ -47,6 +48,7 @@ lv_obj_t *grid = nullptr;
 lv_obj_t *tasks_tile = nullptr;
 lv_obj_t *task_icon = nullptr;
 lv_obj_t *task_count = nullptr;
+lv_obj_t *task_spinner = nullptr;
 lv_obj_t *hello_label = nullptr;
 lv_obj_t *weather_tile = nullptr;
 lv_obj_t *weather_icon = nullptr;
@@ -64,7 +66,8 @@ lv_obj_t *calendar_tile = nullptr;
 lv_obj_t *calendar_icon = nullptr;
 lv_obj_t *calendar_glyph = nullptr;
 lv_obj_t *calendar_body = nullptr;
-lv_obj_t *calendar_lines[4] = {};
+// One line per event the panel can hold, so the day is not cut at the tile size.
+lv_obj_t *calendar_lines[calendar::kMaxEvents] = {};
 // Legacy single-line pointer kept for theme paths that still mention it.
 lv_obj_t *calendar_detail = nullptr;
 lv_obj_t *pair = nullptr;  // Música + Mac side-by-side (same band as Tarefas/Clima).
@@ -90,6 +93,7 @@ void clear_tile_ptrs() {
     tasks_tile = nullptr;
     task_icon = nullptr;
     task_count = nullptr;
+    task_spinner = nullptr;
     weather_tile = nullptr;
     weather_icon = nullptr;
     weather_glyph = nullptr;
@@ -234,9 +238,12 @@ void add_todoist_tile(lv_event_cb_t on_open) {
                       const_cast<char *>(dashboard::id_todoist()));
     replace_glyph_with_image(&task_icon, tile_icons::todoist(), theme::widget_todoist());
     task_count = lv_label_create(tasks_tile);
-    lv_label_set_text(task_count, "…");
+    lv_label_set_text(task_count, "");
     lv_obj_set_style_text_font(task_count, &theme::title_font(), 0);
     lv_obj_set_style_text_color(task_count, theme::text_primary(), 0);
+    lv_obj_add_flag(task_count, LV_OBJ_FLAG_HIDDEN);
+    // Spinner stays until every visible list has its tasks. The number replaces it.
+    task_spinner = TsSpinner(tasks_tile, 28, 4);
 }
 
 void add_weather_tile(lv_event_cb_t on_open) {
@@ -365,6 +372,7 @@ void add_calendar_tile(lv_event_cb_t on_open) {
     lv_obj_set_style_pad_all(calendar_tile, 10, 0);
     lv_obj_set_flex_flow(calendar_tile, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(calendar_tile, 2, 0);
+    lv_obj_remove_flag(calendar_tile, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
     if (on_open) {
         lv_obj_add_flag(calendar_tile, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_flag(calendar_tile, LV_OBJ_FLAG_SCROLL_CHAIN);
@@ -402,11 +410,13 @@ void add_calendar_tile(lv_event_cb_t on_open) {
     lv_obj_set_flex_flow(calendar_body, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(calendar_body, 2, 0);
 
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < calendar::kMaxEvents; ++i) {
         calendar_lines[i] = lv_label_create(calendar_body);
         lv_label_set_text(calendar_lines[i], i == 0 ? "ligar agenda" : "");
         lv_label_set_long_mode(calendar_lines[i], LV_LABEL_LONG_DOT);
         lv_obj_set_width(calendar_lines[i], lv_pct(100));
+        // Flex otherwise keeps the full text width and the line paints past the card.
+        lv_obj_set_style_min_width(calendar_lines[i], 0, 0);
         lv_obj_set_style_text_font(calendar_lines[i], &theme::small_font(), 0);
         lv_obj_set_style_text_color(calendar_lines[i], theme::text_secondary(), 0);
         if (i > 0) lv_obj_add_flag(calendar_lines[i], LV_OBJ_FLAG_HIDDEN);
@@ -679,12 +689,19 @@ void home::arrange() {
 }
 
 void home::set_summary(int total, bool pending) {
+    if (pending) {
+        if (task_count) lv_obj_add_flag(task_count, LV_OBJ_FLAG_HIDDEN);
+        if (task_spinner) lv_obj_remove_flag(task_spinner, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    if (task_spinner) lv_obj_add_flag(task_spinner, LV_OBJ_FLAG_HIDDEN);
     if (!task_count) return;
     todoist::Summary summary = {};
     summary.total = total;
-    summary.pending = pending;
+    summary.pending = false;
     char text[16];
     todoist::format_home_count(summary, text, sizeof(text));
+    lv_obj_remove_flag(task_count, LV_OBJ_FLAG_HIDDEN);
     set_if_changed(task_count, text);
 }
 
@@ -735,12 +752,11 @@ void home::set_mac(const focus::View &view, bool agent_ok) {
 void home::set_calendar(const calendar::View &view) {
     if (!calendar_lines[0]) return;
     apply_calendar_tile_height();
-    const int max_rows = home_tile::content_rows(read_calendar_tile_size());
 
     auto show_status = [&](const char *text) {
         set_if_changed(calendar_lines[0], text);
         lv_obj_clear_flag(calendar_lines[0], LV_OBJ_FLAG_HIDDEN);
-        for (int i = 1; i < 4; ++i) {
+        for (int i = 1; i < calendar::kMaxEvents; ++i) {
             if (calendar_lines[i]) lv_obj_add_flag(calendar_lines[i], LV_OBJ_FLAG_HIDDEN);
         }
     };
@@ -750,14 +766,20 @@ void home::set_calendar(const calendar::View &view) {
     const calendar::Event *next[calendar::kMaxEvents];
     int next_n = 0;
     int next_day = -1;
-    int calendar_weekday = -1;
+    int calendar_day = 0;
+    int calendar_month = 0;
+    int calendar_year = 0;
     if (view.ready) {
         next_day = calendar::next_day(view);
         int idx[calendar::kMaxEvents];
         const int n = next_day >= 0 ? calendar::events_on_day(view, next_day, idx, calendar::kMaxEvents) : 0;
         for (int i = 0; i < n; ++i) next[next_n++] = &view.events[idx[i]];
-        int h = 0, m = 0, s = 0, d = 0, mo = 0, y = 0;
-        if (!daytime::local(h, m, s, calendar_weekday, d, mo, y)) calendar_weekday = -1;
+        int h = 0, m = 0, s = 0, wday = 0;
+        if (!daytime::local(h, m, s, wday, calendar_day, calendar_month, calendar_year)) {
+            calendar_day = 0;
+            calendar_month = 0;
+            calendar_year = 0;
+        }
     }
 
     if (!view.bridge_ok && !view.ready) {
@@ -776,17 +798,18 @@ void home::set_calendar(const calendar::View &view) {
         }
         show_status(text);
     } else {
-        const int show = next_n < max_rows ? next_n : max_rows;
-        for (int i = 0; i < 4; ++i) {
+        const int show = next_n < calendar::kMaxEvents ? next_n : calendar::kMaxEvents;
+        for (int i = 0; i < calendar::kMaxEvents; ++i) {
             if (!calendar_lines[i]) continue;
             if (i >= show) {
                 lv_obj_add_flag(calendar_lines[i], LV_OBJ_FLAG_HIDDEN);
                 continue;
             }
             const calendar::Event &e = *next[i];
-            // Day shares the line with time and title, so it is abbreviated (and empty for today).
-            char day[12];
-            calendar::day_prefix(day, sizeof(day), e.day_offset, calendar_weekday);
+            // Today has no date. Tomorrow is "Amanhã:"; later days are "DD/MM:".
+            char day[16];
+            calendar::day_prefix(day, sizeof(day), e.day_offset, calendar_day, calendar_month,
+                                 calendar_year);
             char time_text[16];
             if (e.all_day) {
                 snprintf(time_text, sizeof(time_text), day[0] ? "dia todo" : "Dia todo");

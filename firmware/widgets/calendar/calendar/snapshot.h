@@ -50,8 +50,8 @@ int events_on_day(const View &view, int day_offset, int *out, int cap);
 // `weekday_today` is 0=Sunday … 6=Saturday; pass -1 when the clock is unknown.
 void day_label(char *out, size_t cap, int day_offset, int weekday_today, int count);
 
-// Short form for the home tile, where the day shares the line with time and title:
-// empty for today, "Amanhã", then "Qua"-style abbreviations.
-void day_prefix(char *out, size_t cap, int day_offset, int weekday_today);
+// Home tile prefix when the line is not today. Empty for today, "Amanhã:" for tomorrow,
+// then "DD/MM:". `day`/`month`/`year` are today's date; pass zeros when the clock is unknown.
+void day_prefix(char *out, size_t cap, int day_offset, int day, int month, int year);
 
 }  // namespace calendar

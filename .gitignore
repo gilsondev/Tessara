@@ -2,6 +2,8 @@
 .venv/
 node_modules/
 include/secrets.h
+**/google-oauth.json
+**/tessera-client.json
 .DS_Store
 simulator/build/
 agent/dist/

@@ -1,7 +1,15 @@
-//! CALENDAR capability — Google OAuth data stays on the Mac; only snapshots
-//! and calendar catalog metadata are sent to the panel over USB.
+//! CALENDAR capability — events come from the Mac Calendar app.
+//! Only the snapshot and calendar names go to the panel over USB.
 
+mod auth;
 mod fetch;
+mod local;
+
+pub use auth::{
+    auth_status, has_tessera_client, import_client_json, list_catalog, mark_login_expired,
+    save_selection, start_account_link, start_with, AuthStatus, CalendarRow, ClientSource,
+};
+pub use local::{current_snapshot, probe, refresh_local, status_short, LocalProbe, LocalSnapshot};
 
 use std::fs;
 use std::path::PathBuf;
@@ -11,8 +19,8 @@ pub(crate) const EVENT_LIMIT: usize = 12;
 const TITLE_LIMIT: usize = 47;
 const LOCATION_LIMIT: usize = 31;
 const STATUS_LIMIT: usize = 40;
-/// How often to refresh events from Google (in-process, no external scripts).
-pub const CALENDAR_REFRESH_INTERVAL_S: u64 = 120;
+/// How often to re-read the Mac Calendar database.
+pub const CALENDAR_REFRESH_INTERVAL_S: u64 = 30;
 /// USB heartbeat for calendar snapshot (panel drops stale views).
 pub const CALENDAR_PUSH_INTERVAL_S: u64 = 30;
 
@@ -108,6 +116,8 @@ pub fn cache_age_in_days(fetched_at: &str) -> Option<i64> {
 #[derive(Debug, Clone)]
 pub struct CalendarPaths {
     pub root: PathBuf,
+    pub calendar_db: PathBuf,
+    pub accounts_db: PathBuf,
 }
 
 impl CalendarPaths {
@@ -115,8 +125,25 @@ impl CalendarPaths {
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
+        Self::under_home(home)
+    }
+
+    pub fn under_home(home: PathBuf) -> Self {
         Self {
             root: home.join(".tessera/calendar"),
+            calendar_db: home.join(
+                "Library/Group Containers/group.com.apple.calendar/Calendar.sqlitedb",
+            ),
+            accounts_db: home.join("Library/Accounts/Accounts4.sqlite"),
+        }
+    }
+
+    /// Paths that do not touch the real Calendar database. Used by tests.
+    pub fn isolated(root: PathBuf) -> Self {
+        Self {
+            calendar_db: root.join("Calendar.sqlitedb"),
+            accounts_db: root.join("Accounts4.sqlite"),
+            root,
         }
     }
 
@@ -139,23 +166,24 @@ impl CalendarPaths {
 
 pub struct CalendarCapability {
     paths: CalendarPaths,
-    selected: Vec<String>,
     last_pushed: Option<String>,
-    auth_status: String,
+    health: LocalSnapshot,
     last_refresh: Instant,
 }
 
 impl CalendarCapability {
     pub fn new(paths: CalendarPaths) -> Self {
-        let selected = fs::read_to_string(paths.selection_json())
-            .ok()
-            .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
-            .unwrap_or_default();
         Self {
             paths,
-            selected,
             last_pushed: None,
-            auth_status: String::new(),
+            health: LocalSnapshot {
+                ok: false,
+                phase: "missing".into(),
+                message: String::new(),
+                event_count: 0,
+                checked_at: String::new(),
+                calendars: Vec::new(),
+            },
             last_refresh: Instant::now()
                 .checked_sub(Duration::from_secs(CALENDAR_REFRESH_INTERVAL_S))
                 .unwrap_or_else(Instant::now),
@@ -174,21 +202,8 @@ impl CalendarCapability {
         self.last_pushed = Some(line.to_string());
     }
 
-    fn has_account(&self) -> bool {
-        fs::read_dir(self.paths.accounts_dir())
-            .ok()
-            .is_some_and(|entries| {
-                entries.flatten().any(|entry| {
-                    entry
-                        .path()
-                        .extension()
-                        .is_some_and(|extension| extension == "json")
-                })
-            })
-    }
-
     fn linked(&self) -> bool {
-        self.has_account()
+        self.health.ok
     }
 
     fn load_cached_events(&self) -> Vec<CalendarEvent> {
@@ -214,7 +229,10 @@ impl CalendarCapability {
                 Some(CalendarEvent {
                     start_hhmm: item.get("start_hhmm")?.as_str()?.to_string(),
                     end_hhmm: item.get("end_hhmm")?.as_str()?.to_string(),
-                    all_day: item.get("all_day").and_then(|v| v.as_bool()).unwrap_or(false),
+                    all_day: item
+                        .get("all_day")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
                     title: item.get("title")?.as_str()?.to_string(),
                     location: item
                         .get("location")
@@ -230,10 +248,7 @@ impl CalendarCapability {
                         .and_then(|v| v.as_str())
                         .unwrap_or("1A73E8")
                         .to_string(),
-                    day_offset: item
-                        .get("day_offset")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0) as u8,
+                    day_offset: item.get("day_offset").and_then(|v| v.as_u64()).unwrap_or(0) as u8,
                 })
             })
             .filter_map(|mut e| {
@@ -248,18 +263,20 @@ impl CalendarCapability {
             .collect()
     }
 
-    /// Refresh Google Calendar events in-process (no external scripts).
+    /// Re-read the Mac Calendar database and record whether that check is healthy.
     pub fn refresh_cache_if_due(&mut self) {
         if self.last_refresh.elapsed() < Duration::from_secs(CALENDAR_REFRESH_INTERVAL_S) {
             return;
         }
         self.last_refresh = Instant::now();
-        if !self.has_account() {
-            return;
-        }
-        match fetch::refresh_events_cache(&self.paths, &self.selected) {
-            Ok(n) => eprintln!("Tessera: calendar refresh ok ({n} eventos)"),
-            Err(err) => eprintln!("Tessera: calendar refresh: {err}"),
+        self.health = refresh_local(&self.paths);
+        if self.health.ok {
+            eprintln!(
+                "Tessera: calendar refresh ok ({} eventos)",
+                self.health.event_count
+            );
+        } else {
+            eprintln!("Tessera: calendar refresh: {}", self.health.message);
         }
     }
 
@@ -269,22 +286,10 @@ impl CalendarCapability {
     }
 
     pub fn build_catalog_lines(&self) -> Vec<String> {
-        let status = if self.has_account() {
-            if self.paths.events_cache_json().is_file() {
-                "ok"
-            } else {
-                "conta ok · sincronizando"
-            }
-        } else if self.paths.client_json().is_file() {
-            "sem conta"
-        } else {
-            "configure client.json"
-        };
-        let ok = self.has_account();
         vec![format!(
             "CALENDAR_CATALOG\tv1\t{}\t{}",
-            if ok { "1" } else { "0" },
-            wire_field(status, STATUS_LIMIT)
+            if self.health.ok { "1" } else { "0" },
+            wire_field(status_short(&self.health.phase), STATUS_LIMIT)
         )]
     }
 
@@ -297,12 +302,10 @@ impl CalendarCapability {
     }
 
     fn set_selection(&mut self, ids: Vec<String>) {
-        self.selected = ids;
-        if fs::create_dir_all(&self.paths.root).is_ok() {
-            if let Ok(json) = serde_json::to_string(&self.selected) {
-                let _ = fs::write(self.paths.selection_json(), json);
-            }
-        }
+        let _ = save_selection(&self.paths, &ids);
+        self.last_refresh = Instant::now()
+            .checked_sub(Duration::from_secs(CALENDAR_REFRESH_INTERVAL_S))
+            .unwrap_or_else(Instant::now);
     }
 
     /// Handles all legacy panel commands without starting a browser. Missing
@@ -311,22 +314,12 @@ impl CalendarCapability {
     pub fn handle_line(&mut self, text: &str) -> Vec<String> {
         let raw = text.trim();
         if raw.starts_with("CALENDAR_AUTH?") {
-            if !self.paths.client_json().is_file() {
-                self.auth_status = "falta client.json".to_string();
-                return vec![
-                    self.auth_line(false, &self.auth_status),
-                    self.build_catalog_lines().remove(0),
-                ];
-            }
-            if self.has_account() {
-                self.auth_status = "conta ligada".to_string();
-                return vec![
-                    self.auth_line(false, &self.auth_status),
-                    self.build_catalog_lines().remove(0),
-                ];
-            }
-            self.auth_status = "adicione a conta no portal".to_string();
-            return vec![self.auth_line(false, &self.auth_status)];
+            self.refresh_cache_if_due();
+            let status = status_short(&self.health.phase).to_string();
+            return vec![
+                self.auth_line(false, &status),
+                self.build_catalog_lines().remove(0),
+            ];
         }
         if raw.starts_with("CALENDAR_CATALOG?") {
             return self.build_catalog_lines();
@@ -340,9 +333,6 @@ impl CalendarCapability {
                     .map(ToOwned::to_owned)
                     .collect(),
             );
-            self.last_refresh = Instant::now()
-                .checked_sub(Duration::from_secs(CALENDAR_REFRESH_INTERVAL_S))
-                .unwrap_or_else(Instant::now);
             let mut reply = vec![self.build_events_line()];
             reply.extend(self.build_catalog_lines());
             return reply;
@@ -396,7 +386,10 @@ mod tests {
         // The panel needs the next appointment even when it is not today; it groups by day_offset.
         assert!(line.contains("Hoje"));
         assert!(line.contains("Amanhã"));
-        assert!(line.ends_with("\t1"), "last field is the day_offset: {line}");
+        assert!(
+            line.ends_with("\t1"),
+            "last field is the day_offset: {line}"
+        );
     }
 
     #[test]
@@ -421,21 +414,19 @@ mod tests {
     }
 
     #[test]
-    fn calendar_query_degrades_without_client_json() {
+    fn calendar_query_reports_a_missing_mac_calendar() {
         let temp = tempfile::tempdir().unwrap();
-        let mut cap = CalendarCapability::new(CalendarPaths {
-            root: temp.path().join("calendar"),
-        });
+        let mut cap = CalendarCapability::new(CalendarPaths::isolated(temp.path().join("calendar")));
         assert_eq!(
             cap.handle_line("CALENDAR?"),
             vec![
                 "CALENDAR\tv1\t1\t0",
-                "CALENDAR_CATALOG\tv1\t0\tconfigure client.json"
+                "CALENDAR_CATALOG\tv1\t0\tsem agenda no Mac"
             ]
         );
         assert_eq!(
             cap.handle_line("CALENDAR_AUTH?")[0],
-            "CALENDAR_AUTH\tv1\t0\tfalta client.json"
+            "CALENDAR_AUTH\tv1\t0\tsem agenda no Mac"
         );
     }
 }

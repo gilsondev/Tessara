@@ -101,6 +101,14 @@ void row_anim(void *obj, int32_t value) {
 }
 }  // namespace
 
+bool task_page::lists_pending() {
+    int count = task_store::view_count();
+    for (int i = 0; i < count; ++i) {
+        if (task_store::state(i) == task_store::State::Empty) return true;
+    }
+    return false;
+}
+
 int32_t task_page::width_for(int32_t screen_width) {
     int32_t width = screen_width - theme::kListPad * 2;
     return width < 120 ? 120 : width;
@@ -156,9 +164,17 @@ bool task_page::paint(Page &page, int view, lv_event_cb_t on_mark) {
     page.version = task_store::version(view);
     page.count = 0;
     page.built = 0;
+    page.hold_for_rest = false;
+    // One list arriving is not the whole pull. Keep the spinner until every list has settled.
+    if (task_store::state(view) != task_store::State::Failed && task_page::lists_pending()) {
+        fill_loading(page.obj);
+        page.hold_for_rest = true;
+        return false;
+    }
     switch (task_store::state(view)) {
         case task_store::State::Empty:
             fill_loading(page.obj);
+            page.hold_for_rest = true;
             return false;
         case task_store::State::Failed:
             fill_message(page.obj, task_store::error(view));

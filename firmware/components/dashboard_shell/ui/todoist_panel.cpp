@@ -117,7 +117,9 @@ void announce() {
     if (!status_label) return;
     char text[32] = "";
     int view = current.view;
-    switch (task_store::state(view)) {
+    if (task_page::lists_pending()) {
+        snprintf(text, sizeof(text), "carregando");
+    } else switch (task_store::state(view)) {
         case task_store::State::Ready: break;
         case task_store::State::Empty: snprintf(text, sizeof(text), "carregando"); break;
         case task_store::State::Failed: snprintf(text, sizeof(text), "falhou"); break;
@@ -500,6 +502,8 @@ void render_preview(int view) {
 
 // Neighbours first, then the rest outward. Lists still loading keep their live spinner instead.
 bool preview_step() {
+    // A neighbour bitmap would show tasks while the live page is still the spinner.
+    if (task_page::lists_pending()) return false;
     int count = task_store::view_count();
     // The current list must be pre-rendered too, or slides mix live capture with neighbour previews.
     if (list && active >= 0 && active < count && lv_obj_get_scroll_y(list) == 0 &&
@@ -525,6 +529,11 @@ bool idle_gate_ok() { return !hooks.idle_allowed || hooks.idle_allowed(); }
 void idle_step(lv_timer_t *) {
     if (!root || busy() || !current.obj || !idle_gate_ok()) return;
     if (task_page::reap()) return;
+    // Spinner stands in until every list has arrived. Don't cache that placeholder.
+    if (current.hold_for_rest) {
+        if (!task_page::lists_pending()) repaint();
+        return;
+    }
     if (current.version != task_store::version(current.view)) {
         repaint();
         return;

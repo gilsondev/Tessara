@@ -1,5 +1,8 @@
 //! Google Calendar fetch — refresh token + events for USB snapshot.
 //! Tokens stay on the Mac under `~/.tessera/calendar/accounts/`.
+//! The agent reads the Mac Calendar database instead. This module stays for the
+//! old account files and is not on the collection path.
+#![allow(dead_code)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -88,7 +91,17 @@ fn refresh_access_token(acc: &mut AccountFile) -> Result<(), String> {
     let resp = ureq::post(&acc.token_uri)
         .timeout(std::time::Duration::from_secs(20))
         .send_form(&form)
-        .map_err(|e| format!("token refresh: {e}"))?;
+        .map_err(|e| match e {
+            ureq::Error::Status(_, resp) => {
+                let body = resp.into_string().unwrap_or_default();
+                if login_expired(&body) {
+                    format!("login_expired: {body}")
+                } else {
+                    format!("token refresh: {body}")
+                }
+            }
+            other => format!("token refresh: {other}"),
+        })?;
     let body: Value = resp
         .into_json()
         .map_err(|e| format!("token json: {e}"))?;
@@ -102,6 +115,11 @@ fn refresh_access_token(acc: &mut AccountFile) -> Result<(), String> {
         acc.expiry = exp.to_rfc3339();
     }
     Ok(())
+}
+
+pub(crate) fn login_expired(err: &str) -> bool {
+    let lower = err.to_ascii_lowercase();
+    lower.contains("invalid_grant") || lower.contains("login_expired")
 }
 
 fn token_probably_valid(acc: &AccountFile) -> bool {
@@ -306,4 +324,16 @@ pub fn refresh_events_cache(paths: &CalendarPaths, selected: &[String]) -> Resul
     let raw = serde_json::to_string_pretty(&cache).map_err(|e| e.to_string())?;
     fs::write(paths.events_cache_json(), raw).map_err(|e| e.to_string())?;
     Ok(cache.events.len())
+}
+
+#[cfg(test)]
+mod login_tests {
+    use super::login_expired;
+
+    #[test]
+    fn flags_revoked_google_login() {
+        assert!(login_expired("login_expired: invalid_grant"));
+        assert!(login_expired("{\"error\":\"invalid_grant\"}"));
+        assert!(!login_expired("token refresh: connection refused"));
+    }
 }

@@ -9,12 +9,18 @@ on:
       - "apps/agent-ui/**"
       - ".github/workflows/agent-build.yml"
       - "mise.toml"
+      - "tools/stamp_agent_version.py"
+      - "tools/test_stamp_agent_version.py"
+      - "VERSION"
   pull_request:
     paths:
       - "agentd/**"
       - "apps/agent-ui/**"
       - ".github/workflows/agent-build.yml"
       - "mise.toml"
+      - "tools/stamp_agent_version.py"
+      - "tools/test_stamp_agent_version.py"
+      - "VERSION"
   workflow_dispatch:
 
 permissions:
@@ -32,6 +38,12 @@ jobs:
       - uses: jdx/mise-action@v2
         with:
           install: true
+
+      - name: Test the version stamper
+        run: python3 tools/test_stamp_agent_version.py
+
+      - name: Stamp manifests from VERSION
+        run: python3 tools/stamp_agent_version.py --root . --version "$(tr -d '[:space:]' < VERSION)"
 
       - name: Test agentd
         working-directory: agentd

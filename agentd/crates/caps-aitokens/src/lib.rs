@@ -107,12 +107,18 @@ impl AiTokenSource {
     }
 
     pub fn unavailable(id: &'static str) -> Self {
+        let display = match id {
+            "claude" => "abra Code",
+            "cursor" => "acesso",
+            "codex" => "login",
+            _ => "—",
+        };
         Self {
             id,
             available: false,
             kind: SourceKind::None,
             value: 0,
-            display: "—".to_string(),
+            display: display.to_string(),
             reset: String::new(),
         }
     }
@@ -644,6 +650,13 @@ fn home_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+fn claude_status_stamp() -> Option<SystemTime> {
+    let home = env::var_os("HOME")?;
+    fs::metadata(PathBuf::from(home).join(".tessera/claude_status.json"))
+        .and_then(|meta| meta.modified())
+        .ok()
+}
+
 fn now_s() -> f64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -657,6 +670,8 @@ pub struct AiTokensCapability {
     cached_at: Instant,
     last_good: HashMap<&'static str, LastGoodEntry>,
     filter: AiTokensFilter,
+    /// mtime of `claude_status.json`. A new write skips the API cache.
+    claude_stamp: Option<SystemTime>,
 }
 
 impl AiTokensCapability {
@@ -673,6 +688,7 @@ impl AiTokensCapability {
                 .unwrap_or_else(Instant::now),
             last_good: HashMap::new(),
             filter,
+            claude_stamp: None,
         }
     }
 
@@ -685,9 +701,13 @@ impl AiTokensCapability {
     }
 
     pub fn build_line(&mut self) -> String {
-        if let Some(line) = &self.cached_line {
-            if self.cached_at.elapsed() < Duration::from_secs(USAGE_CACHE_TTL_S) {
-                return line.clone();
+        let stamp = claude_status_stamp();
+        let claude_changed = stamp != self.claude_stamp;
+        if !claude_changed {
+            if let Some(line) = &self.cached_line {
+                if self.cached_at.elapsed() < Duration::from_secs(USAGE_CACHE_TTL_S) {
+                    return line.clone();
+                }
             }
         }
         let fresh = collect_sources_filtered(self.filter);
@@ -712,6 +732,7 @@ impl AiTokensCapability {
         eprintln!("Tessera: aitokens refresh ({})", summary.join(", "));
         self.cached_line = Some(line.clone());
         self.cached_at = now;
+        self.claude_stamp = stamp;
         line
     }
 
@@ -813,7 +834,8 @@ mod tests {
         assert!(
             source.display.contains("401")
                 || source.display.contains("refresh")
-                || source.display == "—",
+                || source.display == "—"
+                || source.display == "acesso",
             "display={}",
             source.display
         );

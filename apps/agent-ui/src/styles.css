@@ -257,6 +257,18 @@
     font-size: 13px;
     line-height: 1.4;
   }
+  .card .sub.need {
+    background: var(--warn-bg);
+    color: var(--warn);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .card .sub.ok {
+    background: var(--ok-bg);
+    color: var(--ok);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
   .row {
     display: flex;
     align-items: center;
@@ -681,6 +693,7 @@
     line-height: 1.2;
     cursor: pointer;
   }
+  .btn:disabled { opacity: .45; cursor: default; }
   .btn.primary { background: var(--teal); color: #fff; }
   .btn.primary:hover { background: var(--teal-press); }
   .btn.ghost {

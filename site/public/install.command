@@ -84,6 +84,25 @@ fi
 rm -rf "$INSTALL_ROOT/staging"
 
 AGENTD="$BIN_DIR/$INSTALL_BIN_NAME"
+APP="$INSTALL_ROOT/Tessera Agent.app"
+mkdir -p "$APP/Contents/MacOS"
+cp "$AGENTD" "$APP/Contents/MacOS/Tessera"
+chmod 755 "$APP/Contents/MacOS/Tessera"
+cat > "$APP/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleExecutable</key><string>Tessera</string>
+  <key>CFBundleIdentifier</key><string>dev.tessera.agentd</string>
+  <key>CFBundleName</key><string>Tessera Agent</string>
+  <key>CFBundleDisplayName</key><string>Tessera Agent</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>$VER</string>
+  <key>LSUIElement</key><true/>
+</dict></plist>
+PLIST
+codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+AGENTD="$APP/Contents/MacOS/Tessera"
 UID_NUM="$(id -u)"
 
 # Desliga o LaunchAgent Python legado, se ainda existir.
@@ -124,5 +143,7 @@ echo "Tessera Agent $VER instalado → $INSTALL_ROOT"
 echo "log: $LOG"
 echo "Site: $PAGES"
 if [ -d /Applications/Tessera.app ]; then
+  # curl não marca quarentena. Se a cópia herdou a marca de um zip do navegador, tira.
+  xattr -cr /Applications/Tessera.app 2>/dev/null || true
   open -a Tessera || true
 fi

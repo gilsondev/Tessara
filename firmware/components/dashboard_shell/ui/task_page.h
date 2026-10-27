@@ -12,7 +12,12 @@ struct Page {
     uint32_t version = 0;  // task_store version the rows were built from
     int count = 0;
     int built = 0;
+    // True while this page is the spinner because some list has not arrived yet.
+    bool hold_for_rest = false;
 };
+
+// True while any visible list is still Empty (tasks not in yet).
+bool lists_pending();
 
 void create(Page &page, lv_obj_t *parent, int32_t width);
 void destroy(Page &page);

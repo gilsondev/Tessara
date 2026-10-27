@@ -23,22 +23,18 @@ void test_summary_pending_when_a_visible_list_has_no_cache(void) {
     TEST_ASSERT_TRUE(summary.pending);
 }
 
-void test_home_count_shows_partial_while_lists_warm(void) {
+void test_home_count_blank_while_any_list_loads(void) {
     todoist::Summary summary = {};
     summary.total = 3;
     summary.pending = true;
-    char text[16];
+    char text[16] = "x";
     todoist::format_home_count(summary, text, sizeof(text));
-    TEST_ASSERT_EQUAL_STRING("3", text);
-}
+    TEST_ASSERT_EQUAL_STRING("", text);
 
-void test_home_count_ellipsis_only_when_nothing_ready(void) {
-    todoist::Summary summary = {};
     summary.total = 0;
-    summary.pending = true;
-    char text[16];
+    text[0] = 'x';
     todoist::format_home_count(summary, text, sizeof(text));
-    TEST_ASSERT_EQUAL_STRING("…", text);
+    TEST_ASSERT_EQUAL_STRING("", text);
 }
 
 void test_home_count_shows_total_when_all_ready(void) {

@@ -98,9 +98,7 @@ pub struct ScanConfigEnabled {
 impl ScanConfigEnabled {
     pub fn toggles_from_scan(found: &[ScanItem]) -> Self {
         let item = |id: &str| found.iter().find(|f| f.id == id);
-        let on = |id: &str| {
-            item(id).is_some_and(|f| f.state != ScanState::Missing)
-        };
+        let on = |id: &str| item(id).is_some_and(|f| f.state != ScanState::Missing);
         Self {
             media: on("media"),
             focus: on("focus"),
@@ -137,8 +135,8 @@ fn detect_cursor(roots: &ScanRoots, enabled: bool) -> ScanItem {
 fn detect_claude(roots: &ScanRoots, enabled: bool) -> ScanItem {
     let has_app = roots.has_app("Claude.app");
     let tessera = roots.home.join(".tessera");
-    let status_ok = tessera.join("claude_status.json").is_file()
-        || tessera.join("claude_usage_cache.json").is_file();
+    let status_ok = claude_quota_ready(&tessera.join("claude_status.json"))
+        || claude_quota_ready(&tessera.join("claude_usage_cache.json"));
     let state = if !has_app {
         ScanState::Missing
     } else if status_ok {
@@ -167,6 +165,16 @@ fn detect_codex(roots: &ScanRoots, enabled: bool) -> ScanItem {
         state,
         enabled,
     }
+}
+
+fn claude_quota_ready(path: &Path) -> bool {
+    let Ok(raw) = fs::read_to_string(path) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|json| json.get("percent_used").and_then(serde_json::Value::as_f64))
+        .is_some()
 }
 
 fn auth_has_access_token(path: &Path) -> bool {
@@ -200,9 +208,7 @@ fn detect_focus(roots: &ScanRoots, enabled: bool) -> ScanItem {
     let mode_db = roots
         .home
         .join("Library/DoNotDisturb/DB/ModeConfigurations.json");
-    let assertions = roots
-        .home
-        .join("Library/DoNotDisturb/DB/Assertions.json");
+    let assertions = roots.home.join("Library/DoNotDisturb/DB/Assertions.json");
     let state = if !mode_db.is_file() && !assertions.is_file() {
         ScanState::Missing
     } else if file_readable(&mode_db) || file_readable(&assertions) {
@@ -222,25 +228,13 @@ fn file_readable(path: &Path) -> bool {
 }
 
 fn detect_calendar(roots: &ScanRoots, enabled: bool) -> ScanItem {
-    let paths = CalendarPaths {
-        root: roots.home.join(".tessera/calendar"),
-    };
-    let linked = fs::read_dir(paths.accounts_dir())
-        .ok()
-        .is_some_and(|entries| {
-            entries.flatten().any(|e| {
-                e.path()
-                    .extension()
-                    .is_some_and(|ext| ext == "json")
-            })
-        });
-    let has_client = paths.client_json().is_file();
-    let state = if linked {
-        ScanState::Ready
-    } else if has_client {
-        ScanState::NeedsAuth
-    } else {
-        ScanState::Missing
+    let paths = CalendarPaths::under_home(roots.home.clone());
+    let state = match tessera_caps_calendar::probe(&paths) {
+        tessera_caps_calendar::LocalProbe::Ready => ScanState::Ready,
+        tessera_caps_calendar::LocalProbe::Missing => ScanState::Missing,
+        tessera_caps_calendar::LocalProbe::Blocked
+        | tessera_caps_calendar::LocalProbe::Empty
+        | tessera_caps_calendar::LocalProbe::Error => ScanState::NeedsAuth,
     };
     ScanItem {
         id: "calendar".to_string(),
@@ -366,5 +360,38 @@ mod tests {
         assert!(!t.media);
         assert!(t.focus);
         assert!(!t.calendar);
+    }
+
+    #[test]
+    fn claude_needs_auth_until_status_has_a_percent() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("Applications/Claude.app")).unwrap();
+        let tessera = temp.path().join(".tessera");
+        fs::create_dir_all(&tessera).unwrap();
+        fs::write(
+            tessera.join("claude_status.json"),
+            r#"{"percent_used":null,"source":"claude_statusline"}"#,
+        )
+        .unwrap();
+        let result = run_scan(&roots(&temp), ScanConfigEnabled::default());
+        let claude = result.found.iter().find(|i| i.id == "claude").unwrap();
+        assert_eq!(claude.state, ScanState::NeedsAuth);
+
+        fs::write(
+            tessera.join("claude_status.json"),
+            r#"{"percent_used":8,"source":"claude_statusline"}"#,
+        )
+        .unwrap();
+        let result = run_scan(&roots(&temp), ScanConfigEnabled::default());
+        let claude = result.found.iter().find(|i| i.id == "claude").unwrap();
+        assert_eq!(claude.state, ScanState::Ready);
+    }
+
+    #[test]
+    fn calendar_missing_without_mac_database() {
+        let temp = tempfile::tempdir().unwrap();
+        let result = run_scan(&roots(&temp), ScanConfigEnabled::default());
+        let calendar = result.found.iter().find(|i| i.id == "calendar").unwrap();
+        assert_eq!(calendar.state, ScanState::Missing);
     }
 }
