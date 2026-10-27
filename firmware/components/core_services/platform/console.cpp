@@ -68,6 +68,8 @@ void dispatch(char *text, ConsoleHandler &handler) {
         handler.on_theme(text);
     } else if (!strcmp(text, "REST") || !strncmp(text, "REST ", 5)) {
         handler.on_rest(!strcmp(text, "REST") ? "" : text + 5);
+    } else if (!strcmp(text, "REBOOT")) {
+        handler.on_reboot();
     }
 }
 }  // namespace

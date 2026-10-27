@@ -1,8 +1,9 @@
 //! Localhost HTTP IPC for companion UI (127.0.0.1 only).
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::extract::{Query, State};
 use axum::http::Method;
@@ -37,9 +38,76 @@ impl UsbLink {
     }
 }
 
+/// USB session facts the UI can read even while a capability call is blocked.
+pub struct UsbHub {
+    pub link: RwLock<UsbLink>,
+    pub port: RwLock<String>,
+    /// Unix seconds of the last finished USB-loop turn. `0` means never.
+    pub last_unix: AtomicU64,
+    pub reboot: AtomicBool,
+}
+
+impl UsbHub {
+    pub fn new() -> Self {
+        Self {
+            link: RwLock::new(UsbLink::Disconnected),
+            port: RwLock::new(String::new()),
+            last_unix: AtomicU64::new(0),
+            reboot: AtomicBool::new(false),
+        }
+    }
+
+    pub fn link(&self) -> UsbLink {
+        self.link
+            .read()
+            .map(|g| *g)
+            .unwrap_or(UsbLink::Disconnected)
+    }
+
+    pub fn set_up(&self, up: bool) {
+        if let Ok(mut guard) = self.link.write() {
+            *guard = if up {
+                UsbLink::Up
+            } else {
+                UsbLink::Disconnected
+            };
+        }
+    }
+
+    pub fn set_port(&self, path: &str) {
+        if let Ok(mut guard) = self.port.write() {
+            *guard = path.to_string();
+        }
+    }
+
+    pub fn port(&self) -> String {
+        self.port.read().map(|g| g.clone()).unwrap_or_default()
+    }
+
+    pub fn touch(&self) {
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.last_unix.store(secs, Ordering::Relaxed);
+    }
+
+    pub fn age_secs(&self) -> Option<u64> {
+        let then = self.last_unix.load(Ordering::Relaxed);
+        if then == 0 {
+            return None;
+        }
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        Some(now.saturating_sub(then))
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
-    pub usb: Arc<RwLock<UsbLink>>,
+    pub usb: Arc<UsbHub>,
     pub profile_paths: ProfilePaths,
     pub logs: SharedLogBuf,
     pub push_queue_depth: Arc<AtomicUsize>,
@@ -50,7 +118,7 @@ impl AppState {
     pub fn new(profile_paths: ProfilePaths, logs: SharedLogBuf) -> Self {
         let update = crate::update::UpdateService::new(profile_paths.clone(), Some(logs.clone()));
         Self {
-            usb: Arc::new(RwLock::new(UsbLink::Disconnected)),
+            usb: Arc::new(UsbHub::new()),
             profile_paths,
             logs,
             push_queue_depth: Arc::new(AtomicUsize::new(0)),
@@ -81,6 +149,8 @@ struct StatusResponse {
     ok: bool,
     version: &'static str,
     usb: &'static str,
+    port: String,
+    last_usb_age_s: Option<u64>,
     setup_completed: bool,
     machine: MachineStatus,
 }
@@ -243,12 +313,14 @@ fn persist_scan(
 }
 
 async fn v1_status(State(state): State<AppState>) -> Result<Json<StatusResponse>, (axum::http::StatusCode, String)> {
-    let usb = *state.usb.read().expect("usb lock");
+    let usb = state.usb.link();
     let (config, machine) = profile_snapshot(&state.profile_paths).map_err(internal)?;
     Ok(Json(StatusResponse {
         ok: true,
         version: env!("CARGO_PKG_VERSION"),
         usb: usb.as_str(),
+        port: state.usb.port(),
+        last_usb_age_s: state.usb.age_secs(),
         setup_completed: config.setup_completed,
         machine,
     }))
@@ -324,7 +396,7 @@ async fn v1_machines(
 async fn v1_doctor(
     State(state): State<AppState>,
 ) -> Result<Json<DoctorReport>, (axum::http::StatusCode, String)> {
-    let usb = *state.usb.read().expect("usb lock");
+    let usb = state.usb.link();
     let (config, _) = profile_snapshot(&state.profile_paths).map_err(internal)?;
     let roots = tessera_scan::ScanRoots::default_home();
     let deps = DoctorDeps::live(
@@ -435,6 +507,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/panel/widget_settings", post(v1_panel_widget_settings))
         .route("/v1/panel/dashboard", post(v1_panel_dashboard))
         .route("/v1/panel/refresh", post(v1_panel_refresh))
+        .route("/v1/panel/reboot", post(v1_panel_reboot))
         .route("/v1/panel/token", post(v1_panel_token))
         .route("/v1/panel/weather", post(v1_panel_weather))
         .route("/v1/panel/calendar/selection", post(v1_panel_calendar_selection))
@@ -476,6 +549,35 @@ async fn v1_update_post(
         return Ok(Json(status));
     }
     Ok(Json(state.update.status()))
+}
+
+#[derive(Serialize)]
+struct RebootResponse {
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    method: Option<&'static str>,
+}
+
+async fn v1_panel_reboot(State(state): State<AppState>) -> Json<RebootResponse> {
+    if state.usb.link() != UsbLink::Up {
+        return Json(RebootResponse {
+            ok: false,
+            reason: Some("usb_down"),
+            method: None,
+        });
+    }
+    state.usb.reboot.store(true, Ordering::SeqCst);
+    state.logs.append(format!(
+        "{} INFO  usb: restart do painel pedido pela janela",
+        crate::logutil::stamp()
+    ));
+    Json(RebootResponse {
+        ok: true,
+        reason: None,
+        method: Some("reboot"),
+    })
 }
 
 async fn v1_panel_state() -> Json<crate::panel::PanelState> {
@@ -771,6 +873,8 @@ mod tests {
         assert_eq!(json["ok"], true);
         assert_eq!(json["version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(json["usb"], "disconnected");
+        assert_eq!(json["port"], "");
+        assert!(json["last_usb_age_s"].is_null());
         assert_eq!(json["setup_completed"], false);
         assert!(json["machine"]["id"].is_string());
     }

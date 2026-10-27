@@ -1,3 +1,5 @@
+mod service;
+
 /// Local agentd IPC origin (must match `connect-src` in `tauri.conf.json`).
 pub const AGENTD_IPC_ORIGIN: &str = "http://127.0.0.1:19792";
 
@@ -92,7 +94,11 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![open_privacy_settings])
+        .invoke_handler(tauri::generate_handler![
+            open_privacy_settings,
+            service::agentd_service,
+            service::panel_force_reset
+        ])
         .setup(|app| {
             #[cfg(desktop)]
             {

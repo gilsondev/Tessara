@@ -17,6 +17,9 @@ import {
   postUpdate,
   postScan,
   openPrivacySettings,
+  postPanelReboot,
+  agentdService,
+  panelForceReset,
   AGENTD_PORT,
   isAgentdOnline,
   isUsbUp,
@@ -534,6 +537,79 @@ function applyHomeCapsFromDoctor(report) {
   }
 }
 
+function formatUsbAge(secs) {
+  const n = Number(secs);
+  if (!Number.isFinite(n)) return "sem troca ainda";
+  if (n < 5) return "agora";
+  if (n < 60) return `há ${n} s`;
+  const min = Math.round(n / 60);
+  if (min < 60) return `há ${min} min`;
+  return `há ${Math.round(min / 60)} h`;
+}
+
+function setDaemonResult(text) {
+  const el = document.querySelector('[data-live="daemon-result"]');
+  if (el) el.textContent = text;
+}
+
+async function refreshDaemonCard(status) {
+  const summary = document.querySelector('[data-live="daemon-summary"]');
+  const usb = document.querySelector('[data-live="daemon-usb"]');
+  if (summary) {
+    try {
+      const report = await agentdService("status");
+      summary.textContent = report?.message || "Sem resposta do processo.";
+    } catch (err) {
+      summary.textContent = String(err?.message || err);
+    }
+  }
+  if (!usb) return;
+  if (!status) {
+    usb.textContent = "Cabo: sem resposta do Agent, então a última troca não está visível.";
+    return;
+  }
+  const port = status.port ? ` · ${status.port}` : "";
+  if (isUsbUp(status)) {
+    const age = Number(status.last_usb_age_s);
+    const stale = Number.isFinite(age) && age > 60;
+    usb.textContent = stale
+      ? `Cabo aberto, mas sem troca ${formatUsbAge(age)}${port}`
+      : `Cabo aberto · última troca ${formatUsbAge(age)}${port}`;
+    return;
+  }
+  usb.textContent = status.port
+    ? `Cabo desconectado · última porta ${status.port}`
+    : "Cabo desconectado";
+}
+
+async function rebootPanel() {
+  setDaemonResult("Pedindo restart ao painel…");
+  const age = Number(lastStatus?.last_usb_age_s);
+  const stuck = isUsbUp(lastStatus) && Number.isFinite(age) && age > 60;
+  if (!stuck && isAgentdOnline(lastStatus)) {
+    try {
+      const reply = await postPanelReboot();
+      if (reply?.ok) {
+        setDaemonResult(
+          "Painel reiniciando. Se a tela não cair, o Agent força o reset pelo cabo.",
+        );
+        return;
+      }
+    } catch {
+      /* fall through to the cable pulse */
+    }
+  }
+  setDaemonResult("O cabo não responde. Encerrando o Agent e forçando o reset pelo USB…");
+  try {
+    const reply = await panelForceReset();
+    setDaemonResult(reply?.message || "Reset pedido.");
+  } catch (err) {
+    setDaemonResult(String(err?.message || err));
+  } finally {
+    refreshLiveStatus();
+  }
+}
+
 function applyAgentdOffline() {
   applyUsbPill("err", "Painel: desconhecido");
   const homeBanner = document.querySelector('[data-live="home-status-banner"]');
@@ -547,30 +623,51 @@ function applyAgentdOffline() {
   }
   const homeActions = document.querySelector('[data-live="home-agentd-actions"]');
   if (homeActions) homeActions.hidden = false;
+  void refreshDaemonCard(null);
 }
 
 function applyAgentdOnline(status) {
   const usbUp = isUsbUp(status);
-  const name = machineLabel(status);
+  const age = Number(status?.last_usb_age_s);
+  const stale = usbUp && Number.isFinite(age) && age > 60;
 
   applyUsbPill(
-    usbUp ? "ok" : "warn",
-    usbUp ? "Painel: conectado (USB)" : "Painel: desconectado",
+    stale ? "warn" : usbUp ? "ok" : "warn",
+    stale
+      ? "Painel: sem resposta"
+      : usbUp
+        ? "Painel: conectado (USB)"
+        : "Painel: desconectado",
   );
 
   const greet = document.querySelector('[data-live="home-greeting"]');
-  if (greet) greet.textContent = usbUp ? "Tudo certo por aqui." : "Falta o cabo USB.";
+  if (greet) {
+    greet.textContent = stale
+      ? "O cabo parou de responder."
+      : usbUp
+        ? "Tudo certo por aqui."
+        : "Falta o cabo USB.";
+  }
   const greetSub = document.querySelector('[data-live="home-greeting-sub"]');
   if (greetSub) {
-    greetSub.textContent = usbUp
-      ? "Música, Focus e cotas sincronizam com o painel."
-      : "Companion ok — conecte o USB para sincronizar.";
+    greetSub.textContent = stale
+      ? `Última troca ${formatUsbAge(age)}. O processo pode estar preso.`
+      : usbUp
+        ? "Música, Focus e cotas sincronizam com o painel."
+        : "Companion ok — conecte o USB para sincronizar.";
   }
 
   // Pill já mostra o USB; banner só quando precisa de ação.
   const homeBanner = document.querySelector('[data-live="home-status-banner"]');
   if (homeBanner) {
-    if (usbUp) {
+    if (stale) {
+      homeBanner.hidden = false;
+      setBannerVariant(homeBanner, "warn");
+      homeBanner.querySelector('[data-live="home-status-title"]').textContent =
+        "O Agent parou de falar com o painel";
+      homeBanner.querySelector('[data-live="home-status-sub"]').textContent =
+        "Force o término do Agent ou reinicie o painel. O processo ainda pode aparecer no ar.";
+    } else if (usbUp) {
       homeBanner.hidden = true;
     } else {
       homeBanner.hidden = false;
@@ -584,6 +681,7 @@ function applyAgentdOnline(status) {
   applyMachineName(status);
   const homeActions = document.querySelector('[data-live="home-agentd-actions"]');
   if (homeActions) homeActions.hidden = true;
+  void refreshDaemonCard(status);
   void refreshHomeCaps();
 }
 
@@ -1825,6 +1923,25 @@ document.body.addEventListener("click", (e) => {
   if (recheck) {
     e.preventDefault();
     void refreshSetupScreen().then(() => refreshDoctorScreen());
+    return;
+  }
+  const daemon = e.target.closest(
+    "[data-action='agentd-restart'], [data-action='agentd-kill'], [data-action='agentd-stop'], [data-action='agentd-start']",
+  );
+  if (daemon) {
+    e.preventDefault();
+    const action = daemon.dataset.action.replace("agentd-", "");
+    setDaemonResult("Executando…");
+    agentdService(action)
+      .then((reply) => setDaemonResult(reply?.message || "Pronto."))
+      .catch((err) => setDaemonResult(String(err?.message || err)))
+      .finally(() => refreshLiveStatus());
+    return;
+  }
+  const panelReboot = e.target.closest("[data-action='panel-reboot']");
+  if (panelReboot) {
+    e.preventDefault();
+    void rebootPanel();
     return;
   }
   const retry = e.target.closest("[data-action='retry-agentd']");

@@ -54,6 +54,21 @@ pub fn open_tessera_port(path: &str) -> Result<Box<dyn serialport::SerialPort>, 
     Ok(port)
 }
 
+/// Force an ESP32 USB-CDC reset. Only for an explicit "restart the panel" action.
+/// Normal opens must keep using `open_tessera_port`, which avoids this pulse.
+pub fn pulse_dtr(path: &str) -> Result<(), UsbError> {
+    let mut port = serialport::new(path, BAUD)
+        .timeout(Duration::from_millis(READ_TIMEOUT_MS))
+        .open()
+        .map_err(UsbError::from)?;
+    let _ = port.write_data_terminal_ready(true);
+    std::thread::sleep(Duration::from_millis(100));
+    let _ = port.write_data_terminal_ready(false);
+    std::thread::sleep(Duration::from_millis(150));
+    let _ = port.write_data_terminal_ready(true);
+    Ok(())
+}
+
 /// Write AGENT handshake line + newline (transport); callers pass protocol body without `\n`.
 pub fn write_handshake(w: &mut impl Write, line: &str) -> io::Result<()> {
     write_line(w, line)

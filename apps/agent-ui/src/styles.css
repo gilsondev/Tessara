@@ -965,6 +965,13 @@
     margin-top: 8px;
   }
 
+  .card .actions {
+    margin-top: 12px;
+  }
+  .card .note {
+    margin-top: 10px;
+  }
+
   .note {
     margin: 0;
     font-size: 12px;

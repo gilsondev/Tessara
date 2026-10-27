@@ -39,6 +39,7 @@
 #include "weather/cache.h"
 
 #include <Arduino.h>
+#include <esp_system.h>
 #include <lvgl.h>
 
 #include <cstdlib>
@@ -828,6 +829,13 @@ public:
             Serial.println("agent push off");
         }
         Serial.flush();
+    }
+
+    void on_reboot() override {
+        Serial.println("reboot");
+        Serial.flush();
+        delay(80);
+        esp_restart();
     }
 
     void on_rest(const char *arg) override {

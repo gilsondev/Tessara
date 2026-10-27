@@ -7,6 +7,10 @@ set -euo pipefail
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Cursor and CI sandboxes sometimes point Cargo at a cache. The install paths
+# below are repo-relative, so the binaries have to land in agentd/target.
+unset CARGO_TARGET_DIR
+
 echo "agent-install: building agentd…"
 (cd agentd && cargo build --release -p agentd)
 

@@ -274,6 +274,37 @@ export async function openPrivacySettings(pane) {
   return prep;
 }
 
+export async function postPanelReboot() {
+  const r = await fetch(agentdUrl("/v1/panel/reboot"), {
+    method: "POST",
+    signal: AbortSignal.timeout(IPC_TIMEOUT_MS),
+  });
+  if (!r.ok) throw new Error(`reboot ${r.status}`);
+  return r.json();
+}
+
+function tauriInvoke() {
+  return window.__TAURI__?.core?.invoke;
+}
+
+/** launchd controls. Only the Tessera.app can run these. */
+export async function agentdService(action) {
+  const invoke = tauriInvoke();
+  if (typeof invoke !== "function") {
+    throw new Error("Controle do Agent só funciona no app Tessera.");
+  }
+  return invoke("agentd_service", { action });
+}
+
+/** Stop agentd, pulse USB DTR, start agentd again. */
+export async function panelForceReset() {
+  const invoke = tauriInvoke();
+  if (typeof invoke !== "function") {
+    throw new Error("Reset do painel só funciona no app Tessera.");
+  }
+  return invoke("panel_force_reset");
+}
+
 /** agentd reachable and healthy (`ok: true` in /v1/status). */
 export function isAgentdOnline(status) {
   return status?.ok === true;

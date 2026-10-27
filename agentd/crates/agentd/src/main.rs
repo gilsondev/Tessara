@@ -13,6 +13,9 @@ struct Args {
     /// Print AGENT handshake line and exit (for golden/CI)
     #[arg(long)]
     print_agent_line: bool,
+    /// Open the panel port, pulse DTR, exit. Used when the USB session is already dead.
+    #[arg(long)]
+    pulse_dtr: bool,
     /// Serial device path (e.g. /dev/cu.usbmodem*)
     #[arg(long)]
     port: Option<String>,
@@ -27,6 +30,28 @@ async fn main() {
     if args.print_agent_line {
         println!("{}", tessera_protocol::agent_ok_line());
         return;
+    }
+    if args.pulse_dtr {
+        let path = args.port.clone().or_else(|| {
+            tessera_usb::list_candidate_ports()
+                .into_iter()
+                .next()
+                .map(|p| p.0)
+        });
+        let Some(path) = path else {
+            eprintln!("Tessera: nenhuma porta USB do painel");
+            std::process::exit(1);
+        };
+        match tessera_usb::pulse_dtr(&path) {
+            Ok(()) => {
+                eprintln!("Tessera: pulso DTR em {path}");
+                return;
+            }
+            Err(e) => {
+                eprintln!("Tessera: pulso DTR falhou em {path}: {e}");
+                std::process::exit(1);
+            }
+        }
     }
 
     let profile = match tessera_profile::load_or_init() {
