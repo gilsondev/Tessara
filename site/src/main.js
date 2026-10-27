@@ -92,11 +92,32 @@ function wireReels() {
       const gap = parseFloat(getComputedStyle(track).columnGap) || 0;
       return item.getBoundingClientRect().width + gap;
     };
+    const fitHeight = () => {
+      if (!track.classList.contains("agent-reel")) return;
+      const slides = [...track.children];
+      if (!slides.length) return;
+      const gap = parseFloat(getComputedStyle(track).columnGap) || 0;
+      const slideWidth = slides[0].getBoundingClientRect().width;
+      const step = slideWidth + gap;
+      if (step <= 0) return;
+      const heights = slides.map((slide) => {
+        const figure = slide.querySelector("figure");
+        return figure ? figure.offsetHeight : slide.offsetHeight;
+      });
+      const pad = parseFloat(getComputedStyle(track).paddingBottom) || 0;
+      const pos = track.scrollLeft / step;
+      const index = Math.min(slides.length - 1, Math.max(0, Math.floor(pos)));
+      const frac = Math.min(1, Math.max(0, pos - index));
+      const from = heights[index];
+      const to = heights[Math.min(slides.length - 1, index + 1)];
+      track.style.height = `${Math.ceil(from + (to - from) * frac + pad)}px`;
+    };
     const sync = () => {
       const max = track.scrollWidth - track.clientWidth - 1;
       reel.classList.toggle("reel-idle", max <= 4);
       if (prev) prev.disabled = track.scrollLeft <= 1;
       if (next) next.disabled = track.scrollLeft >= max;
+      fitHeight();
     };
     prev?.addEventListener("click", () => {
       track.scrollBy({ left: -distance(), behavior: "smooth" });
@@ -105,7 +126,17 @@ function wireReels() {
       track.scrollBy({ left: distance(), behavior: "smooth" });
     });
     track.addEventListener("scroll", sync, { passive: true });
-    if (typeof ResizeObserver !== "undefined") new ResizeObserver(sync).observe(track);
+    if (typeof ResizeObserver !== "undefined") {
+      const watch = new ResizeObserver(sync);
+      if (track.classList.contains("agent-reel")) {
+        track.querySelectorAll("figure").forEach((figure) => watch.observe(figure));
+      } else {
+        watch.observe(track);
+      }
+    }
+    track.querySelectorAll("img").forEach((img) => {
+      if (!img.complete) img.addEventListener("load", sync);
+    });
     sync();
   });
 }
