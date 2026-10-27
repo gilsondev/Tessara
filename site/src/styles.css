@@ -260,9 +260,10 @@ h2 {
 .shots {
   list-style: none;
   margin: 0;
-  padding: 0 0 8px;
+  padding: 0 0 22px;
   display: flex;
   gap: 28px;
+  scrollbar-width: thin;
 }
 
 .shots > li {
@@ -285,11 +286,23 @@ h2 {
 .agent-reel {
   list-style: none;
   margin: 0;
-  padding: 0 0 8px;
+  padding: 0 0 22px;
   display: flex;
   align-items: flex-start;
   gap: 28px;
   overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.shots::-webkit-scrollbar,
+.agent-reel::-webkit-scrollbar {
+  height: 8px;
+}
+
+.shots::-webkit-scrollbar-thumb,
+.agent-reel::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
 }
 
 .agent-reel > li {

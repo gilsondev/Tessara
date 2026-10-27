@@ -105,12 +105,13 @@ function wireReels() {
         return figure ? figure.offsetHeight : slide.offsetHeight;
       });
       const pad = parseFloat(getComputedStyle(track).paddingBottom) || 0;
+      const bar = Math.max(0, track.offsetHeight - track.clientHeight);
       const pos = track.scrollLeft / step;
       const index = Math.min(slides.length - 1, Math.max(0, Math.floor(pos)));
       const frac = Math.min(1, Math.max(0, pos - index));
       const from = heights[index];
       const to = heights[Math.min(slides.length - 1, index + 1)];
-      track.style.height = `${Math.ceil(from + (to - from) * frac + pad)}px`;
+      track.style.height = `${Math.ceil(from + (to - from) * frac + pad + bar)}px`;
     };
     const sync = () => {
       const max = track.scrollWidth - track.clientWidth - 1;
