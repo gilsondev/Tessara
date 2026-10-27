@@ -24,6 +24,8 @@ jobs:
       version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Tag must be on main
         if: startsWith(github.ref, 'refs/tags/agent-v')
