@@ -16,13 +16,26 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/src/styles.css" />
+    <script>
+      (function () {
+        var saved = localStorage.getItem("tessera-theme");
+        var theme =
+          saved ||
+          (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
   </head>
   <body>
     <header class="top">
       <a class="brand" href="./">
-        <img src="/brand/wordmark.svg" alt="Tessera" />
+        <img class="mark-light" src="brand/wordmark.svg" alt="Tessera" />
+        <img class="mark-dark" src="brand/wordmark-dark.svg" alt="" />
       </a>
-      <a class="ghost" href="https://github.com/gilsondev/Tessara">GitHub</a>
+      <nav class="top-links">
+        <button type="button" class="ghost" id="theme-toggle">Escuro</button>
+        <a class="ghost" href="https://github.com/gilsondev/Tessara">GitHub</a>
+      </nav>
     </header>
 
     <main>
@@ -30,7 +43,8 @@
         <div class="hero-copy">
           <p class="eyebrow">Painel de mesa</p>
           <h1>
-            <img class="hero-mark" src="/brand/wordmark.svg" alt="" />
+            <img class="hero-mark mark-light" src="brand/wordmark.svg" alt="" />
+            <img class="hero-mark mark-dark" src="brand/wordmark-dark.svg" alt="" />
             <span class="sr-only">Tessera</span>
           </h1>
           <p class="lede">
@@ -48,17 +62,22 @@
           </p>
         </div>
         <figure class="device">
-          <img src="/shots/home.png" width="320" height="600" alt="Home do painel: hora, tarefas, clima, tokens, agenda, música e o Mac." />
+          <img data-shot="home" src="shots/light/home.png" width="320" height="600" alt="Home do painel: hora, tarefas, clima, tokens, agenda, música e o Mac." />
         </figure>
       </section>
 
       <section class="band">
         <h2>O painel</h2>
         <p class="band-lede">Toque num bloco e a tela abre o detalhe.</p>
-        <ul class="shots">
+        <div class="reel" data-reel>
+          <div class="reel-nav">
+            <button type="button" class="ghost" data-reel-prev>Anterior</button>
+            <button type="button" class="ghost" data-reel-next>Próximo</button>
+          </div>
+          <ul class="shots" data-reel-track>
           <li>
             <figure>
-              <img src="/shots/tarefas.png" width="320" height="480" alt="Lista de tarefas de hoje, separada por projeto." />
+              <img data-shot="tarefas" src="shots/light/tarefas.png" width="320" height="480" alt="Lista de tarefas de hoje, separada por projeto." />
               <figcaption>
                 <strong>Tarefas</strong>
                 <span>Hoje, por projeto.</span>
@@ -67,7 +86,7 @@
           </li>
           <li>
             <figure>
-              <img src="/shots/clima.png" width="320" height="480" alt="Clima de hoje e previsão da semana." />
+              <img data-shot="clima" src="shots/light/clima.png" width="320" height="480" alt="Clima de hoje e previsão da semana." />
               <figcaption>
                 <strong>Clima</strong>
                 <span>Agora e a semana.</span>
@@ -76,7 +95,7 @@
           </li>
           <li>
             <figure>
-              <img src="/shots/agenda.png" width="320" height="480" alt="Agenda do dia com o próximo compromisso em destaque." />
+              <img data-shot="agenda" src="shots/light/agenda.png" width="320" height="480" alt="Agenda do dia com o próximo compromisso em destaque." />
               <figcaption>
                 <strong>Agenda</strong>
                 <span>O próximo e o resto do dia.</span>
@@ -85,7 +104,7 @@
           </li>
           <li>
             <figure>
-              <img src="/shots/musica.png" width="320" height="480" alt="Música: capa e a faixa Orvalho, de Celiana Satyl." />
+              <img data-shot="musica" src="shots/light/musica.png" width="320" height="480" alt="Música: capa e a faixa Orvalho, de Celiana Satyl." />
               <figcaption>
                 <strong>Música</strong>
                 <span>A capa e a faixa.</span>
@@ -94,14 +113,46 @@
           </li>
           <li>
             <figure>
-              <img src="/shots/tokens.png" width="320" height="480" alt="Detalhe de AI Tokens: cotas do Codex, Claude e Cursor." />
+              <img data-shot="tokens" src="shots/light/tokens.png" width="320" height="480" alt="Detalhe de AI Tokens: cotas do Codex, Claude e Cursor." />
               <figcaption>
                 <strong>Tokens</strong>
                 <span>Cotas de cada ferramenta.</span>
               </figcaption>
             </figure>
           </li>
-        </ul>
+          </ul>
+        </div>
+      </section>
+
+      <section class="band agent">
+        <h2>No Mac</h2>
+        <p class="band-lede">A janela no notebook: o que está ligado agora e os ajustes do painel.</p>
+        <div class="reel" data-reel>
+          <div class="reel-nav">
+            <button type="button" class="ghost" data-reel-prev>Anterior</button>
+            <button type="button" class="ghost" data-reel-next>Próximo</button>
+          </div>
+          <ul class="agent-reel" data-reel-track>
+            <li>
+              <figure>
+                <img src="shots/agent.png" width="1920" height="488" alt="Janela do Tessera Agent no Mac, com o painel ligado." />
+                <figcaption>
+                  <strong>Início</strong>
+                  <span>Ligação, música e Focus.</span>
+                </figcaption>
+              </figure>
+            </li>
+            <li>
+              <figure>
+                <img src="shots/agent-config.png" width="1100" height="1737" alt="Ajustes do painel no Agent: orientação, brilho, aparência e widgets da home." />
+                <figcaption>
+                  <strong>Configuração</strong>
+                  <span>Brilho, aparência e o que fica na home.</span>
+                </figcaption>
+              </figure>
+            </li>
+          </ul>
+        </div>
       </section>
 
       <section class="band connect">
@@ -144,7 +195,8 @@
     </main>
 
     <footer>
-      <img src="/brand/symbol.svg" width="28" height="28" alt="" />
+      <img class="mark-light" src="brand/symbol.svg" width="28" height="28" alt="" />
+      <img class="mark-dark" src="brand/symbol-dark.svg" width="28" height="28" alt="" />
       <span>Tessera</span>
       <span id="footer-ver"></span>
       <a href="https://github.com/gilsondev/Tessara">Código</a>
