@@ -92,6 +92,7 @@ ln -sfn Tessera "$PKG/bin/agentd"
 printf '%s\n' "$VERSION" > "$PKG/VERSION"
 
 if [ "${SKIP_APP:-0}" != 1 ]; then
+  bash "$REPO/tools/sign_macos_app.sh" "$TESSERA_APP"
   cp -R "$TESSERA_APP" "$PKG/Tessera.app"
 fi
 

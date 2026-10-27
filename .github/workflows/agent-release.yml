@@ -83,6 +83,8 @@ jobs:
             find apps/agent-ui agentd -path '*/bundle/macos/*.app' 2>/dev/null | head
             exit 1
           fi
+          # Linker signature alone makes a downloaded app look damaged.
+          bash tools/sign_macos_app.sh "$APP"
           cp -R "$APP" "$OUT/stage/Tessera.app"
 
           # Same layout as agentd/pack_sd.sh: bin/ + Tessera.app inside one tgz for curl|bash install.

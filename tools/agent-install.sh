@@ -31,6 +31,7 @@ if [ -z "$APP" ]; then
   echo "agent-install: Tessera.app não encontrado após tauri build" >&2
   exit 1
 fi
+bash "$ROOT/tools/sign_macos_app.sh" "$APP"
 
 export TESSERA_APP="$APP"
 export AGENTD_BIN="$ROOT/agentd/target/release/Tessera"
