@@ -141,8 +141,8 @@ cp include/secrets.example.h include/secrets.h
 
 ## Agent (Mac)
 
-- **Mac novo / uso normal:** [gilsondev.github.io/Tessara](https://gilsondev.github.io/Tessara/)  
-  ou `curl -fsSL https://gilsondev.github.io/Tessara/install.command | bash`  
+- **Mac novo / uso normal:** [gilsondev.github.io/Tessera](https://gilsondev.github.io/Tessera/)  
+  ou `curl -fsSL https://gilsondev.github.io/Tessera/install.command | bash`  
   (artefato construído no CI · tag `agent-v*`)
 - Dev neste repo: [guides/agent-v2-dev.md](guides/agent-v2-dev.md) — `mise install` · `make agent-install`
 - Offline / SD (opcional): `make pack-agentd` → `tessera/agentd.tgz`
