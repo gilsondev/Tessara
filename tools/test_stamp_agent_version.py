@@ -115,12 +115,34 @@ class StampTest(unittest.TestCase):
         install = (ROOT / "site" / "public" / "install.command").read_text(encoding="utf-8")
         cutover = (ROOT / "tools" / "cutover_agent_v2.sh").read_text(encoding="utf-8")
         service = (ROOT / "apps" / "agent-ui" / "src-tauri" / "src" / "service.rs").read_text(encoding="utf-8")
-        self.assertNotIn("<string>0.1</string>", install)
-        self.assertIn("$VER", install)
-        self.assertNotIn("<string>0.1.0</string>", cutover)
-        self.assertIn('VERSION', cutover)
-        self.assertNotIn('<string>0.1</string>', service)
+        self.assertIn("<key>CFBundleShortVersionString</key><string>$VER</string>", install)
+        self.assertIn("<key>CFBundleShortVersionString</key><string>$AGENT_VERSION</string>", cutover)
         self.assertIn('include_str!("../../../../VERSION")', service)
+        self.assertNotIn("<string>0.1</string>", service)
+
+    def test_workspace_package_without_version_does_not_touch_later_table(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(
+                root / "agentd" / "Cargo.toml",
+                textwrap.dedent(
+                    """\
+                    [workspace.package]
+
+                    [workspace.dependencies]
+                    serde = { version = "1" }
+                    """
+                ),
+            )
+            done = subprocess.run(
+                [sys.executable, str(STAMP), "--root", str(root), "--version", "9.9.9"],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(done.returncode, 2)
+            cargo = (root / "agentd" / "Cargo.toml").read_text(encoding="utf-8")
+            self.assertIn('serde = { version = "1" }', cargo)
+            self.assertNotIn('version = "9.9.9"', cargo)
 
 
 if __name__ == "__main__":

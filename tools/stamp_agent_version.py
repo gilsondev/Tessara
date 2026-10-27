@@ -20,19 +20,20 @@ def stamp_workspace_cargo(path: Path, version: str) -> None:
     text = path.read_text(encoding="utf-8")
     parts = text.split("[workspace.package]", 1)
     if len(parts) != 2:
-        die(f"{path} sem [workspace.package]")
-    head, tail = parts
-    tail, n = re.subn(r'^version = "[^"]+"', f'version = "{version}"', tail, count=1, flags=re.M)
+        die(f"{path} missing [workspace.package]")
+    head, rest = parts
+    section, sep, after = rest.partition("\n[")
+    section, n = re.subn(r'^version = "[^"]+"', f'version = "{version}"', section, count=1, flags=re.M)
     if n != 1:
-        die(f"{path} sem version do workspace")
-    path.write_text(head + "[workspace.package]" + tail, encoding="utf-8")
+        die(f"{path} missing workspace version")
+    path.write_text(head + "[workspace.package]" + section + sep + after, encoding="utf-8")
 
 
 def stamp_package_cargo(path: Path, version: str) -> None:
     text = path.read_text(encoding="utf-8")
     updated, n = re.subn(r'^version = "[^"]+"', f'version = "{version}"', text, count=1, flags=re.M)
     if n != 1:
-        die(f"{path} sem version")
+        die(f"{path} missing version")
     path.write_text(updated, encoding="utf-8")
 
 
@@ -51,7 +52,7 @@ def stamp_lock(path: Path, version: str, names: set[str]) -> None:
                 flags=re.M,
             )
             if n != 1:
-                die(f"{path} pacote {name} sem version")
+                die(f"{path} package {name} missing version")
         out.append(block)
     path.write_text("[[package]]\n".join(out), encoding="utf-8")
 
@@ -76,7 +77,7 @@ def main() -> None:
     args = parser.parse_args()
     version = args.version
     if not SEMVER.match(version):
-        die(f"versão inválida: {version}")
+        die(f"invalid version: {version}")
     root = args.root
     stamp_workspace_cargo(root / "agentd" / "Cargo.toml", version)
     stamp_lock(root / "agentd" / "Cargo.lock", version, OWN_LOCK)

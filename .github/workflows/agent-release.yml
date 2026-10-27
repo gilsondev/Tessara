@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version sem tag prefix (ex. 0.1.1). Vazio = lê Cargo workspace."
+        description: "Version sem tag prefix (ex. 0.1.1). Vazio = lê VERSION."
         required: false
         default: ""
 
@@ -32,7 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin main
-          git merge-base --is-ancestor HEAD origin/main
+          git merge-base --is-ancestor HEAD FETCH_HEAD
 
       - uses: jdx/mise-action@v2
         with:
@@ -46,7 +46,7 @@ jobs:
           elif [[ "${GITHUB_REF}" == refs/tags/agent-v* ]]; then
             V="${GITHUB_REF#refs/tags/agent-v}"
           else
-            V="$(python3 -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('agentd/Cargo.toml').read_text())['workspace']['package']['version'])")"
+            V="$(tr -d '[:space:]' < VERSION)"
           fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $V"
@@ -216,7 +216,7 @@ jobs:
             echo "no change"
           else
             git commit -m "chore(site): latest.json for agent-v${{ needs.build-mac.outputs.version }}"
-            git push origin HEAD:main || git push origin HEAD:master
+            git push origin HEAD:main
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
       # GITHUB_TOKEN pushes do not re-trigger workflows — dispatch Pages explicitly.

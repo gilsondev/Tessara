@@ -34,8 +34,8 @@ Rebuilda agentd + Tessera.app e roda `tools/cutover_agent_v2.sh` (LaunchAgent `c
 Não crie a tag `agent-v*` na mão e não edite `version` nos manifests.
 
 1. Commits em `main` usam `feat:` ou `fix:`.
-2. O workflow `release-please.yml` abre um pull request `chore: release X.Y.Z` que atualiza `VERSION` e `CHANGELOG.md`.
-3. O merge cria a tag `agent-vX.Y.Z`.
+2. O workflow `release-please.yml` abre um pull request que atualiza `VERSION` e `CHANGELOG.md`; o título inclui `release agent X.Y.Z`.
+3. O merge cria a tag `agent-vX.Y.Z` e o `release-please.yml` dispara `agent-release.yml` nessa tag, porque um push de tag com `GITHUB_TOKEN` não inicia outros workflows.
 4. `agent-release.yml` carimba os manifests no runner, publica o GitHub Release e grava `site/public/latest.json` em `main`.
 5. `pages.yml` publica o site.
 
