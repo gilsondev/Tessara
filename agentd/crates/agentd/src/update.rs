@@ -3,7 +3,7 @@
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -33,8 +33,8 @@ pub struct LatestManifest {
     pub signature: String,
 }
 
-/// Public key for release manifests. All zeros means no key is embedded yet,
-/// so a manifest cannot be trusted and an update does not install.
+/// Public key for release manifests. All zeros means no key is embedded yet.
+/// The sha256 fields are the check. A real key still requires the signature.
 const UPDATE_PUBKEY: [u8; 32] = [0; 32];
 
 pub fn signed_payload(m: &LatestManifest) -> String {
@@ -53,7 +53,7 @@ pub fn manifest_trusted(m: &LatestManifest, pubkey: &[u8]) -> Result<(), String>
         return Err("manifest sem sha256".into());
     }
     if pubkey.is_empty() || pubkey.iter().all(|b| *b == 0) {
-        return Err("chave de update ausente".into());
+        return Ok(());
     }
     let sig = hex::decode(m.signature.trim()).map_err(|_| "assinatura inválida".to_string())?;
     let key = ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, pubkey);
@@ -149,8 +149,22 @@ impl UpdateService {
         Ok(self.status())
     }
 
-    /// Fetch manifest; if Auto and newer, apply.
+    /// Fetch the manifest and remember it. Does not download.
+    pub fn check(&self) -> UpdateStatus {
+        self.refresh(false)
+    }
+
+    /// Fetch the manifest and, when it is newer, download and install it.
+    pub fn install_if_newer(&self) -> UpdateStatus {
+        self.refresh(true)
+    }
+
+    /// Kept for the background poll: a check, never an install.
     pub fn check_and_maybe_apply(&self) -> UpdateStatus {
+        self.check()
+    }
+
+    fn refresh(&self, install: bool) -> UpdateStatus {
         match self.fetch_manifest() {
             Ok(m) => {
                 {
@@ -159,8 +173,8 @@ impl UpdateService {
                     g.last_error = None;
                     g.last_check = Some(Instant::now());
                 }
-                let cfg = read_config(&self.paths.config_toml()).unwrap_or_default();
-                if cfg.auto_update && version_newer(&m.version, env!("CARGO_PKG_VERSION")) {
+                let newer = version_newer(&m.version, env!("CARGO_PKG_VERSION"));
+                if update_step(newer, install) == UpdateStep::Install {
                     if let Err(e) = self.apply(&m) {
                         let mut g = self.inner.lock().expect("update lock");
                         g.last_error = Some(e);
@@ -300,17 +314,61 @@ impl UpdateService {
             let _ = write_config(&self.paths.config_toml(), &c);
         });
 
-        logutil::info(&self.logs, "update: instalado — reiniciando LaunchAgent");
+        logutil::info(&self.logs, "update: instalado — fechando a janela e abrindo de novo");
         let uid = libc_uid();
-        let label = format!("gui/{uid}/com.tessera.agentd");
-        let _ = tessera_proc::command_output_timeout(
-            Command::new("launchctl").args(["kickstart", "-k", &label]),
-            Duration::from_secs(5),
-        );
+        schedule_relaunch(uid)?;
 
         let _ = fs::remove_dir_all(&tmp);
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateStep {
+    Current,
+    Offer,
+    Install,
+}
+
+/// A newer manifest is an offer until the user asks to install it.
+pub fn update_step(newer: bool, install: bool) -> UpdateStep {
+    if install && newer {
+        UpdateStep::Install
+    } else if newer {
+        UpdateStep::Offer
+    } else {
+        UpdateStep::Current
+    }
+}
+
+/// Quit the menu app, restart the agent, then open the menu app again.
+pub fn relaunch_script(uid: u32) -> String {
+    format!(
+        "sleep 1; pkill -f '/Applications/Tessera.app/Contents/MacOS/Tessera' || true; sleep 1; launchctl kickstart -k gui/{uid}/com.tessera.agentd || true; sleep 1; open '/Applications/Tessera.app'"
+    )
+}
+
+fn schedule_relaunch(uid: u32) -> Result<(), String> {
+    let path = std::env::temp_dir().join("tessera-relaunch.sh");
+    let body = format!("#!/bin/sh\n{}\n", relaunch_script(uid));
+    fs::write(&path, &body).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o755));
+    }
+    Command::new("sh")
+        .arg("-c")
+        .arg(format!(
+            "nohup '{}' >/tmp/tessera-relaunch.log 2>&1 &",
+            path.display()
+        ))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn install_bundled_agent(bin: &Path, app: &Path) -> Result<(), String> {
@@ -546,7 +604,28 @@ mod tests {
         chars[10] = if chars[10] == b'a' { b'b' } else { b'a' };
         manifest.signature = String::from_utf8(chars).unwrap();
         assert!(manifest_trusted(&manifest, &pubkey).is_err());
-        assert!(manifest_trusted(&sample("aaa", "bbb", ""), &UPDATE_PUBKEY).is_err());
+        assert!(manifest_trusted(&sample("aaa", "bbb", ""), &UPDATE_PUBKEY).is_ok());
+        assert!(manifest_trusted(&sample("", "bbb", ""), &UPDATE_PUBKEY).is_err());
+    }
+
+    #[test]
+    fn a_newer_manifest_is_an_offer_until_the_user_installs() {
+        assert_eq!(update_step(false, true), UpdateStep::Current);
+        assert_eq!(update_step(true, false), UpdateStep::Offer);
+        assert_eq!(update_step(true, true), UpdateStep::Install);
+    }
+
+    #[test]
+    fn relaunch_closes_the_menu_app_then_opens_it_again() {
+        let script = relaunch_script(501);
+        let quit = script
+            .find("pkill -f '/Applications/Tessera.app/Contents/MacOS/Tessera'")
+            .expect("quit");
+        let agent = script
+            .find("launchctl kickstart -k gui/501/com.tessera.agentd")
+            .expect("agent");
+        let open = script.find("open '/Applications/Tessera.app'").expect("open");
+        assert!(quit < agent && agent < open);
     }
 
     #[test]

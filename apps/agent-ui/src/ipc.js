@@ -291,7 +291,7 @@ export async function fetchUpdate() {
 }
 
 /**
- * @param {{ auto_update?: boolean, check?: boolean }} body
+ * @param {{ auto_update?: boolean, check?: boolean, apply?: boolean }} body
  * @returns {Promise<object>}
  */
 export async function postUpdate(body = {}) {
