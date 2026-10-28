@@ -5,6 +5,7 @@ mod mac_events;
 mod panel;
 mod update;
 mod usb_loop;
+mod watchdog;
 
 use clap::Parser;
 
@@ -72,11 +73,25 @@ async fn main() {
     );
     if let Some(home) = std::env::var_os("HOME") {
         let home = std::path::PathBuf::from(home);
-        claude_hook::ensure(&home);
+        update::migrate_daemon_binary(&home);
+        let mut last = profile.config.aitokens && profile.config.aitokens_claude;
+        claude_hook::ensure(&home, last);
         std::thread::spawn(move || {
+            let mut warned = false;
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(30));
-                claude_hook::ensure(&home);
+                let read = tessera_profile::load_or_init()
+                    .map(|loaded| loaded.config.aitokens && loaded.config.aitokens_claude);
+                if let Err(err) = &read {
+                    if !warned {
+                        eprintln!("claude_hook: config ilegível ({err}); mantendo {last}");
+                        warned = true;
+                    }
+                } else {
+                    warned = false;
+                }
+                last = claude_hook::hook_enabled(last, read);
+                claude_hook::ensure(&home, last);
             }
         });
     }

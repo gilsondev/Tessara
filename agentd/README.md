@@ -53,6 +53,8 @@ Without `~/.tessera/calendar/client.json`, it returns `falta client.json` /
 
 `CursorResolver` contributes an explicit unavailable source when it finds local authentication but the Rust daemon has no live quota client; it never emits a fabricated percentage. Claude currently reads one fresh status/cache value, so Python's future multi-surface display format (`a · b`) is not yet reproduced.
 
+Quem usa só o Claude Desktop fica dependente do token do Claude Code. O uso da conta vem do item `Claude Code-credentials` no Keychain. O agent não renova esse token, para não deslogar o Claude Code. Com o token vencido, o painel mostra o último percentual como antigo até o Claude Code abrir de novo e renovar.
+
 Refresh fixtures from Python (optional):
 
 ```bash

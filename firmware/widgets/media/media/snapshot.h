@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 // Parsed MEDIA snapshot for the Música tile and detail screen (Phase 1).
@@ -42,11 +43,28 @@ struct View {
     Cover cover;
 };
 
+// What the panel publishes on TopicId::Media. The producer keeps two of these
+// and alternates them, so a callback can still read the previous one.
+struct Published {
+    View view;
+    bool agent_ok = false;
+};
+
 // Mutates `view` from a full line starting with "MEDIA\t" (not MEDIA_COVER).
 bool apply_line(View &view, const char *line, uint32_t now_ms);
 
-// Assembles MEDIA_COVER chunks into `view.cover`. True when image complete.
-bool apply_cover_line(View &view, const char *line);
+// IEEE CRC32 of one cover chunk. The agent puts the same value on the line.
+uint32_t cover_crc32(const uint8_t *data, size_t len);
+
+// Writes MEDIA_COVER chunks into a back buffer. Leaves `view.cover` alone
+// until every chunk of one key has arrived, then swaps that buffer in front
+// and returns true. A new key mid-download discards the back buffer.
+// A chunk whose CRC does not match is ignored.
+bool apply_cover_line(View &view, const char *line, uint32_t now_ms = 0);
+
+// After 2 s with holes, writes `MEDIA_COVER?\t<key>\t<idx,idx,…>`.
+// After 10 s, drops the back buffer and keeps the cover on screen.
+bool cover_poll(uint32_t now_ms, char *request, size_t request_cap);
 
 // Marks stale when ready and age >= kStaleMs. Returns true if stale flag changed.
 bool refresh_age(View &view, uint32_t now_ms);

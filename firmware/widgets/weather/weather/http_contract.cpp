@@ -10,7 +10,7 @@ bool weather::forecast_url(float latitude, float longitude, char *out, size_t ou
     int n = std::snprintf(
         out, out_len,
         "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code"
-        "&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=7&timezone=America%%2FSao_Paulo",
+        "&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=7&timezone=auto",
         latitude, longitude);
     return n > 0 && static_cast<size_t>(n) < out_len;
 }

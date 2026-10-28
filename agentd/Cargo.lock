@@ -10,11 +10,12 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agentd"
-version = "0.1.5"
+version = "0.2.2"
 dependencies = [
  "axum",
  "clap",
  "hex",
+ "ring",
  "serde",
  "serde_json",
  "sha2",
@@ -26,6 +27,7 @@ dependencies = [
  "tessera-caps-todoist",
  "tessera-doctor",
  "tessera-logbuf",
+ "tessera-proc",
  "tessera-profile",
  "tessera-protocol",
  "tessera-scan",
@@ -1341,85 +1343,100 @@ dependencies = [
 
 [[package]]
 name = "tessera-caps-aitokens"
-version = "0.1.5"
+version = "0.2.2"
 dependencies = [
  "chrono",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
+ "tessera-proc",
  "ureq",
 ]
 
 [[package]]
 name = "tessera-caps-calendar"
-version = "0.1.5"
+version = "0.2.2"
 dependencies = [
  "chrono",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
+ "tessera-proc",
  "ureq",
 ]
 
 [[package]]
 name = "tessera-caps-focus"
-version = "0.1.5"
+version = "0.2.2"
 dependencies = [
  "serde",
  "serde_json",
+ "tessera-proc",
  "tessera-protocol",
 ]
 
 [[package]]
 name = "tessera-caps-media"
-version = "0.1.5"
+version = "0.2.2"
 dependencies = [
  "image",
+ "tessera-proc",
  "tessera-protocol",
  "ureq",
 ]
 
 [[package]]
 name = "tessera-caps-todoist"
-version = "0.1.5"
+version = "0.2.2"
 dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tessera-proc",
  "ureq",
 ]
 
 [[package]]
 name = "tessera-doctor"
-version = "0.1.5"
+version = "0.2.2"
 dependencies = [
  "serde",
  "serde_json",
  "tempfile",
  "tessera-caps-media",
+ "tessera-proc",
  "tessera-profile",
  "tessera-scan",
 ]
 
 [[package]]
 name = "tessera-logbuf"
-version = "0.1.5"
+version = "0.2.2"
 dependencies = [
  "serde",
  "tempfile",
 ]
 
 [[package]]
+name = "tessera-proc"
+version = "0.2.2"
+dependencies = [
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "tessera-profile"
-version = "0.1.5"
+version = "0.2.2"
 dependencies = [
  "dirs",
  "hostname",
  "serde",
  "serde_json",
  "tempfile",
+ "tessera-proc",
  "thiserror 2.0.21",
  "toml",
  "uuid",
@@ -1427,22 +1444,23 @@ dependencies = [
 
 [[package]]
 name = "tessera-protocol"
-version = "0.1.5"
+version = "0.2.2"
 
 [[package]]
 name = "tessera-scan"
-version = "0.1.5"
+version = "0.2.2"
 dependencies = [
  "serde",
  "serde_json",
  "tempfile",
  "tessera-caps-aitokens",
  "tessera-caps-calendar",
+ "tessera-proc",
 ]
 
 [[package]]
 name = "tessera-usb"
-version = "0.1.5"
+version = "0.2.2"
 dependencies = [
  "serialport",
  "tessera-protocol",

@@ -20,6 +20,7 @@ struct FakeWidget : tessera::TsWidget {
         time = ctx.time();
         logger = ctx.logger();
         if (ctx.logger()) ctx.logger()->info("fake.mount");
+        surface = ctx.surface();
         char place[32] = {};
         if (ctx.settings_get("place", place, sizeof(place))) {
             std::strncpy(settings_place, place, sizeof(settings_place) - 1);
@@ -66,7 +67,53 @@ struct FakeWidget : tessera::TsWidget {
     uint32_t last_http_gen = 0;
     uint32_t last_sched_gen = 0;
     tessera::HttpStatus last_http_status = tessera::HttpStatus::Network;
+    tessera::Surface surface = tessera::Surface::Detail;
 };
+
+static int g_media_hits = 0;
+
+static void on_media_topic(const tessera::DataRef &, void *) { g_media_hits += 1; }
+
+struct SubWidget : tessera::TsWidget {
+    const tessera::WidgetManifest &manifest() const override { return kFakeManifest; }
+    void mount(tessera::WidgetContext &ctx) override {
+        if (ctx.data()) ctx.data()->subscribe(tessera::TopicId::Media, ctx.generation(), on_media_topic, nullptr);
+    }
+    void on_resize(uint16_t, uint16_t) override {}
+    void unmount() override {}
+};
+
+tessera::TsWidget *make_sub() { return new SubWidget(); }
+
+tessera::Runtime *g_killer_rt = nullptr;
+static int g_victim_hits = 0;
+
+static void on_kill_topic(const tessera::DataRef &, void *) {
+    if (g_killer_rt) g_killer_rt->unmount_all();
+}
+
+static void on_victim_topic(const tessera::DataRef &, void *) { g_victim_hits += 1; }
+
+struct KillerWidget : tessera::TsWidget {
+    const tessera::WidgetManifest &manifest() const override { return kFakeManifest; }
+    void mount(tessera::WidgetContext &ctx) override {
+        if (ctx.data()) ctx.data()->subscribe(tessera::TopicId::Media, ctx.generation(), on_kill_topic, nullptr);
+    }
+    void on_resize(uint16_t, uint16_t) override {}
+    void unmount() override {}
+};
+
+struct VictimWidget : tessera::TsWidget {
+    const tessera::WidgetManifest &manifest() const override { return kFakeManifest; }
+    void mount(tessera::WidgetContext &ctx) override {
+        if (ctx.data()) ctx.data()->subscribe(tessera::TopicId::Media, ctx.generation(), on_victim_topic, nullptr);
+    }
+    void on_resize(uint16_t, uint16_t) override {}
+    void unmount() override {}
+};
+
+tessera::TsWidget *make_killer() { return new KillerWidget(); }
+tessera::TsWidget *make_victim() { return new VictimWidget(); }
 
 FakeWidget *g_last = nullptr;
 
@@ -95,9 +142,88 @@ void test_runtime_register_mount_unmount_bumps_generation(void) {
     TEST_ASSERT_NULL(rt.widget(slot));
 }
 
+void test_unmount_cancels_the_topic_subscription(void) {
+    tessera::Runtime rt;
+    tessera::MemoryHost host;
+    tessera::HostServices bag = host.bag();
+    rt.set_services(&bag);
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.sub", make_sub));
+    TEST_ASSERT_TRUE(rt.mount("org.tessera.sub", nullptr) >= 0);
+    g_media_hits = 0;
+    TEST_ASSERT_TRUE(host.data.publish(tessera::TopicId::Media, "track", 5));
+    host.data.dispatch();
+    TEST_ASSERT_EQUAL(1, g_media_hits);
+    rt.unmount_all();
+    TEST_ASSERT_TRUE(host.data.publish(tessera::TopicId::Media, "next", 4));
+    host.data.dispatch();
+    TEST_ASSERT_EQUAL(1, g_media_hits);
+}
+
+void test_unmount_type_detail_leaves_the_tile(void) {
+    tessera::Runtime rt;
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.media", make_fake));
+    int tile = rt.mount("org.tessera.media", nullptr, tessera::Surface::Tile);
+    int detail = rt.mount("org.tessera.media", nullptr, tessera::Surface::Detail);
+    TEST_ASSERT_TRUE(tile >= 0);
+    TEST_ASSERT_TRUE(detail >= 0);
+    auto *tile_widget = rt.widget(tile);
+    uint32_t tile_gen = rt.generation(tile);
+    TEST_ASSERT_TRUE(rt.unmount_type("org.tessera.media", tessera::Surface::Detail));
+    TEST_ASSERT_EQUAL_PTR(tile_widget, rt.widget(tile));
+    TEST_ASSERT_TRUE(rt.generation_live(tile, tile_gen));
+    TEST_ASSERT_EQUAL(-1, rt.find_type("org.tessera.media", tessera::Surface::Detail));
+    TEST_ASSERT_EQUAL(tile, rt.find_type("org.tessera.media", tessera::Surface::Tile));
+}
+
+void test_tile_survives_when_a_detail_is_replaced(void) {
+    tessera::Runtime rt;
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.fake", make_fake));
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.other", make_fake));
+    int tile = rt.mount("org.tessera.fake", nullptr, tessera::Surface::Tile);
+    auto *tile_widget = static_cast<FakeWidget *>(rt.widget(tile));
+    int detail = rt.mount("org.tessera.fake", nullptr, tessera::Surface::Detail);
+    TEST_ASSERT_TRUE(tile >= 0);
+    TEST_ASSERT_TRUE(detail >= 0);
+    TEST_ASSERT_TRUE(tile != detail);
+    TEST_ASSERT_EQUAL(static_cast<int>(tessera::Surface::Tile), static_cast<int>(tile_widget->surface));
+    TEST_ASSERT_EQUAL(static_cast<int>(tessera::Surface::Detail), static_cast<int>(g_last->surface));
+    uint32_t detail_gen = rt.generation(detail);
+    rt.mount_exclusive("org.tessera.other", nullptr);
+    TEST_ASSERT_EQUAL_PTR(tile_widget, rt.widget(tile));
+    TEST_ASSERT_TRUE(tile_widget->mounted);
+    TEST_ASSERT_FALSE(rt.generation_live(detail, detail_gen));
+}
+
+void test_dispatch_skips_a_widget_unmounted_by_an_earlier_callback(void) {
+    tessera::Runtime rt;
+    tessera::MemoryHost host;
+    tessera::HostServices bag = host.bag();
+    rt.set_services(&bag);
+    g_killer_rt = &rt;
+    g_victim_hits = 0;
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.killer", make_killer));
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.victim", make_victim));
+    TEST_ASSERT_TRUE(rt.mount("org.tessera.killer", nullptr) >= 0);
+    TEST_ASSERT_TRUE(rt.mount("org.tessera.victim", nullptr) >= 0);
+    TEST_ASSERT_TRUE(host.data.publish(tessera::TopicId::Media, "x", 1));
+    host.data.dispatch();
+    TEST_ASSERT_EQUAL(0, g_victim_hits);
+    g_killer_rt = nullptr;
+}
+
 void test_runtime_unknown_type_fails(void) {
     tessera::Runtime rt;
     TEST_ASSERT_EQUAL(-1, rt.mount("org.tessera.missing", nullptr));
+}
+
+void test_runtime_reuses_slots_across_many_details(void) {
+    tessera::Runtime rt;
+    TEST_ASSERT_TRUE(rt.register_type("org.tessera.fake", make_fake));
+    for (int i = 0; i < 20; ++i) {
+        int slot = rt.mount_exclusive("org.tessera.fake", nullptr);
+        TEST_ASSERT_TRUE(slot >= 0);
+        rt.unmount_all();
+    }
 }
 
 void test_runtime_remount_same_type_reuses_slot(void) {
@@ -237,12 +363,11 @@ void test_mount_exclusive_unmounts_previous_and_cancels_its_http(void) {
 
     int slot_b = rt.mount_exclusive("org.tessera.other", &parent_b);
     TEST_ASSERT_TRUE(slot_b >= 0);
-    TEST_ASSERT_NOT_EQUAL(slot_a, slot_b);
     TEST_ASSERT_NOT_NULL(g_other);
     TEST_ASSERT_TRUE(g_other->mounted);
     TEST_ASSERT_EQUAL_PTR(&parent_b, g_other->parent);
-    TEST_ASSERT_NULL(rt.widget(slot_a));
     TEST_ASSERT_FALSE(rt.generation_live(slot_a, gen_a));
+    if (slot_b != slot_a) TEST_ASSERT_NULL(rt.widget(slot_a));
     // Fake's in-flight job was canceled; only the new widget may have a pending GET.
     // (Job ids are reused — do not assert on the old index.)
     TEST_ASSERT_EQUAL(1, host.http.pending_count());

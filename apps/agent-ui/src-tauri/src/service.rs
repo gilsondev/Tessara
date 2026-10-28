@@ -309,20 +309,34 @@ fn emit_install(app: &AppHandle, step: &'static str, message: impl Into<String>)
 }
 
 fn ipc_up() -> bool {
-    let out = Command::new("/usr/bin/curl")
-        .args([
-            "-fsS",
-            "--max-time",
-            "1",
-            "http://127.0.0.1:19792/v1/status",
-        ])
-        .output();
+    let mut cmd = Command::new("/usr/bin/curl");
+    cmd.args(["-fsS", "--max-time", "1"]);
+    if let Ok(home) = home_dir() {
+        if let Ok(raw) = std::fs::read_to_string(home.join(".tessera/agentd/ipc_token")) {
+            let token = raw.trim();
+            if !token.is_empty() {
+                cmd.arg("-H").arg(format!("Authorization: Bearer {token}"));
+            }
+        }
+    }
+    let out = cmd.arg("http://127.0.0.1:19792/v1/status").output();
     match out {
         Ok(out) if out.status.success() => {
             String::from_utf8_lossy(&out.stdout).contains("\"ok\":true")
         }
         _ => false,
     }
+}
+
+#[tauri::command]
+pub fn ipc_token() -> Result<String, String> {
+    let path = home_dir()?.join(".tessera/agentd/ipc_token");
+    let raw = std::fs::read_to_string(&path).map_err(|e| format!("token do agent: {e}"))?;
+    let token = raw.trim();
+    if token.is_empty() {
+        return Err("token do agent vazio".into());
+    }
+    Ok(token.to_string())
 }
 
 fn home_dir() -> Result<PathBuf, String> {

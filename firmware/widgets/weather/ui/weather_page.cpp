@@ -4,6 +4,7 @@
 #include "ui/palette.h"
 #include "ui/theme.h"
 #include "ui/weather_icons.h"
+#include "platform/daytime.h"
 #include "weather/codes.h"
 
 #include <cstdio>
@@ -72,9 +73,34 @@ void paint_day_cell_labels(lv_obj_t *cell, bool selected) {
     if (lv_obj_t *temps = lv_obj_get_child(cell, 2)) lv_obj_set_style_text_color(temps, muted, 0);
 }
 
+void local_today(char *out, size_t cap) {
+    out[0] = '\0';
+    int hour = 0, minute = 0, second = 0, wday = 0, day = 0, month = 0, year = 0;
+    if (!daytime::local(hour, minute, second, wday, day, month, year) || cap < 11) return;
+    snprintf(out, cap, "%04d-%02d-%02d", year, month + 1, day);
+}
+
+int forecast_offset(const weather::View &view) {
+    char date[16];
+    local_today(date, sizeof(date));
+    weather::note_today(date);
+    return weather::day_offset(view.forecast, date);
+}
+
+const char *day_label(int index, int offset, const char *date) {
+    if (offset < 0) return weekday_short(date);
+    const int rel = index - offset;
+    if (rel == 0) return "Hoje";
+    if (rel == 1) return "Amanhã";
+    return weekday_short(date);
+}
+
 void add_hero(const weather::View &view, int day_index) {
-    const bool use_today = day_index < 0 || day_index >= 7;
-    const weather::Day &day = view.forecast.days[use_today ? 0 : day_index];
+    const int offset = forecast_offset(view);
+    const bool use_today = day_index < 0 || day_index >= 7 || (offset >= 0 && day_index < offset);
+    int shown = use_today ? (offset < 0 ? 0 : offset) : day_index;
+    if (shown < 0 || shown > 6) shown = 0;
+    const weather::Day &day = view.forecast.days[shown];
 
     lv_obj_t *hero = kit::bare(list);
     lv_obj_set_width(hero, lv_pct(100));
@@ -96,13 +122,7 @@ void add_hero(const weather::View &view, int day_index) {
     }
 
     lv_obj_t *when = lv_label_create(hero);
-    if (use_today) {
-        lv_label_set_text(when, "Hoje");
-    } else if (day_index == 1) {
-        lv_label_set_text(when, "Amanhã");
-    } else {
-        lv_label_set_text(when, weekday_short(day.date));
-    }
+    lv_label_set_text(when, day_label(shown, offset, day.date));
     lv_obj_set_style_text_font(when, &theme::body_font(), 0);
     lv_obj_set_style_text_color(when, theme::text_primary(), 0);
     lv_obj_set_style_text_align(when, LV_TEXT_ALIGN_CENTER, 0);
@@ -150,7 +170,7 @@ void on_day_click(lv_event_t *event) {
     rebuild_body();
 }
 
-void add_day_cell(lv_obj_t *grid, int index, const weather::Day &day) {
+void add_day_cell(lv_obj_t *grid, int index, const weather::Day &day, int offset) {
     lv_obj_t *cell = kit::bare(grid);
     day_cells[index] = cell;
     lv_obj_set_width(cell, lv_pct(31));
@@ -170,10 +190,7 @@ void add_day_cell(lv_obj_t *grid, int index, const weather::Day &day) {
     style_day_cell(cell, selected);
 
     lv_obj_t *when = lv_label_create(cell);
-    char label[16];
-    if (index == 1) snprintf(label, sizeof(label), "Amanhã");
-    else snprintf(label, sizeof(label), "%s", weekday_short(day.date));
-    lv_label_set_text(when, label);
+    lv_label_set_text(when, day_label(index, offset, day.date));
     lv_obj_set_style_text_font(when, &theme::small_font(), 0);
     lv_obj_set_style_text_align(when, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -206,7 +223,9 @@ void add_forecast_grid(const weather::View &view) {
     lv_obj_set_style_pad_column(grid, 0, 0);
 
     for (int i = 0; i < 7; ++i) day_cells[i] = nullptr;
-    for (int i = 1; i < 7; ++i) add_day_cell(grid, i, view.forecast.days[i]);
+    const int offset = forecast_offset(view);
+    const int start = offset < 0 ? 1 : offset + 1;
+    for (int i = start; i < 7; ++i) add_day_cell(grid, i, view.forecast.days[i], offset);
 }
 
 void rebuild_body() {

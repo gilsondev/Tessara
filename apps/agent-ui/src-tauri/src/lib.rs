@@ -96,6 +96,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             open_privacy_settings,
+            service::ipc_token,
             service::agentd_service,
             service::ensure_agentd,
             service::panel_force_reset

@@ -9,10 +9,13 @@ pub use auth::{
     auth_status, has_tessera_client, import_client_json, list_catalog, mark_login_expired,
     save_selection, start_account_link, start_with, AuthStatus, CalendarRow, ClientSource,
 };
-pub use local::{current_snapshot, probe, refresh_local, status_short, LocalProbe, LocalSnapshot};
+pub use local::{
+    current_snapshot, probe, refresh_local, save_selection_local, status_short, LocalProbe, LocalSnapshot,
+};
 
 use std::fs;
 use std::path::PathBuf;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 pub(crate) const EVENT_LIMIT: usize = 12;
@@ -169,24 +172,30 @@ pub struct CalendarCapability {
     last_pushed: Option<String>,
     health: LocalSnapshot,
     last_refresh: Instant,
+    pending: Option<JoinHandle<LocalSnapshot>>,
+    /// A background read finished and the panel should get the line now.
+    refresh_ready: bool,
 }
 
 impl CalendarCapability {
     pub fn new(paths: CalendarPaths) -> Self {
+        let health = local::read_snapshot(&paths).unwrap_or(LocalSnapshot {
+            ok: false,
+            phase: "missing".into(),
+            message: String::new(),
+            event_count: 0,
+            checked_at: String::new(),
+            calendars: Vec::new(),
+        });
         Self {
             paths,
             last_pushed: None,
-            health: LocalSnapshot {
-                ok: false,
-                phase: "missing".into(),
-                message: String::new(),
-                event_count: 0,
-                checked_at: String::new(),
-                calendars: Vec::new(),
-            },
+            health,
             last_refresh: Instant::now()
                 .checked_sub(Duration::from_secs(CALENDAR_REFRESH_INTERVAL_S))
                 .unwrap_or_else(Instant::now),
+            pending: None,
+            refresh_ready: false,
         }
     }
 
@@ -203,7 +212,20 @@ impl CalendarCapability {
     }
 
     fn linked(&self) -> bool {
-        self.health.ok
+        // A confirmed block or a missing Calendar.app stays unlinked. Anything
+        // else keeps the last good cache on screen, including while a refresh runs.
+        if self.health.phase == "blocked" || self.health.phase == "missing" {
+            return false;
+        }
+        self.health.ok || !self.load_cached_events().is_empty()
+    }
+
+    /// True once, after a background refresh lands. The USB loop pushes then,
+    /// instead of waiting for the next heartbeat.
+    pub fn take_refresh_ready(&mut self) -> bool {
+        let ready = self.refresh_ready;
+        self.refresh_ready = false;
+        ready
     }
 
     fn load_cached_events(&self) -> Vec<CalendarEvent> {
@@ -265,19 +287,31 @@ impl CalendarCapability {
 
     /// Re-read the Mac Calendar database and record whether that check is healthy.
     pub fn refresh_cache_if_due(&mut self) {
+        if let Some(handle) = self.pending.take() {
+            if handle.is_finished() {
+                if let Ok(health) = handle.join() {
+                    self.health = health;
+                    self.refresh_ready = true;
+                    if self.health.ok {
+                        eprintln!(
+                            "Tessera: calendar refresh ok ({} eventos)",
+                            self.health.event_count
+                        );
+                    } else {
+                        eprintln!("Tessera: calendar refresh: {}", self.health.message);
+                    }
+                }
+            } else {
+                self.pending = Some(handle);
+                return;
+            }
+        }
         if self.last_refresh.elapsed() < Duration::from_secs(CALENDAR_REFRESH_INTERVAL_S) {
             return;
         }
         self.last_refresh = Instant::now();
-        self.health = refresh_local(&self.paths);
-        if self.health.ok {
-            eprintln!(
-                "Tessera: calendar refresh ok ({} eventos)",
-                self.health.event_count
-            );
-        } else {
-            eprintln!("Tessera: calendar refresh: {}", self.health.message);
-        }
+        let paths = self.paths.clone();
+        self.pending = Some(std::thread::spawn(move || refresh_local(&paths)));
     }
 
     pub fn build_events_line(&mut self) -> String {
@@ -302,7 +336,7 @@ impl CalendarCapability {
     }
 
     fn set_selection(&mut self, ids: Vec<String>) {
-        let _ = save_selection(&self.paths, &ids);
+        let _ = save_selection_local(&self.paths, &ids);
         self.last_refresh = Instant::now()
             .checked_sub(Duration::from_secs(CALENDAR_REFRESH_INTERVAL_S))
             .unwrap_or_else(Instant::now);
@@ -411,6 +445,27 @@ mod tests {
             line,
             "CALENDAR\tv1\t1\t1\t0930\t1015\t0\tDaily standup\tSala Azul\t45\t1A73E8\t0"
         );
+    }
+
+    #[test]
+    fn first_line_uses_the_saved_cache() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("calendar");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("health.json"),
+            r#"{"ok":true,"phase":"ok","message":"","event_count":1,"checked_at":"2026-10-27T18:00:00-03:00","calendars":[]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("events_cache.json"),
+            r#"{"fetched_at":"2026-10-27T18:00:00-03:00","events":[{"start_hhmm":"1900","end_hhmm":"1930","all_day":false,"title":"Ensaio","location":"","duration_min":30,"color":"1A73E8","day_offset":0}]}"#,
+        )
+        .unwrap();
+        let mut cap = CalendarCapability::new(CalendarPaths::isolated(root));
+        let line = &cap.handle_line("CALENDAR?")[0];
+        assert!(line.starts_with("CALENDAR\tv1\t1\t1\t"), "{line}");
+        assert!(line.contains("Ensaio"), "{line}");
     }
 
     #[test]

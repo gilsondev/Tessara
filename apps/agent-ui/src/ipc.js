@@ -14,8 +14,30 @@ export function agentdUrl(path) {
 
 const IPC_TIMEOUT_MS = 1500;
 
+let cachedIpcToken;
+
+async function ipcToken() {
+  if (cachedIpcToken !== undefined) return cachedIpcToken;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    cachedIpcToken = (await invoke("ipc_token")) || "";
+  } catch {
+    cachedIpcToken = "";
+  }
+  return cachedIpcToken;
+}
+
+async function authFetch(url, opts = {}) {
+  const headers = new Headers(opts.headers || {});
+  const token = await ipcToken();
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return fetch(url, { ...opts, headers });
+}
+
 export async function fetchStatus() {
-  const r = await fetch(agentdUrl("/v1/status"), {
+  const r = await authFetch(agentdUrl("/v1/status"), {
     signal: AbortSignal.timeout(800),
   });
   if (!r.ok) throw new Error(`status ${r.status}`);
@@ -26,7 +48,7 @@ export async function fetchStatus() {
 
 /** @returns {Promise<{ scanned_at: string, found: object[] }>} */
 export async function fetchScanLast() {
-  const r = await fetch(agentdUrl("/v1/scan/last"), {
+  const r = await authFetch(agentdUrl("/v1/scan/last"), {
     signal: AbortSignal.timeout(IPC_TIMEOUT_MS),
   });
   if (!r.ok) throw new Error(`scan/last ${r.status}`);
@@ -38,7 +60,7 @@ export async function fetchScanLast() {
  * @returns {Promise<{ scanned_at: string, found: object[] }>}
  */
 export async function postScan(body = {}) {
-  const r = await fetch(agentdUrl("/v1/scan"), {
+  const r = await authFetch(agentdUrl("/v1/scan"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -53,7 +75,7 @@ export async function postScan(body = {}) {
 
 /** @returns {Promise<{ machines: object[] }>} */
 export async function fetchMachines() {
-  const r = await fetch(agentdUrl("/v1/machines"), {
+  const r = await authFetch(agentdUrl("/v1/machines"), {
     signal: AbortSignal.timeout(IPC_TIMEOUT_MS),
   });
   if (!r.ok) throw new Error(`machines ${r.status}`);
@@ -65,7 +87,7 @@ export async function fetchMachines() {
  */
 export async function fetchDoctor() {
   try {
-    const r = await fetch(agentdUrl("/v1/doctor"), {
+    const r = await authFetch(agentdUrl("/v1/doctor"), {
       signal: AbortSignal.timeout(IPC_TIMEOUT_MS),
     });
     if (r.status === 404 || r.status === 501) {
@@ -87,7 +109,7 @@ export async function fetchDoctor() {
 export async function fetchLogs(tail = 200) {
   const q = Number.isFinite(tail) ? Math.max(1, Math.min(tail, 2000)) : 200;
   try {
-    const r = await fetch(agentdUrl(`/v1/logs?tail=${q}`), {
+    const r = await authFetch(agentdUrl(`/v1/logs?tail=${q}`), {
       signal: AbortSignal.timeout(IPC_TIMEOUT_MS),
     });
     if (r.status === 404 || r.status === 501) {
@@ -105,7 +127,7 @@ export async function fetchLogs(tail = 200) {
 
 /** @returns {Promise<object>} */
 export async function fetchPanelState() {
-  const r = await fetch(agentdUrl("/v1/panel/state"), {
+  const r = await authFetch(agentdUrl("/v1/panel/state"), {
     signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 3),
   });
   if (!r.ok) throw new Error(`panel/state ${r.status}`);
@@ -114,7 +136,7 @@ export async function fetchPanelState() {
 
 /** @param {object} patch */
 export async function postPanelSettings(patch) {
-  const r = await fetch(agentdUrl("/v1/panel/settings"), {
+  const r = await authFetch(agentdUrl("/v1/panel/settings"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
@@ -131,7 +153,7 @@ export async function postPanelSettings(patch) {
  * @param {string|number|boolean} value
  */
 export async function postWidgetSettings(id, key, value) {
-  const r = await fetch(agentdUrl("/v1/panel/widget_settings"), {
+  const r = await authFetch(agentdUrl("/v1/panel/widget_settings"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id, key, value }),
@@ -146,7 +168,7 @@ export async function postWidgetSettings(id, key, value) {
  * @param {{ id: string, title?: string, shown: boolean }[]} widgets
  */
 export async function postPanelDashboard(widgets) {
-  const r = await fetch(agentdUrl("/v1/panel/dashboard"), {
+  const r = await authFetch(agentdUrl("/v1/panel/dashboard"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ widgets }),
@@ -157,7 +179,7 @@ export async function postPanelDashboard(widgets) {
 }
 
 export async function postPanelRefresh() {
-  const r = await fetch(agentdUrl("/v1/panel/refresh"), {
+  const r = await authFetch(agentdUrl("/v1/panel/refresh"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",
@@ -169,7 +191,7 @@ export async function postPanelRefresh() {
 
 /** @param {string} token */
 export async function postPanelToken(token) {
-  const r = await fetch(agentdUrl("/v1/panel/token"), {
+  const r = await authFetch(agentdUrl("/v1/panel/token"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token }),
@@ -181,7 +203,7 @@ export async function postPanelToken(token) {
 
 /** @param {object} body city | {name,latitude,longitude} */
 export async function postPanelWeather(body) {
-  const r = await fetch(agentdUrl("/v1/panel/weather"), {
+  const r = await authFetch(agentdUrl("/v1/panel/weather"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -193,7 +215,7 @@ export async function postPanelWeather(body) {
 
 /** @param {string} selection comma-separated calendar ids */
 export async function postCalendarSelection(selection) {
-  const r = await fetch(agentdUrl("/v1/panel/calendar/selection"), {
+  const r = await authFetch(agentdUrl("/v1/panel/calendar/selection"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ selection }),
@@ -204,7 +226,7 @@ export async function postCalendarSelection(selection) {
 }
 
 export async function postCalendarClient(raw) {
-  const r = await fetch(agentdUrl("/v1/calendar/client"), {
+  const r = await authFetch(agentdUrl("/v1/calendar/client"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ raw }),
@@ -215,7 +237,7 @@ export async function postCalendarClient(raw) {
 }
 
 export async function postCalendarAuthStart(source) {
-  const r = await fetch(agentdUrl("/v1/calendar/auth/start"), {
+  const r = await authFetch(agentdUrl("/v1/calendar/auth/start"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ source: source || "json" }),
@@ -226,7 +248,7 @@ export async function postCalendarAuthStart(source) {
 }
 
 export async function fetchCalendarAuth() {
-  const r = await fetch(agentdUrl("/v1/calendar/auth"), {
+  const r = await authFetch(agentdUrl("/v1/calendar/auth"), {
     signal: AbortSignal.timeout(IPC_TIMEOUT_MS),
   });
   if (!r.ok) throw new Error(`calendar/auth ${r.status}`);
@@ -234,7 +256,7 @@ export async function fetchCalendarAuth() {
 }
 
 export async function postCalendarSelectionLocal(ids) {
-  const r = await fetch(agentdUrl("/v1/calendar/selection"), {
+  const r = await authFetch(agentdUrl("/v1/calendar/selection"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ids }),
@@ -245,7 +267,7 @@ export async function postCalendarSelectionLocal(ids) {
 }
 
 export async function postCalendarAddAccount() {
-  const r = await fetch(agentdUrl("/v1/panel/calendar/add_account"), {
+  const r = await authFetch(agentdUrl("/v1/panel/calendar/add_account"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",
@@ -257,7 +279,7 @@ export async function postCalendarAddAccount() {
 
 /** @returns {Promise<object>} */
 export async function fetchUpdate() {
-  const r = await fetch(agentdUrl("/v1/update"), {
+  const r = await authFetch(agentdUrl("/v1/update"), {
     signal: AbortSignal.timeout(IPC_TIMEOUT_MS * 2),
   });
   if (!r.ok) throw new Error(`update ${r.status}`);
@@ -269,7 +291,7 @@ export async function fetchUpdate() {
  * @returns {Promise<object>}
  */
 export async function postUpdate(body = {}) {
-  const r = await fetch(agentdUrl("/v1/update"), {
+  const r = await authFetch(agentdUrl("/v1/update"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -285,7 +307,7 @@ export async function postUpdate(body = {}) {
  * @returns {Promise<{ ok: boolean, pane: string, settings_url: string, binary_path: string, hint: string }>}
  */
 export async function preparePermission(pane) {
-  const r = await fetch(agentdUrl("/v1/permissions/prepare"), {
+  const r = await authFetch(agentdUrl("/v1/permissions/prepare"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ pane }),
@@ -317,7 +339,7 @@ export async function openPrivacySettings(pane) {
 }
 
 export async function postPanelReboot() {
-  const r = await fetch(agentdUrl("/v1/panel/reboot"), {
+  const r = await authFetch(agentdUrl("/v1/panel/reboot"), {
     method: "POST",
     signal: AbortSignal.timeout(12000),
   });

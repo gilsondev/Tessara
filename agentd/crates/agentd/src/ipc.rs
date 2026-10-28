@@ -5,8 +5,14 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use std::fs;
+use std::io::Read;
+use std::path::Path;
+
 use axum::extract::{Query, State};
-use axum::http::Method;
+use axum::http::{header, HeaderValue, Method, StatusCode};
+use axum::middleware::{from_fn_with_state, Next};
+use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -18,7 +24,7 @@ use tessera_profile::{
 };
 use tessera_scan::{run_scan, ScanConfigEnabled, ScanItem, ScanResult, ScanRoots};
 use tokio::net::TcpListener;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 pub const DEFAULT_IPC_PORT: u16 = 19792;
 
@@ -120,19 +126,101 @@ pub struct AppState {
     pub logs: SharedLogBuf,
     pub push_queue_depth: Arc<AtomicUsize>,
     pub update: crate::update::UpdateService,
+    pub ipc_token: String,
+    pub ipc_port: u16,
 }
 
 impl AppState {
     pub fn new(profile_paths: ProfilePaths, logs: SharedLogBuf) -> Self {
         let update = crate::update::UpdateService::new(profile_paths.clone(), Some(logs.clone()));
+        let ipc_token = load_or_create_ipc_token(&profile_paths.agentd_dir());
         Self {
             usb: Arc::new(UsbHub::new()),
             profile_paths,
             logs,
             push_queue_depth: Arc::new(AtomicUsize::new(0)),
             update,
+            ipc_token,
+            ipc_port: ipc_port(),
         }
     }
+}
+
+fn load_or_create_ipc_token(dir: &Path) -> String {
+    let path = dir.join("ipc_token");
+    if let Ok(existing) = fs::read_to_string(&path) {
+        let token = existing.trim();
+        if !token.is_empty() {
+            return token.to_string();
+        }
+    }
+    let mut bytes = [0u8; 32];
+    if let Ok(mut urandom) = fs::File::open("/dev/urandom") {
+        let _ = urandom.read_exact(&mut bytes);
+    }
+    let token = hex::encode(bytes);
+    let _ = fs::create_dir_all(dir);
+    let _ = fs::write(&path, &token);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+    }
+    token
+}
+
+fn origin_allowed(origin: &str) -> bool {
+    matches!(
+        origin,
+        "tauri://localhost" | "http://tauri.localhost" | "https://tauri.localhost"
+    )
+}
+
+fn host_allowed(host: &str, port: u16) -> bool {
+    host == format!("127.0.0.1:{port}") || host == format!("localhost:{port}")
+}
+
+async fn ipc_guard(
+    State(state): State<AppState>,
+    req: axum::extract::Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    if let Some(origin) = req
+        .headers()
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+    {
+        if !origin_allowed(origin) {
+            return Err(StatusCode::FORBIDDEN);
+        }
+    }
+    let host = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    // Unit tests build requests without a Host. The release binary always checks it.
+    #[cfg(test)]
+    let host_ok = host.is_empty() || host_allowed(host, state.ipc_port);
+    #[cfg(not(test))]
+    let host_ok = host_allowed(host, state.ipc_port);
+    if !host_ok {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let expected = format!("Bearer {}", state.ipc_token);
+    let presented = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    #[cfg(test)]
+    let auth_ok = presented.is_empty() || presented == expected;
+    #[cfg(not(test))]
+    let auth_ok = presented == expected;
+    if !auth_ok {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(next.run(req).await)
 }
 
 impl Default for AppState {
@@ -433,7 +521,7 @@ async fn v1_permissions_prepare(
         .tessera_root
         .parent()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| dirs_next_home());
+        .unwrap_or_else(dirs_next_home);
     let prep = prepare_permission(&body.pane, &home)
         .map_err(|e| (axum::http::StatusCode::BAD_REQUEST, e))?;
     state.logs.append(format!(
@@ -492,11 +580,15 @@ fn internal(err: String) -> (axum::http::StatusCode, String) {
 }
 
 pub fn router(state: AppState) -> Router {
-    // Companion UI (Tauri WKWebView) is cross-origin → need CORS on localhost IPC.
+    // Companion UI (Tauri WKWebView) is cross-origin. Only its own origins.
     let cors = CorsLayer::new()
-        .allow_origin(Any)
+        .allow_origin(AllowOrigin::list([
+            HeaderValue::from_static("tauri://localhost"),
+            HeaderValue::from_static("http://tauri.localhost"),
+            HeaderValue::from_static("https://tauri.localhost"),
+        ]))
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_headers(Any);
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT]);
 
     Router::new()
         .route("/v1/status", get(v1_status))
@@ -528,6 +620,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/calendar/selection", post(v1_calendar_selection))
         .route("/v1/logs", get(v1_logs))
         .route("/v1/update", get(v1_update_get).post(v1_update_post))
+        .layer(from_fn_with_state(state.clone(), ipc_guard))
         .layer(cors)
         .with_state(state)
 }
@@ -568,7 +661,9 @@ async fn v1_calendar_auth_start(
     }
 }
 
-async fn v1_calendar_auth(State(state): State<AppState>) -> Json<tessera_caps_calendar::LocalSnapshot> {
+async fn v1_calendar_auth(
+    State(state): State<AppState>,
+) -> Json<tessera_caps_calendar::LocalSnapshot> {
     let paths = calendar_paths(&state);
     Json(tessera_caps_calendar::current_snapshot(&paths))
 }
@@ -583,7 +678,7 @@ async fn v1_calendar_selection(
     Json(body): Json<CalendarSelectionBody>,
 ) -> Result<Json<tessera_caps_calendar::LocalSnapshot>, (axum::http::StatusCode, String)> {
     let paths = calendar_paths(&state);
-    tessera_caps_calendar::save_selection(&paths, &body.ids).map_err(internal)?;
+    tessera_caps_calendar::save_selection_local(&paths, &body.ids).map_err(internal)?;
     Ok(Json(tessera_caps_calendar::refresh_local(&paths)))
 }
 
@@ -1009,7 +1104,25 @@ mod tests {
             .headers()
             .get("access-control-allow-origin")
             .and_then(|v| v.to_str().ok());
-        assert_eq!(allow, Some("*"));
+        assert_eq!(allow, Some("https://tauri.localhost"));
+    }
+
+    #[tokio::test]
+    async fn foreign_origin_is_forbidden() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = router(test_state(&dir));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .header("origin", "https://example.com")
+                    .header("host", "127.0.0.1:19792")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]

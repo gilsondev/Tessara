@@ -29,9 +29,11 @@ tessera-caps-calendar = { path = "../caps-calendar" }
 tessera-caps-todoist = { path = "../caps-todoist" }
 tessera-doctor = { path = "../doctor" }
 tessera-logbuf = { path = "../logbuf" }
+tessera-proc = { path = "../proc" }
 ureq = { version = "=2.12.1", default-features = true, features = ["tls"] }
 sha2 = "=0.10.9"
 hex = "=0.4.3"
+ring = "=0.17.14"
 
 [dev-dependencies]
 tempfile = "=3.14.0"

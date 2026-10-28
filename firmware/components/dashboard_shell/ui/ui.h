@@ -5,7 +5,6 @@
 #include "calendar/snapshot.h"
 #include "domain/dashboard_layout.h"
 #include "mac/focus_snapshot.h"
-#include "media/snapshot.h"
 #include "domain/device_settings.h"
 #include "weather/cache.h"
 
@@ -27,8 +26,8 @@ public:
     // Open a registered widget by stable id (org.tessera.*). Shell stays id-agnostic.
     virtual void on_open_widget(const char *widget_id) = 0;
     virtual void on_aitokens_refresh() = 0;
-    // Música: "?" refresh, or "PLAYPAUSE" / "NEXT" / "PREV".
-    virtual void on_media_cmd(const char *cmd) = 0;
+    // Now playing: "?" refresh, or "PLAYPAUSE" / "NEXT" / "PREV".
+    virtual void on_playing_cmd(const char *cmd) = 0;
     // Mac Focus: "?" refresh, "OFF", or "SET\t<id>".
     virtual void on_mac_cmd(const char *cmd) = 0;
     virtual void on_back_home() = 0;
@@ -55,7 +54,6 @@ void set_summary(int total, bool pending);
 void set_weather(const weather::View &view);
 void set_aitokens(const aitokens::View &view);
 void set_calendar(const calendar::View &view);
-void set_media(const media::View &view, bool agent_ok);
 void set_mac(const focus::View &view, bool agent_ok);
 void set_agent(const agent::View &view, bool pack_on_sd = false, const char *pack_version = nullptr);
 void apply_theme();

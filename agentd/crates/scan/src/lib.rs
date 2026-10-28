@@ -30,7 +30,22 @@ impl ScanState {
 pub struct ScanItem {
     pub id: String,
     pub state: ScanState,
+    #[serde(default)]
     pub enabled: bool,
+    /// Why a capability is not ready. Empty when the short state is enough.
+    #[serde(default)]
+    pub detail: String,
+}
+
+impl ScanItem {
+    pub fn new(id: &str, state: ScanState, enabled: bool) -> Self {
+        Self {
+            id: id.to_string(),
+            state,
+            enabled,
+            detail: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,30 +140,95 @@ fn detect_cursor(roots: &ScanRoots, enabled: bool) -> ScanItem {
     } else {
         ScanState::NeedsAuth
     };
-    ScanItem {
-        id: "cursor".to_string(),
-        state,
-        enabled,
-    }
+    ScanItem::new("cursor", state, enabled)
 }
 
 fn detect_claude(roots: &ScanRoots, enabled: bool) -> ScanItem {
-    let has_app = roots.has_app("Claude.app");
+    let installed = roots.has_app("Claude.app") || roots.home.join(".claude").is_dir();
     let tessera = roots.home.join(".tessera");
     let status_ok = claude_quota_ready(&tessera.join("claude_status.json"))
         || claude_quota_ready(&tessera.join("claude_usage_cache.json"));
-    let state = if !has_app {
-        ScanState::Missing
-    } else if status_ok {
-        ScanState::Ready
-    } else {
-        ScanState::NeedsAuth
-    };
-    ScanItem {
-        id: "claude".to_string(),
-        state,
-        enabled,
+    if !installed {
+        return ScanItem::new("claude", ScanState::Missing, enabled);
     }
+    if status_ok {
+        return ScanItem::new("claude", ScanState::Ready, enabled);
+    }
+    let mut item = ScanItem::new("claude", ScanState::NeedsAuth, enabled);
+    item.detail = claude_block_reason(&roots.home);
+    item
+}
+
+fn claude_block_reason(home: &Path) -> String {
+    let settings = home.join(".claude/settings.json");
+    if let Some(cmd) = statusline_command(&settings) {
+        let chained = cmd.contains("statusline_claude") || cmd.contains("statusline_chain");
+        if !cmd.is_empty() && !chained {
+            return "statusLine aponta para outro comando".into();
+        }
+    }
+    let script = home.join(".tessera/agentd/statusline_claude.sh");
+    if !script.is_file() {
+        return "script do statusLine ausente".into();
+    }
+    if !statusline_probe(&script) {
+        return "script não gravou a saída".into();
+    }
+    "sem dado de limite".into()
+}
+
+fn statusline_command(settings: &Path) -> Option<String> {
+    let raw = fs::read_to_string(settings).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    value
+        .pointer("/statusLine/command")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+fn statusline_probe(script: &Path) -> bool {
+    let temp = std::env::temp_dir().join(format!(
+        "tessera-statusline-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    if fs::create_dir_all(&temp).is_err() {
+        return false;
+    }
+    let ok = probe_in(&temp, script);
+    let _ = fs::remove_dir_all(&temp);
+    ok
+}
+
+fn probe_in(temp: &Path, script: &Path) -> bool {
+    let sample = temp.join("sample.json");
+    if fs::write(
+        &sample,
+        br#"{"rate_limits":{"five_hour":{"used_percentage":42}}}"#,
+    )
+    .is_err()
+    {
+        return false;
+    }
+    let cmd = format!("\"{}\" < \"{}\"", script.display(), sample.display());
+    let Some(out) = tessera_proc::command_output_timeout(
+        std::process::Command::new("/bin/bash")
+            .arg("-c")
+            .arg(cmd)
+            .env("HOME", temp),
+        std::time::Duration::from_secs(2),
+    ) else {
+        return false;
+    };
+    if !out.status.success() {
+        return false;
+    }
+    fs::read_to_string(temp.join(".tessera/claude_status.json"))
+        .ok()
+        .is_some_and(|raw| raw.contains("42"))
 }
 
 fn detect_codex(roots: &ScanRoots, enabled: bool) -> ScanItem {
@@ -160,11 +240,7 @@ fn detect_codex(roots: &ScanRoots, enabled: bool) -> ScanItem {
     } else {
         ScanState::NeedsAuth
     };
-    ScanItem {
-        id: "codex".to_string(),
-        state,
-        enabled,
-    }
+    ScanItem::new("codex", state, enabled)
 }
 
 fn claude_quota_ready(path: &Path) -> bool {
@@ -197,11 +273,7 @@ fn detect_media(roots: &ScanRoots, enabled: bool) -> ScanItem {
     } else {
         ScanState::Missing
     };
-    ScanItem {
-        id: "media".to_string(),
-        state,
-        enabled,
-    }
+    ScanItem::new("media", state, enabled)
 }
 
 fn detect_focus(roots: &ScanRoots, enabled: bool) -> ScanItem {
@@ -216,11 +288,7 @@ fn detect_focus(roots: &ScanRoots, enabled: bool) -> ScanItem {
     } else {
         ScanState::NeedsAuth
     };
-    ScanItem {
-        id: "focus".to_string(),
-        state,
-        enabled,
-    }
+    ScanItem::new("focus", state, enabled)
 }
 
 fn file_readable(path: &Path) -> bool {
@@ -236,11 +304,7 @@ fn detect_calendar(roots: &ScanRoots, enabled: bool) -> ScanItem {
         | tessera_caps_calendar::LocalProbe::Empty
         | tessera_caps_calendar::LocalProbe::Error => ScanState::NeedsAuth,
     };
-    ScanItem {
-        id: "calendar".to_string(),
-        state,
-        enabled,
-    }
+    ScanItem::new("calendar", state, enabled)
 }
 
 fn iso_now() -> String {
@@ -324,36 +388,12 @@ mod tests {
     #[test]
     fn toggles_from_scan_disable_missing_capabilities() {
         let found = vec![
-            ScanItem {
-                id: "cursor".to_string(),
-                state: ScanState::Ready,
-                enabled: true,
-            },
-            ScanItem {
-                id: "claude".to_string(),
-                state: ScanState::Missing,
-                enabled: false,
-            },
-            ScanItem {
-                id: "codex".to_string(),
-                state: ScanState::Missing,
-                enabled: false,
-            },
-            ScanItem {
-                id: "media".to_string(),
-                state: ScanState::Missing,
-                enabled: false,
-            },
-            ScanItem {
-                id: "focus".to_string(),
-                state: ScanState::Ready,
-                enabled: true,
-            },
-            ScanItem {
-                id: "calendar".to_string(),
-                state: ScanState::Missing,
-                enabled: false,
-            },
+            ScanItem::new("cursor", ScanState::Ready, true),
+            ScanItem::new("claude", ScanState::Missing, false),
+            ScanItem::new("codex", ScanState::Missing, false),
+            ScanItem::new("media", ScanState::Missing, false),
+            ScanItem::new("focus", ScanState::Ready, true),
+            ScanItem::new("calendar", ScanState::Missing, false),
         ];
         let t = ScanConfigEnabled::toggles_from_scan(&found);
         assert!(t.aitokens);
@@ -385,6 +425,22 @@ mod tests {
         let result = run_scan(&roots(&temp), ScanConfigEnabled::default());
         let claude = result.found.iter().find(|i| i.id == "claude").unwrap();
         assert_eq!(claude.state, ScanState::Ready);
+    }
+
+    #[test]
+    fn claude_names_a_foreign_statusline() {
+        let temp = tempfile::tempdir().unwrap();
+        let claude = temp.path().join(".claude");
+        fs::create_dir_all(&claude).unwrap();
+        fs::write(
+            claude.join("settings.json"),
+            r#"{"statusLine":{"type":"command","command":"/tmp/other.sh"}}"#,
+        )
+        .unwrap();
+        let result = run_scan(&roots(&temp), ScanConfigEnabled::default());
+        let item = result.found.iter().find(|i| i.id == "claude").unwrap();
+        assert_eq!(item.state, ScanState::NeedsAuth);
+        assert_eq!(item.detail, "statusLine aponta para outro comando");
     }
 
     #[test]

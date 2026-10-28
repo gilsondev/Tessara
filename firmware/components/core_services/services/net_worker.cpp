@@ -1,6 +1,7 @@
 #include "services/net_worker.h"
 
 #include "platform/daytime.h"
+#include "platform/display_host.h"
 #include "platform/log.h"
 #include "services/text.h"
 #include "services/todoist_client.h"
@@ -29,10 +30,15 @@ char pass[64];
 bool connect() {
     if (WiFi.status() == WL_CONNECTED) return true;
     if (!ssid[0]) return false;
+    // WiFi.begin writes the driver NVS unless persistence is off. Hold the frame
+    // push only for that setup. The wait can last 15 s and must not freeze the UI.
+    display_host::pause_push();
+    WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
     WiFi.setHostname("tessera");
     WiFi.begin(ssid, pass);
+    display_host::resume_push();
     uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < kConnectTimeoutMs) delay(20);
     bool ok = WiFi.status() == WL_CONNECTED;
@@ -113,6 +119,11 @@ void loop(void *) {
     }
 }
 }  // namespace
+
+unsigned net_worker::stack_high_water() {
+    if (!task) return 0;
+    return static_cast<unsigned>(uxTaskGetStackHighWaterMark(task) * sizeof(StackType_t));
+}
 
 bool net_worker::begin() {
     if (task) return true;

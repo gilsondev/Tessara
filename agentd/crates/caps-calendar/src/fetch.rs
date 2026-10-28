@@ -244,7 +244,7 @@ fn item_to_event(item: &Value, today: NaiveDate, now: DateTime<Local>) -> Option
 /// Days from today to `day`, or `None` when it falls outside what the panel can show.
 fn day_offset(today: NaiveDate, day: NaiveDate) -> Option<u8> {
     let days = (day - today).num_days();
-    if days < 0 || days > 14 {
+    if !(0..=14).contains(&days) {
         return None;
     }
     Some(days as u8)

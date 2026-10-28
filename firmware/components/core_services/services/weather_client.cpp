@@ -227,7 +227,7 @@ bool weather_client::forecast(float latitude, float longitude, weather::Forecast
     char path[360];
     snprintf(path, sizeof(path),
              "/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code&daily=weather_code,"
-             "temperature_2m_max,temperature_2m_min&forecast_days=7&timezone=America%%2FSao_Paulo",
+             "temperature_2m_max,temperature_2m_min&forecast_days=7&timezone=auto",
              latitude, longitude);
     char *body = body_buffer();
     if (!body) {

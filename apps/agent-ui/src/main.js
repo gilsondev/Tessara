@@ -289,6 +289,14 @@ function scanStateUi(item) {
       defaultOn: false,
     };
   }
+  if (id === "claude" && item.detail) {
+    return {
+      needClass: s === "ready" ? "ok" : "",
+      needText: item.detail,
+      canEnable: true,
+      defaultOn: true,
+    };
+  }
   if (id === "claude" && s === "needs_auth") {
     return {
       needClass: "",

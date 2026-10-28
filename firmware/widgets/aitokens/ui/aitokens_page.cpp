@@ -594,8 +594,8 @@ void build_ui(lv_obj_t *parent) {
     lv_obj_set_style_pad_bottom(body, theme::kListPad, 0);
     lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(body, 10, 0);
-    lv_obj_add_flag(body, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_scroll_dir(body, LV_DIR_VER);
+    // kit::bare drops CLICKABLE. Without it a drag on the cards never reaches this scroller.
+    kit::enable_list_scroll(body);
 
     codex_block = make_block(body, "Codex", aitokens_logos::codex(), true, false, brand_codex());
     claude_block = make_block(body, "Claude", aitokens_logos::claude(), false, false, brand_claude());

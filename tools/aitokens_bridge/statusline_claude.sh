@@ -4,7 +4,7 @@
 #   "statusLine": { "type": "command", "command": "/ABS/PATH/statusline_claude.sh" }
 set -euo pipefail
 mkdir -p "$HOME/.tessera"
-python3 - <<'PY'
+python3 /dev/fd/3 3<<'PY'
 import json, sys, time
 from pathlib import Path
 

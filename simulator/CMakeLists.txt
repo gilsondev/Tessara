@@ -114,6 +114,7 @@ add_executable(painel
   "${FW}/components/core_services/services/text.cpp"
   "${FW}/widgets/todoist/todoist/snapshot.cpp"
   "${FW}/widgets/weather/weather/codes.cpp"
+  "${FW}/widgets/weather/weather/cache.cpp"
   "${FW}/widgets/weather/ui/weather_page.cpp"
   "${FW}/widgets/weather/ui/weather_icons.cpp"
   "${FW}/widgets/weather/ui/weather_icons_data.cpp"
@@ -130,6 +131,8 @@ add_executable(painel
   "${FW}/widgets/mac/mac/focus_snapshot.cpp"
   "${FW}/widgets/media/media/snapshot.cpp"
   "${FW}/widgets/media/ui/media_page.cpp"
+  "${FW}/widgets/media/ui/media_tile.cpp"
+  "${FW}/widgets/media/media_widget.cpp"
   "${FW}/widgets/mac/ui/mac_page.cpp"
   "${LVGL_DIR}/src/libs/qrcode/qrcodegen.c"
   ${LVGL_SOURCES}

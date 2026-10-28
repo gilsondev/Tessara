@@ -5,6 +5,9 @@ use std::time::Duration;
 
 pub const BAUD: u32 = 115_200;
 pub const READ_TIMEOUT_MS: u64 = 200;
+/// Espressif USB CDC on the first supported board (`boards/jc3248w535.json`).
+pub const PANEL_VID: u16 = 0x303A;
+pub const PANEL_PID: u16 = 0x1001;
 
 #[derive(Debug, thiserror::Error)]
 pub enum UsbError {
@@ -18,23 +21,39 @@ pub struct PortName(pub String);
 
 /// Tessera / ESP32 CDC candidates (matches `agent.runtime.app_ports` naming).
 pub fn list_candidate_ports() -> Vec<PortName> {
-    let mut names: Vec<String> = serialport::available_ports()
+    let mut ranked: Vec<(u8, String)> = serialport::available_ports()
         .unwrap_or_default()
         .into_iter()
-        .map(|info| info.port_name)
-        .filter(|name| is_tessera_candidate(name))
+        .filter_map(|info| {
+            let (vid, pid) = match info.port_type {
+                serialport::SerialPortType::UsbPort(usb) => (Some(usb.vid), Some(usb.pid)),
+                _ => (None, None),
+            };
+            let rank = port_rank(&info.port_name, vid, pid);
+            (rank > 0).then_some((rank, info.port_name))
+        })
         .collect();
-    names.sort();
-    names.dedup();
-    names.into_iter().map(PortName).collect()
+    ranked.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    ranked.dedup_by(|a, b| a.1 == b.1);
+    ranked.into_iter().map(|(_, name)| PortName(name)).collect()
 }
 
-fn is_tessera_candidate(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
+/// Higher is a better match. `0` is not a panel port.
+/// The bootloader (`…1401`) is never a session port. A known VID/PID wins over a
+/// generic `usbmodem` name so another dongle is not taken first.
+pub fn port_rank(name: &str, vid: Option<u16>, pid: Option<u16>) -> u8 {
     if name.ends_with("1401") {
-        return false;
+        return 0;
     }
-    lower.contains("usbmodem") || lower.contains("tessera")
+    if vid == Some(PANEL_VID) && pid == Some(PANEL_PID) {
+        return 2;
+    }
+    let lower = name.to_ascii_lowercase();
+    if lower.contains("usbmodem") || lower.contains("tessera") {
+        1
+    } else {
+        0
+    }
 }
 
 /// Open serial at 115200 with read timeout; assert DTR after settle (match Python `open_serial`).
@@ -98,6 +117,17 @@ pub fn write_lines(w: &mut impl Write, lines: &[String]) -> io::Result<()> {
 mod tests {
     use super::*;
     use tessera_protocol::agent_ok_line;
+
+    #[test]
+    fn panel_vid_pid_outranks_a_generic_modem() {
+        assert_eq!(
+            port_rank("/dev/cu.usbmodem288485548A341", Some(PANEL_VID), Some(PANEL_PID)),
+            2
+        );
+        assert_eq!(port_rank("/dev/cu.usbmodemOTHER", None, None), 1);
+        assert_eq!(port_rank("/dev/cu.usbmodem1401", Some(PANEL_VID), Some(PANEL_PID)), 0);
+        assert_eq!(port_rank("/dev/cu.Bluetooth-Incoming-Port", None, None), 0);
+    }
 
     #[test]
     fn write_handshake_vec_u8() {

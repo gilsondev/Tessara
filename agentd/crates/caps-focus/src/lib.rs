@@ -3,8 +3,19 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
+use std::thread;
 use std::time::{Duration, Instant};
+
+const READ_TIMEOUT: Duration = Duration::from_secs(2);
+const SHORTCUT_RUN_TIMEOUT: Duration = Duration::from_secs(8);
+
+#[cfg(test)]
+static SHORTCUT_OVERRIDE: Mutex<Option<std::sync::Arc<dyn Fn(&str) -> bool + Send + Sync>>> =
+    Mutex::new(None);
+#[cfg(test)]
+static FOCUS_TEST: Mutex<()> = Mutex::new(());
 
 use serde_json::Value;
 use tessera_protocol::focus_line;
@@ -180,10 +191,10 @@ fn load_plist_json(path: &Path) -> Option<Value> {
     if !path.is_file() {
         return None;
     }
-    let out = Command::new("plutil")
-        .args(["-convert", "json", "-o", "-", path.to_str()?])
-        .output()
-        .ok()?;
+    let out = tessera_proc::command_output_timeout(
+        Command::new("plutil").args(["-convert", "json", "-o", "-", path.to_str()?]),
+        READ_TIMEOUT,
+    )?;
     if !out.status.success() {
         return None;
     }
@@ -345,14 +356,18 @@ fn known_shortcut_names() -> std::collections::HashSet<String> {
     if guard.0.elapsed() < Duration::from_secs(90) && !guard.1.is_empty() {
         return guard.1.clone();
     }
+    let Some(out) = tessera_proc::command_output_timeout(
+        Command::new("shortcuts").args(["list"]),
+        READ_TIMEOUT,
+    ) else {
+        return guard.1.clone();
+    };
     let mut names = std::collections::HashSet::new();
-    if let Ok(out) = Command::new("shortcuts").args(["list"]).output() {
-        if out.status.success() {
-            for line in String::from_utf8_lossy(&out.stdout).lines() {
-                let t = line.trim();
-                if !t.is_empty() {
-                    names.insert(t.to_string());
-                }
+    if out.status.success() {
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let t = line.trim();
+            if !t.is_empty() {
+                names.insert(t.to_string());
             }
         }
     }
@@ -365,15 +380,23 @@ fn run_shortcut(label: &str) -> bool {
     if label.is_empty() {
         return false;
     }
-    Command::new("shortcuts")
-        .args(["run", label])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    tessera_proc::command_output_timeout(
+        Command::new("shortcuts").args(["run", label]),
+        SHORTCUT_RUN_TIMEOUT,
+    )
+    .map(|o| o.status.success())
+    .unwrap_or(false)
 }
 
 fn run_known_shortcut(label: &str) -> bool {
-    if label.is_empty() || !known_shortcut_names().contains(label) {
+    if label.is_empty() {
+        return false;
+    }
+    #[cfg(test)]
+    if let Some(run) = SHORTCUT_OVERRIDE.lock().ok().and_then(|guard| guard.clone()) {
+        return run(label);
+    }
+    if !known_shortcut_names().contains(label) {
         return false;
     }
     run_shortcut(label)
@@ -503,15 +526,19 @@ fn resolve_apple_mode_id(mode_id: &str, modes: &[FocusMode]) -> String {
 
 fn notify_focus_changed(_enabled: bool) {
     // Restart DND daemon so Control Center re-reads Assertions.json.
-    if let Ok(uid) = Command::new("id").arg("-u").output() {
+    if let Some(uid) = tessera_proc::command_output_timeout(
+        Command::new("id").arg("-u"),
+        READ_TIMEOUT,
+    ) {
         let uid = String::from_utf8_lossy(&uid.stdout).trim().to_string();
         for svc in [
             format!("gui/{uid}/com.apple.donotdisturbd"),
             format!("gui/{uid}/com.apple.donotdisturb.private.donotdisturbd"),
         ] {
-            let _ = Command::new("launchctl")
-                .args(["kickstart", "-k", &svc])
-                .output();
+            let _ = tessera_proc::command_output_timeout(
+                Command::new("launchctl").args(["kickstart", "-k", &svc]),
+                READ_TIMEOUT,
+            );
         }
     }
 }
@@ -639,6 +666,11 @@ pub fn clear_focus() -> bool {
     false
 }
 
+enum FocusJob {
+    Set { mode_id: String, modes: Vec<FocusMode> },
+    Off,
+}
+
 pub struct FocusCapability {
     last_modes: Vec<FocusMode>,
     last_pushed: Option<String>,
@@ -646,10 +678,29 @@ pub struct FocusCapability {
     optimistic_name: String,
     last_assert_mtime: f64,
     last_modes_mtime: f64,
+    jobs: Sender<FocusJob>,
+    done: Receiver<bool>,
 }
 
 impl FocusCapability {
     pub fn new() -> Self {
+        let (jobs, job_rx) = mpsc::channel();
+        let (done_tx, done) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(mut job) = job_rx.recv() {
+                while let Ok(next) = job_rx.try_recv() {
+                    job = next;
+                }
+                let ok = match job {
+                    FocusJob::Set { mode_id, modes } => {
+                        let modes = if modes.is_empty() { list_modes() } else { modes };
+                        set_focus(&mode_id, &modes)
+                    }
+                    FocusJob::Off => clear_focus(),
+                };
+                let _ = done_tx.send(ok);
+            }
+        });
         Self {
             last_modes: Vec::new(),
             last_pushed: None,
@@ -657,6 +708,8 @@ impl FocusCapability {
             optimistic_name: String::new(),
             last_assert_mtime: 0.0,
             last_modes_mtime: 0.0,
+            jobs,
+            done,
         }
     }
 
@@ -713,26 +766,45 @@ impl FocusCapability {
         if raw.starts_with("FOCUS\tSET\t") {
             let mode_id = raw.split('\t').nth(2).unwrap_or("").trim();
             let modes = self.last_modes.clone();
-            let modes = if modes.is_empty() { list_modes() } else { modes };
-            if set_focus(mode_id, &modes) {
-                if let Some(row) = row_for_id(mode_id, &modes) {
-                    self.optimistic_id = row.id;
-                    self.optimistic_name = sanitize(&row.name, NAME_MAX);
-                } else {
-                    self.optimistic_id = slug(mode_id);
-                    self.optimistic_name = sanitize(mode_id, NAME_MAX);
-                }
+            if let Some(row) = row_for_id(mode_id, &modes) {
+                self.optimistic_id = row.id;
+                self.optimistic_name = sanitize(&row.name, NAME_MAX);
+            } else {
+                self.optimistic_id = slug(mode_id);
+                self.optimistic_name = sanitize(mode_id, NAME_MAX);
             }
-            return vec![self.build_line()];
+            let _ = self.jobs.send(FocusJob::Set {
+                mode_id: mode_id.to_string(),
+                modes,
+            });
+            // The shortcut runs on the worker. The USB loop sends the line when it finishes.
+            return vec![];
         }
         if raw.starts_with("FOCUS\tOFF") || raw == "FOCUS\tOFF" {
-            if clear_focus() {
-                self.optimistic_id.clear();
-                self.optimistic_name.clear();
-            }
-            return vec![self.build_line()];
+            self.optimistic_id.clear();
+            self.optimistic_name.clear();
+            let _ = self.jobs.send(FocusJob::Off);
+            return vec![];
         }
         vec![]
+    }
+
+    /// Line to push after a SET/OFF worker finishes. Empty while the shortcut is still running.
+    pub fn take_finished_line(&mut self) -> Option<String> {
+        let mut saw = false;
+        let mut ok = true;
+        while let Ok(result) = self.done.try_recv() {
+            saw = true;
+            ok = result;
+        }
+        if !saw {
+            return None;
+        }
+        if !ok {
+            self.optimistic_id.clear();
+            self.optimistic_name.clear();
+        }
+        Some(self.build_line())
     }
 }
 
@@ -779,6 +851,89 @@ mod tests {
             encode_focus_line(true, "trabalho", "Trabalho", &modes),
             "FOCUS\tv1\t1\ttrabalho\tTrabalho\t2\ttrabalho\tTrabalho\tpessoal\tPessoal"
         );
+    }
+
+    #[test]
+    fn queued_focus_sets_keep_only_the_last() {
+        let _guard = FOCUS_TEST.lock().unwrap();
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let log = seen.clone();
+        *SHORTCUT_OVERRIDE.lock().unwrap() = Some(std::sync::Arc::new(move |label: &str| {
+            log.lock().unwrap().push(label.to_string());
+            if label.contains("hold") {
+                thread::sleep(Duration::from_millis(800));
+            }
+            true
+        }));
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                *SHORTCUT_OVERRIDE.lock().unwrap() = None;
+            }
+        }
+        let _clear = Clear;
+        let mut cap = FocusCapability::new();
+        assert!(cap.handle_line("FOCUS\tSET\thold").is_empty());
+        thread::sleep(Duration::from_millis(150));
+        assert!(cap.handle_line("FOCUS\tSET\ta").is_empty());
+        assert!(cap.handle_line("FOCUS\tSET\tb").is_empty());
+        assert!(cap.handle_line("FOCUS\tSET\tc").is_empty());
+        let deadline = Instant::now() + Duration::from_secs(4);
+        loop {
+            let labels = seen.lock().unwrap().clone();
+            if labels.iter().any(|label| label.contains("Focus c")) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "labels={labels:?}");
+            thread::sleep(Duration::from_millis(40));
+        }
+        thread::sleep(Duration::from_millis(200));
+        let labels = seen.lock().unwrap().clone();
+        assert!(
+            !labels.iter().any(|label| label.contains("Focus a") || label.contains("Focus b")),
+            "{labels:?}"
+        );
+        let line = cap.take_finished_line().unwrap_or_default();
+        assert!(line.contains('c'), "{line}");
+    }
+
+    #[test]
+    fn shortcut_run_leaves_the_caller_free() {
+        let _guard = FOCUS_TEST.lock().unwrap();
+        let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = finished.clone();
+        *SHORTCUT_OVERRIDE.lock().unwrap() = Some(std::sync::Arc::new(move |_label| {
+            thread::sleep(Duration::from_secs(4));
+            flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            true
+        }));
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                *SHORTCUT_OVERRIDE.lock().unwrap() = None;
+            }
+        }
+        let _clear = Clear;
+        let mut cap = FocusCapability::new();
+        let started = Instant::now();
+        let replies = cap.handle_line("FOCUS\tSET\ttrabalho");
+        assert!(replies.is_empty());
+        assert!(started.elapsed() < Duration::from_millis(400));
+        let mut beats = 0;
+        while started.elapsed() < Duration::from_secs(3) {
+            beats += 1;
+            thread::sleep(Duration::from_millis(200));
+        }
+        assert!(beats >= 8, "beats={beats}");
+        assert!(!finished.load(std::sync::atomic::Ordering::SeqCst));
+        let deadline = Instant::now() + Duration::from_secs(6);
+        let mut line = None;
+        while line.is_none() && Instant::now() < deadline {
+            line = cap.take_finished_line();
+            thread::sleep(Duration::from_millis(50));
+        }
+        assert!(finished.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(line.unwrap().starts_with("FOCUS\t"));
     }
 
     #[test]

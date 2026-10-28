@@ -124,9 +124,18 @@ mkdir -p "$BIN_DIR" "$LOG_DIR" "$HOME/Library/LaunchAgents"
 if [ -f "$HERE/agentd.tgz" ]; then
   TGZ="$HERE/agentd.tgz"
 else
-  echo "baixando agentd.tgz de $PANEL …"
-  curl -fsSL "$PANEL/agentd/agentd.tgz" -o /tmp/tessera-agentd.tgz
-  TGZ=/tmp/tessera-agentd.tgz
+  echo "baixando o agent dos GitHub Releases …"
+  MANIFEST=$(curl -fsSL "https://gilsondev.github.io/Tessera/latest.json")
+  URL=$(printf '%s' "$MANIFEST" | python3 -c 'import json,sys; print(json.load(sys.stdin)["agentd_url"])')
+  SHA=$(printf '%s' "$MANIFEST" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"]["agentd"])')
+  case "$URL" in
+    https://github.com/gilsondev/Tessera/releases/download/*) ;;
+    *) echo "url recusada: $URL" >&2; exit 1 ;;
+  esac
+  [ -n "$SHA" ] || { echo "manifest sem sha256" >&2; exit 1; }
+  TGZ=$(mktemp)
+  curl -fsSL "$URL" -o "$TGZ"
+  printf '%s  %s\n' "$SHA" "$TGZ" | shasum -a 256 -c -
 fi
 
 rm -rf "$INSTALL_ROOT/staging"
@@ -147,7 +156,23 @@ if [ -d "$INSTALL_ROOT/staging/Tessera.app" ]; then
 fi
 rm -rf "$INSTALL_ROOT/staging"
 
-AGENTD="$BIN_DIR/$INSTALL_BIN_NAME"
+APP="$INSTALL_ROOT/Tessera Agent.app"
+mkdir -p "$APP/Contents/MacOS"
+install -m 755 "$BIN_DIR/$INSTALL_BIN_NAME" "$APP/Contents/MacOS/Tessera"
+cat > "$APP/Contents/Info.plist" <<'PLISTINFO'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleExecutable</key><string>Tessera</string>
+  <key>CFBundleIdentifier</key><string>dev.tessera.agentd</string>
+  <key>CFBundleName</key><string>Tessera Agent</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>LSUIElement</key><true/>
+</dict></plist>
+PLISTINFO
+codesign --force --sign - "$APP"
+codesign --verify --strict "$APP"
+AGENTD="$APP/Contents/MacOS/Tessera"
 UID_NUM="$(id -u)"
 
 cat > "$PLIST" <<PLIST

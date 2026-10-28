@@ -4,21 +4,17 @@ use std::io::{self, Read, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tessera_caps_focus::{
-    focus_line_changed, FocusCapability, FOCUS_POLL_INTERVAL_S, FOCUS_PUSH_INTERVAL_S,
-};
 use tessera_caps_aitokens::{
     aitokens_line_changed, AiTokensCapability, AiTokensFilter, AITOKENS_PUSH_INTERVAL_S,
 };
-use tessera_caps_calendar::{
-    calendar_line_changed, CalendarCapability, CALENDAR_PUSH_INTERVAL_S,
-};
-use tessera_caps_todoist::{
-    todoist_line_changed, TodoistCapability, TODOIST_PUSH_INTERVAL_S,
+use tessera_caps_calendar::{calendar_line_changed, CalendarCapability, CALENDAR_PUSH_INTERVAL_S};
+use tessera_caps_focus::{
+    focus_line_changed, FocusCapability, FOCUS_POLL_INTERVAL_S, FOCUS_PUSH_INTERVAL_S,
 };
 use tessera_caps_media::{
     media_line_changed, MediaCapability, MEDIA_POLL_INTERVAL_S, MEDIA_PUSH_INTERVAL_S,
 };
+use tessera_caps_todoist::{todoist_line_changed, TodoistCapability, TODOIST_PUSH_INTERVAL_S};
 use tessera_logbuf::SharedLogBuf;
 use tessera_protocol::agent_ok_line;
 use tessera_usb::{open_tessera_port, write_handshake, write_lines, PortName, UsbError};
@@ -35,6 +31,41 @@ const AGENT_HEARTBEAT_INTERVAL_S: u64 = 8;
 const ONCE_READ_S: u64 = 2;
 const RETRY_S: f64 = 1.5;
 const CONFIG_RELOAD_S: u64 = 2;
+
+/// Cap while the panel is still inside `begin()` (display, SD, NVS). The
+/// unsolicited burst during that window fills the 2 KB RX queue and the next
+/// flash access panics the chip.
+const BOOT_PUSH_HOLD: Duration = Duration::from_secs(15);
+/// `tela em pe` is printed before `configure()` / `publish()` return.
+const AFTER_TELA_HOLD: Duration = Duration::from_millis(1200);
+/// A line from `loop()` means USB is being polled, but the handler may still
+/// be inside the connect-edge NVS read. Do not answer in the same instant.
+const AFTER_LOOP_HOLD: Duration = Duration::from_millis(800);
+
+fn is_boot_chatter(line: &str) -> bool {
+    line.starts_with("tessera reset")
+        || line.starts_with("clima ")
+        || line.starts_with("bateria ")
+        || line.starts_with("CALENDAR?")
+}
+
+/// Shorten the hold once the panel proves it is out of `begin()`.
+/// Boot chatter keeps the current hold so the burst does not land on NVS.
+fn arm_push_hold(line: &str, now: Instant, push_after: Instant) -> Instant {
+    let delay = if line.starts_with("tela ") {
+        AFTER_TELA_HOLD
+    } else if is_boot_chatter(line) {
+        return push_after;
+    } else {
+        AFTER_LOOP_HOLD
+    };
+    let at = now + delay;
+    if push_after > at {
+        at
+    } else {
+        push_after
+    }
+}
 
 type Logs = Option<SharedLogBuf>;
 
@@ -58,21 +89,14 @@ fn load_caps(paths: &ProfilePaths) -> (bool, bool, bool, AiTokensFilter, bool, b
 
 fn log_from_panel(logs: &Logs, line: &str) {
     let w = widget_of_line(line);
-    let kind = if line.contains('?') {
-        "query"
-    } else {
-        "cmd"
-    };
+    let kind = if line.contains('?') { "query" } else { "cmd" };
     // Never echo secrets (Todoist token migration / TOKEN).
     let summary = if line.starts_with("TODOIST_TOKEN\t") || line.starts_with("TOKEN\t") {
         "token (recebido)".to_string()
     } else {
         describe_usb(line)
     };
-    logutil::info(
-        logs,
-        format!("usb painel→Mac · {w} · {kind} · {summary}"),
-    );
+    logutil::info(logs, format!("usb painel→Mac · {w} · {kind} · {summary}"));
 }
 
 fn log_to_panel(logs: &Logs, widget: &str, action: &str, line: &str) {
@@ -184,6 +208,8 @@ pub fn run_session(
     let mut port = open_tessera_port(path)?;
     write_handshake(&mut port, &agent_ok_line())?;
     set_usb_link(&usb_link, true);
+    crate::watchdog::note_heartbeat();
+    let _session = crate::watchdog::SessionGuard;
     log_to_panel(&logs, "agent", "handshake", &agent_ok_line());
 
     let (
@@ -232,14 +258,16 @@ pub fn run_session(
         .checked_sub(Duration::from_secs(TODOIST_PUSH_INTERVAL_S))
         .unwrap_or_else(Instant::now);
     let mut last_agent_heartbeat = Instant::now();
-    // Push macOS appearance on connect so Auto mode matches before the first change.
-    let mut last_theme_dark = {
-        let dark = mac_events::macos_prefers_dark();
-        let line = mac_events::theme_line(dark);
-        write_lines(&mut port, &[line.clone()])?;
-        log_to_panel(&logs, "theme", "push", &line);
-        Some(dark)
-    };
+    // Appearance waits with the rest of the burst. Writing it inside begin()
+    // fills the RX queue while the panel is still on NVS.
+    let mut last_theme_dark: Option<bool> = None;
+    let mut theme_sent = false;
+    let mut push_after = Instant::now() + BOOT_PUSH_HOLD;
+    let session_started = Instant::now();
+    // The task snapshot is a large PSRAM block. Filling it while the radio
+    // associates panics the chip (cache disabled). Boot banner means Wi-Fi
+    // is still coming up; `wi-fi ok` releases the bundle.
+    let mut hold_todoist = false;
 
     loop {
         if take_reboot(&usb_link) {
@@ -255,10 +283,7 @@ pub fn run_session(
                     std::sync::atomic::Ordering::SeqCst,
                 );
             }
-            return Err(UsbError::Io(io::Error::new(
-                io::ErrorKind::Other,
-                "painel reiniciando",
-            )));
+            return Err(UsbError::Io(io::Error::other("painel reiniciando")));
         }
         if last_config_reload.elapsed() >= Duration::from_secs(CONFIG_RELOAD_S) {
             let (m, f, a, filter, cal, td) = load_caps(&profile_paths);
@@ -298,13 +323,25 @@ pub fn run_session(
                     if text.is_empty() {
                         continue;
                     }
+                    push_after = arm_push_hold(text, Instant::now(), push_after);
+                    if is_boot_chatter(text) || text.starts_with("tela ") {
+                        hold_todoist = true;
+                    }
+                    if text.starts_with("wi-fi ok") || text.starts_with("web http") {
+                        hold_todoist = false;
+                    }
+                    let allow_write = Instant::now() >= push_after;
+                    if let Some(why) = text.strip_prefix("BOOT\t") {
+                        logutil::info(&logs, format!("usb: painel reiniciou por {why}"));
+                        continue;
+                    }
                     // Queries (`NAME?`) always answer so the panel isn't blind when a
                     // capability toggle is off; mutations + push stay gated by config.
                     let is_query = text.contains('?');
                     log_from_panel(&logs, text);
                     if text.starts_with("MEDIA") && (media_enabled || is_query) {
                         let replies = media.handle_line(text);
-                        if !replies.is_empty() {
+                        if !replies.is_empty() && allow_write {
                             write_lines(&mut port, &replies)?;
                             for reply in &replies {
                                 if reply.starts_with("MEDIA\t") {
@@ -324,7 +361,7 @@ pub fn run_session(
                         }
                     } else if text.starts_with("FOCUS") && (focus_enabled || is_query) {
                         let replies = focus.handle_line(text);
-                        if !replies.is_empty() {
+                        if !replies.is_empty() && allow_write {
                             write_lines(&mut port, &replies)?;
                             for reply in &replies {
                                 if reply.starts_with("FOCUS\t") {
@@ -342,7 +379,7 @@ pub fn run_session(
                         }
                     } else if text.starts_with("AITOKENS") && (aitokens_enabled || is_query) {
                         let replies = aitokens.handle_line(text);
-                        if !replies.is_empty() {
+                        if !replies.is_empty() && allow_write {
                             write_lines(&mut port, &replies)?;
                             for reply in &replies {
                                 if reply.starts_with("AITOKENS\t") {
@@ -359,7 +396,7 @@ pub fn run_session(
                         }
                     } else if text.starts_with("CALENDAR") && (calendar_enabled || is_query) {
                         let replies = calendar.handle_line(text);
-                        if !replies.is_empty() {
+                        if !replies.is_empty() && allow_write {
                             write_lines(&mut port, &replies)?;
                             for reply in &replies {
                                 if reply.starts_with("CALENDAR\t") {
@@ -375,10 +412,11 @@ pub fn run_session(
                         }
                     } else if text.starts_with("TODOIST") && (todoist_enabled || is_query) {
                         let replies = todoist.handle_line(text);
-                        if !replies.is_empty() {
-                            let is_close_ack = replies
-                                .iter()
-                                .any(|r| r.starts_with("TODOIST_CLOSE\tv1\t"));
+                        let todoist_now = !hold_todoist
+                            || session_started.elapsed() >= Duration::from_secs(25);
+                        if !replies.is_empty() && allow_write && todoist_now {
+                            let is_close_ack =
+                                replies.iter().any(|r| r.starts_with("TODOIST_CLOSE\tv1\t"));
                             if is_close_ack {
                                 write_lines(&mut port, &replies)?;
                                 for reply in &replies {
@@ -398,11 +436,12 @@ pub fn run_session(
                                 );
                             }
                         }
-                    } else if text.starts_with("THEME") {
+                    } else if text.starts_with("THEME") && allow_write {
                         let dark = mac_events::macos_prefers_dark();
                         let line = mac_events::theme_line(dark);
-                        write_lines(&mut port, &[line.clone()])?;
+                        write_lines(&mut port, std::slice::from_ref(&line))?;
                         last_theme_dark = Some(dark);
+                        theme_sent = true;
                         log_to_panel(&logs, "theme", "reply", &line);
                     }
                 }
@@ -415,9 +454,28 @@ pub fn run_session(
             }
         }
 
+        if Instant::now() < push_after {
+            // Session is intentionally quiet during panel boot. Keep the
+            // process watchdog fed so launchd does not restart us mid-hold.
+            crate::watchdog::note_heartbeat();
+            if let Some(hub) = &usb_link {
+                hub.touch();
+            }
+            continue;
+        }
+        if !theme_sent {
+            let dark = mac_events::macos_prefers_dark();
+            let line = mac_events::theme_line(dark);
+            write_lines(&mut port, std::slice::from_ref(&line))?;
+            last_theme_dark = Some(dark);
+            theme_sent = true;
+            log_to_panel(&logs, "theme", "push", &line);
+        }
+
         if last_agent_heartbeat.elapsed() >= Duration::from_secs(AGENT_HEARTBEAT_INTERVAL_S) {
             write_lines(&mut port, &[agent_ok_line()])?;
             last_agent_heartbeat = Instant::now();
+            crate::watchdog::note_heartbeat();
             // Heartbeat is frequent — skip Activity spam; stderr only.
             eprintln!("Tessera: AGENT heartbeat → painel");
         }
@@ -432,15 +490,14 @@ pub fn run_session(
             let dark = mac_events::macos_prefers_dark();
             if last_theme_dark != Some(dark) {
                 let line = mac_events::theme_line(dark);
-                write_lines(&mut port, &[line.clone()])?;
+                write_lines(&mut port, std::slice::from_ref(&line))?;
                 last_theme_dark = Some(dark);
                 log_to_panel(&logs, "theme", "push", &line);
             }
         }
 
         if media_enabled {
-            let poll_due =
-                last_media_poll.elapsed() >= Duration::from_secs(MEDIA_POLL_INTERVAL_S);
+            let poll_due = last_media_poll.elapsed() >= Duration::from_secs(MEDIA_POLL_INTERVAL_S);
             let heartbeat_due =
                 last_media_heartbeat.elapsed() >= Duration::from_secs(MEDIA_PUSH_INTERVAL_S);
             if wake_media || poll_due || heartbeat_due {
@@ -451,7 +508,7 @@ pub fn run_session(
                 let changed = media_line_changed(media.last_pushed_line(), &line);
                 let push = wake_media || heartbeat_due || changed;
                 if push {
-                    write_lines(&mut port, &[line.clone()])?;
+                    write_lines(&mut port, std::slice::from_ref(&line))?;
                     media.note_pushed(&line);
                     last_media_heartbeat = Instant::now();
                     let action = if wake_media {
@@ -467,7 +524,12 @@ pub fn run_session(
                     }
                     if let Some((key, chunks)) = media.build_cover_chunks() {
                         if key != last_cover_key {
-                            write_lines(&mut port, &chunks)?;
+                            // 167 chunks block this thread for long enough that the
+                            // watchdog used to kill the session mid-write.
+                            for batch in chunks.chunks(16) {
+                                write_lines(&mut port, batch)?;
+                                crate::watchdog::note_heartbeat();
+                            }
                             last_cover_key = key;
                             logutil::info(
                                 &logs,
@@ -483,8 +545,13 @@ pub fn run_session(
         }
 
         if focus_enabled {
-            let poll_due =
-                last_focus_poll.elapsed() >= Duration::from_secs(FOCUS_POLL_INTERVAL_S);
+            if let Some(line) = focus.take_finished_line() {
+                write_lines(&mut port, std::slice::from_ref(&line))?;
+                focus.note_pushed(&line);
+                last_focus_heartbeat = Instant::now();
+                log_to_panel(&logs, "focus", "ack", &line);
+            }
+            let poll_due = last_focus_poll.elapsed() >= Duration::from_secs(FOCUS_POLL_INTERVAL_S);
             let heartbeat_due =
                 last_focus_heartbeat.elapsed() >= Duration::from_secs(FOCUS_PUSH_INTERVAL_S);
             let db_dirty = (wake_focus || poll_due) && focus.poll_dirty();
@@ -496,7 +563,7 @@ pub fn run_session(
                 let changed = focus_line_changed(focus.last_pushed_line(), &line);
                 let push = wake_focus || heartbeat_due || db_dirty || changed;
                 if push {
-                    write_lines(&mut port, &[line.clone()])?;
+                    write_lines(&mut port, std::slice::from_ref(&line))?;
                     focus.note_pushed(&line);
                     last_focus_heartbeat = Instant::now();
                     let action = if wake_focus || db_dirty {
@@ -516,28 +583,30 @@ pub fn run_session(
         if aitokens_enabled {
             let heartbeat_due =
                 last_aitokens_heartbeat.elapsed() >= Duration::from_secs(AITOKENS_PUSH_INTERVAL_S);
-            if heartbeat_due {
-                let line = aitokens.build_line();
-                let changed = aitokens_line_changed(aitokens.last_pushed_line(), &line);
-                if changed || heartbeat_due {
-                    write_lines(&mut port, &[line.clone()])?;
-                    aitokens.note_pushed(&line);
+            // Cheap: a slow quota fetch stays on a worker. Push as soon as that worker finishes.
+            let line = aitokens.cached_or_kick();
+            let changed = aitokens_line_changed(aitokens.last_pushed_line(), &line);
+            if changed || heartbeat_due {
+                write_lines(&mut port, std::slice::from_ref(&line))?;
+                aitokens.note_pushed(&line);
+                if heartbeat_due {
                     last_aitokens_heartbeat = Instant::now();
-                    if changed {
-                        log_to_panel(&logs, "aitokens", "change", &line);
-                    }
+                }
+                if changed {
+                    log_to_panel(&logs, "aitokens", "change", &line);
                 }
             }
         }
 
         if calendar_enabled {
-            let heartbeat_due = last_calendar_heartbeat.elapsed()
-                >= Duration::from_secs(CALENDAR_PUSH_INTERVAL_S);
-            if heartbeat_due {
+            calendar.refresh_cache_if_due();
+            let heartbeat_due =
+                last_calendar_heartbeat.elapsed() >= Duration::from_secs(CALENDAR_PUSH_INTERVAL_S);
+            if calendar.take_refresh_ready() || heartbeat_due {
                 let line = calendar.build_events_line();
                 let changed = calendar_line_changed(calendar.last_pushed_line(), &line);
                 if changed || heartbeat_due {
-                    write_lines(&mut port, &[line.clone()])?;
+                    write_lines(&mut port, std::slice::from_ref(&line))?;
                     calendar.note_pushed(&line);
                     last_calendar_heartbeat = Instant::now();
                     if changed {
@@ -547,9 +616,11 @@ pub fn run_session(
             }
         }
 
-        if todoist_enabled {
-            let heartbeat_due = last_todoist_heartbeat.elapsed()
-                >= Duration::from_secs(TODOIST_PUSH_INTERVAL_S);
+        let todoist_now =
+            !hold_todoist || session_started.elapsed() >= Duration::from_secs(25);
+        if todoist_enabled && todoist_now {
+            let heartbeat_due =
+                last_todoist_heartbeat.elapsed() >= Duration::from_secs(TODOIST_PUSH_INTERVAL_S);
             if heartbeat_due {
                 let lines = todoist.build_lines();
                 let changed = todoist_line_changed(todoist.last_pushed_line(), &lines);
@@ -576,27 +647,95 @@ pub fn run_session(
 }
 
 /// Auto-connect first Tessera port; reconnect on failure (matches legacy Python loop shape).
-pub fn run_auto(
-    profile_paths: ProfilePaths,
-    usb_link: Option<Arc<UsbHub>>,
-    logs: Logs,
-) {
+pub fn run_auto(profile_paths: ProfilePaths, usb_link: Option<Arc<UsbHub>>, logs: Logs) {
+    crate::watchdog::spawn();
     logutil::info(&logs, "usb: aguardando painel no cabo…");
+    let mut absent_since: Option<Instant> = None;
+    let mut last_absent_log = Instant::now();
     loop {
         let ports = tessera_usb::list_candidate_ports();
         if ports.is_empty() {
             set_usb_link(&usb_link, false);
+            if absent_since.is_none() {
+                absent_since = Some(Instant::now());
+                logutil::info(&logs, "usb: painel desplugado, procurando…");
+                last_absent_log = Instant::now();
+            } else if last_absent_log.elapsed() >= Duration::from_secs(60) {
+                let mins = absent_since.unwrap_or(Instant::now()).elapsed().as_secs() / 60;
+                logutil::info(&logs, format!("usb: sem painel há {mins} min, procurando…"));
+                last_absent_log = Instant::now();
+            }
             std::thread::sleep(Duration::from_secs_f64(RETRY_S));
             continue;
         }
+        if absent_since.take().is_some() {
+            logutil::info(&logs, "usb: painel no cabo");
+        }
         let PortName(path) = &ports[0];
         match run_session(path, profile_paths.clone(), usb_link.clone(), logs.clone()) {
-            Ok(()) => {}
+            Ok(()) => {
+                logutil::info(
+                    &logs,
+                    format!("usb: sessão de {path} encerrada, procurando…"),
+                );
+            }
             Err(e) => {
-                logutil::warn(&logs, format!("usb: {path} — {e}; reconectando…"));
+                let still_there = tessera_usb::list_candidate_ports()
+                    .iter()
+                    .any(|port| port.0 == *path);
+                if still_there {
+                    logutil::warn(
+                        &logs,
+                        format!("usb: erro de I/O com a porta presente — {path} — {e}"),
+                    );
+                } else {
+                    logutil::info(
+                        &logs,
+                        format!("usb: porta sumiu (cabo desplugado) — {path} — {e}"),
+                    );
+                }
                 set_usb_link(&usb_link, false);
                 std::thread::sleep(Duration::from_secs_f64(RETRY_S * 2.0));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn boot_banner_does_not_open_the_push_window() {
+        let now = Instant::now();
+        let hold = now + BOOT_PUSH_HOLD;
+        assert_eq!(arm_push_hold("clima icones sd 8/8", now, hold), hold);
+        assert_eq!(arm_push_hold("bateria pino=1", now, hold), hold);
+        assert_eq!(arm_push_hold("CALENDAR?", now, hold), hold);
+        assert_eq!(
+            arm_push_hold("tessera reset=4 (panic) board=jc", now, hold),
+            hold
+        );
+    }
+
+    #[test]
+    fn tela_line_waits_for_begin_to_finish() {
+        let now = Instant::now();
+        let hold = now + BOOT_PUSH_HOLD;
+        let next = arm_push_hold("tela em pe", now, hold);
+        assert!(next < hold);
+        assert!(next >= now + AFTER_TELA_HOLD);
+        assert!(next <= now + AFTER_TELA_HOLD + Duration::from_millis(2));
+    }
+
+    #[test]
+    fn a_loop_line_opens_sooner_but_not_immediately() {
+        let now = Instant::now();
+        let hold = now + BOOT_PUSH_HOLD;
+        let next = arm_push_hold("BOOT\tpanic", now, hold);
+        assert!(next >= now + AFTER_LOOP_HOLD);
+        assert!(next <= now + AFTER_LOOP_HOLD + Duration::from_millis(2));
+        let sooner = now + Duration::from_millis(100);
+        assert_eq!(arm_push_hold("TODOIST?", now, sooner), sooner);
     }
 }

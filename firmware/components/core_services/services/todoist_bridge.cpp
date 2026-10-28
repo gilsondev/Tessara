@@ -60,7 +60,7 @@ bool todoist_bridge::apply_line(const char *line, uint32_t now_ms) {
     if (strncmp(line, "TODOIST_CLOSE", 13) == 0) return false;
     if (strncmp(line, "TODOIST_SEL", 11) == 0) return false;
     if (strncmp(line, "TODOIST_TOKEN", 13) == 0) return false;
-    if (strchr(line, '?')) return false;
+    if (strncmp(line, "TODOIST", 7) == 0 && line[7] == '?') return false;
 
     Snapshot *snap = ensure_slot();
     if (!snap) return false;

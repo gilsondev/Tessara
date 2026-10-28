@@ -11,12 +11,7 @@ pub fn stamp() -> String {
         .unwrap_or_default()
         .as_secs();
     let s = secs % 86_400;
-    format!(
-        "{:02}:{:02}:{:02}",
-        s / 3600,
-        (s % 3600) / 60,
-        s % 60
-    )
+    format!("{:02}:{:02}:{:02}", s / 3600, (s % 3600) / 60, s % 60)
 }
 
 pub fn append(logs: &Option<SharedLogBuf>, line: impl AsRef<str>) {
@@ -105,7 +100,10 @@ pub fn describe_usb(line: &str) -> String {
             let on = parts.get(2).unwrap_or(&"0");
             let name = parts.get(3).unwrap_or(&"");
             if *on == "1" || *on == "true" {
-                format!("Focus ligado · {}", if name.is_empty() { "modo" } else { *name })
+                format!(
+                    "Focus ligado · {}",
+                    if name.is_empty() { "modo" } else { *name }
+                )
             } else {
                 "Focus desligado".into()
             }
@@ -148,7 +146,11 @@ pub fn describe_usb(line: &str) -> String {
                     total += 1;
                     // Only the first few are spelled out; the window spans several days now.
                     if events.len() < 3 {
-                        let when = if all_day { "Dia todo".to_string() } else { start };
+                        let when = if all_day {
+                            "Dia todo".to_string()
+                        } else {
+                            start
+                        };
                         let prefix = match day {
                             "0" => String::new(),
                             "1" => "amanhã ".into(),
@@ -170,7 +172,10 @@ pub fn describe_usb(line: &str) -> String {
             if *linked != "1" {
                 return "todoist sem token no Mac".into();
             }
-            let views = parts.get(4).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+            let views = parts
+                .get(4)
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(0);
             format!("ligado · {views} lista(s)")
         }
         "TODOIST_TASKS" => {

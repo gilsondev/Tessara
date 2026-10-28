@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.2](https://github.com/gilsondev/Tessera/compare/agent-v0.2.1...agent-v0.2.2) (2026-10-28)
+
+### Bug fixes
+
+* **panel:** hold the frame push only around Wi-Fi setup, and send a panic backtrace from the coredump partition
+
 ## [0.2.1](https://github.com/gilsondev/Tessera/compare/agent-v0.2.0...agent-v0.2.1) (2026-10-27)
 
 

@@ -17,12 +17,10 @@
 #include "calendar_widget.h"
 #include "clock_widget.h"
 #include "mac_widget.h"
-#include "media_widget.h"
 #include "todoist_widget.h"
 #include "weather_widget.h"
 #include "ui/calendar_page.h"
 #include "ui/mac_page.h"
-#include "ui/media_page.h"
 
 #include <cstring>
 #include <lvgl.h>
@@ -68,8 +66,8 @@ void on_aitokens_refresh(lv_event_t *) {
     if (events) events->on_aitokens_refresh();
 }
 
-void on_media_cmd(const char *cmd) {
-    if (events && cmd) events->on_media_cmd(cmd);
+void on_page_command(const char *cmd) {
+    if (events && cmd) events->on_playing_cmd(cmd);
 }
 
 void on_mac_cmd(const char *cmd) {
@@ -108,11 +106,12 @@ void ui::begin(UiEvents &handler) {
     weather_page::begin(on_back);
     aitokens_page::begin(on_back, on_aitokens_refresh);
     calendar_page::begin(on_back);
-    media_page::begin(on_back, on_media_cmd);
     mac_page::begin(on_back, on_mac_cmd);
     clock_page::begin(on_back);
     detail_host::begin();
     tessera::bind_host_services();
+    tessera::runtime().set_detail_back(reinterpret_cast<tessera::EventFn>(on_back));
+    tessera::runtime().set_page_command(on_page_command);
     tessera::register_builtin_widgets();
     tessera::todoist_widget_bind_show(show_todoist_in_slot);
     home::begin(on_open_widget, on_settings);
@@ -131,7 +130,7 @@ void ui::show_home() {
     // Detach long-lived roots before cleaning the slot (cannot parent==nullptr).
     todoist_panel::attach(nullptr);
     aitokens_page::attach(nullptr);
-    tessera::runtime().unmount_all();
+    tessera::runtime().unmount_surface(tessera::Surface::Detail);
     detail_host::close();
     home::show();
 }
@@ -163,7 +162,7 @@ void ui::set_summary(int total, bool pending) { home::set_summary(total, pending
 
 void ui::set_weather(const weather::View &view) {
     home::set_weather(view);
-    int slot = tessera::runtime().find_type(tessera::weather_widget_id());
+    int slot = tessera::runtime().find_type(tessera::weather_widget_id(), tessera::Surface::Detail);
     if (slot >= 0) tessera::weather_widget_paint(tessera::runtime().widget(slot), view);
     else if (!detail_host::visible()) {
         // Detail not open — cache-only home update.
@@ -174,7 +173,7 @@ void ui::set_weather(const weather::View &view) {
 
 void ui::set_aitokens(const aitokens::View &view) {
     home::set_aitokens(view);
-    int slot = tessera::runtime().find_type(tessera::aitokens_widget_id());
+    int slot = tessera::runtime().find_type(tessera::aitokens_widget_id(), tessera::Surface::Detail);
     if (slot >= 0) tessera::aitokens_widget_paint(tessera::runtime().widget(slot), view);
     else aitokens_page::paint(view);
     settings_panel::show_aitokens(view);
@@ -182,21 +181,14 @@ void ui::set_aitokens(const aitokens::View &view) {
 
 void ui::set_calendar(const calendar::View &view) {
     home::set_calendar(view);
-    int slot = tessera::runtime().find_type(tessera::calendar_widget_id());
+    int slot = tessera::runtime().find_type(tessera::calendar_widget_id(), tessera::Surface::Detail);
     if (slot >= 0) tessera::calendar_widget_paint(tessera::runtime().widget(slot), view);
     else calendar_page::paint(view);
 }
 
-void ui::set_media(const media::View &view, bool agent_ok) {
-    home::set_media(view, agent_ok);
-    int slot = tessera::runtime().find_type(tessera::media_widget_id());
-    if (slot >= 0) tessera::media_widget_paint(tessera::runtime().widget(slot), view, agent_ok);
-    else media_page::paint(view, agent_ok);
-}
-
 void ui::set_mac(const focus::View &view, bool agent_ok) {
     home::set_mac(view, agent_ok);
-    int slot = tessera::runtime().find_type(tessera::mac_widget_id());
+    int slot = tessera::runtime().find_type(tessera::mac_widget_id(), tessera::Surface::Detail);
     if (slot >= 0) tessera::mac_widget_paint(tessera::runtime().widget(slot), view, agent_ok);
     else mac_page::paint(view, agent_ok);
 }
@@ -210,7 +202,6 @@ void ui::apply_theme() {
     home::apply_theme();
     weather_page::apply_theme();
     calendar_page::apply_theme();
-    media_page::apply_theme();
     mac_page::apply_theme();
     aitokens_page::apply_theme();
     clock_page::apply_theme();

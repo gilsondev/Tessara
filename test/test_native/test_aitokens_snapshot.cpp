@@ -47,6 +47,54 @@ void test_aitokens_stale_after_quiet(void) {
     TEST_ASSERT_TRUE(view.stale);
 }
 
+namespace {
+
+aitokens::Source pct_source(const char *id, int remaining, const char *display, const char *reset) {
+    aitokens::Source src;
+    std::strncpy(src.id, id, sizeof(src.id) - 1);
+    src.available = true;
+    src.kind = aitokens::Kind::Pct;
+    src.value = remaining;
+    std::strncpy(src.display, display, sizeof(src.display) - 1);
+    if (reset) std::strncpy(src.reset, reset, sizeof(src.reset) - 1);
+    return src;
+}
+
+}  // namespace
+
+void test_claude_home_row_uses_remaining_percent(void) {
+    char out[80];
+    aitokens::RowLevel level = aitokens::RowLevel::Alert;
+    const aitokens::Source plenty = pct_source("claude", 92, "92%", "");
+    TEST_ASSERT_EQUAL_INT(92, aitokens::home_row_text("Claude", plenty, false, out, sizeof(out), &level));
+    TEST_ASSERT_EQUAL_STRING("Claude · 92% restante", out);
+    TEST_ASSERT_EQUAL(int(aitokens::RowLevel::Ok), int(level));
+
+    const aitokens::Source almost_gone = pct_source("claude", 8, "8%", "");
+    TEST_ASSERT_EQUAL_INT(8, aitokens::home_row_text("Claude", almost_gone, false, out, sizeof(out), &level));
+    TEST_ASSERT_EQUAL_STRING("Claude · 8% restante · alerta", out);
+    TEST_ASSERT_EQUAL(int(aitokens::RowLevel::Alert), int(level));
+
+    const aitokens::Source remembered = pct_source("claude", 92, "92% antigo", "");
+    aitokens::home_row_text("Claude", remembered, false, out, sizeof(out), &level);
+    TEST_ASSERT_EQUAL_STRING("Claude · 92% antigo restante", out);
+    TEST_ASSERT_EQUAL(int(aitokens::RowLevel::Ok), int(level));
+}
+
+void test_codex_and_cursor_home_rows_keep_their_shape(void) {
+    char out[80];
+    aitokens::RowLevel level = aitokens::RowLevel::Ok;
+    const aitokens::Source codex = pct_source("codex", 40, "40% · 10%", "09:00");
+    TEST_ASSERT_EQUAL_INT(40, aitokens::home_row_text("Codex", codex, false, out, sizeof(out), &level));
+    TEST_ASSERT_EQUAL_STRING("Codex · 40% restante · baixo · 09:00", out);
+    TEST_ASSERT_EQUAL(int(aitokens::RowLevel::Low), int(level));
+
+    const aitokens::Source cursor = pct_source("cursor", 87, "3% · 13%", "23 nov");
+    TEST_ASSERT_EQUAL_INT(87, aitokens::home_row_text("Cursor", cursor, false, out, sizeof(out), &level));
+    TEST_ASSERT_EQUAL_STRING("Cursor · Modelos 3% · Outros 13% · 23 nov", out);
+    TEST_ASSERT_EQUAL(int(aitokens::RowLevel::Ok), int(level));
+}
+
 void test_aitokens_unavailable_sources(void) {
     aitokens::View view;
     const char *line = "AITOKENS\tv1\t1\tcodex\t0\tnone\t0\t—\t\tclaude\t0\tnone\t0\t—\t";

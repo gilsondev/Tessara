@@ -89,8 +89,24 @@ void task_store::set_views(const ViewItem *items, int count) {
         return;
     }
 
-    ViewItem old_views[kMaxViews];
-    Slot old_slots[kMaxViews];
+    // PSRAM: these copies used to sit on the 16 KB loop stack during a USB line.
+    static ViewItem *old_views = nullptr;
+    static Slot *old_slots = nullptr;
+    if (!old_views || !old_slots) {
+        if (!old_views) {
+            old_views = static_cast<ViewItem *>(
+                heap_caps_malloc(sizeof(ViewItem) * kMaxViews, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        }
+        if (!old_slots) {
+            old_slots = static_cast<Slot *>(
+                heap_caps_malloc(sizeof(Slot) * kMaxViews, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        }
+    }
+    if (!old_views || !old_slots) {
+        for (int i = 0; i < count; ++i) views[i] = items[i];
+        views_n = count;
+        return;
+    }
     int old_n = views_n;
     for (int i = 0; i < old_n; ++i) {
         old_views[i] = views[i];

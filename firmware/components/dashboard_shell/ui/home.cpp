@@ -7,7 +7,6 @@
 #include "domain/dashboard_layout.h"
 #include "domain/home_tile_size.h"
 #include "mac/focus_snapshot.h"
-#include "media/snapshot.h"
 #include "platform/daytime.h"
 #include "platform/face_prefs.h"
 #include "platform/power.h"
@@ -71,9 +70,6 @@ lv_obj_t *calendar_lines[calendar::kMaxEvents] = {};
 // Legacy single-line pointer kept for theme paths that still mention it.
 lv_obj_t *calendar_detail = nullptr;
 lv_obj_t *pair = nullptr;  // Música + Mac side-by-side (same band as Tarefas/Clima).
-lv_obj_t *media_tile = nullptr;
-lv_obj_t *media_icon = nullptr;
-lv_obj_t *media_detail = nullptr;
 lv_obj_t *mac_tile = nullptr;
 lv_obj_t *mac_icon = nullptr;
 lv_obj_t *mac_detail = nullptr;
@@ -85,9 +81,6 @@ bool hero_show_date = true;
 bool hero_show_greeting = true;
 uint8_t hero_layout_gen = 0;
 lv_timer_t *clock_timer = nullptr;
-
-constexpr int kAiWarnPct = 50;
-constexpr int kAiCriticalPct = 20;
 
 void clear_tile_ptrs() {
     tasks_tile = nullptr;
@@ -113,9 +106,6 @@ void clear_tile_ptrs() {
     for (auto &line : calendar_lines) line = nullptr;
     calendar_detail = nullptr;
     pair = nullptr;
-    media_tile = nullptr;
-    media_icon = nullptr;
-    media_detail = nullptr;
     mac_tile = nullptr;
     mac_icon = nullptr;
     mac_detail = nullptr;
@@ -451,16 +441,6 @@ void add_pair_tile(lv_obj_t **tile_out, lv_obj_t **icon_out, lv_obj_t **detail_o
     lv_obj_set_style_text_color(*detail_out, theme::text_secondary(), 0);
 }
 
-void add_media_tile(lv_event_cb_t on_open) {
-    add_pair_tile(&media_tile, &media_icon, &media_detail, LV_SYMBOL_AUDIO, lv_color_hex(0xAF52DE), "Música",
-                  "Nada tocando", dashboard::id_media(), on_open);
-    // LED marquee — title scrolls left forever when it overflows the tile.
-    if (media_detail) {
-        lv_label_set_long_mode(media_detail, LV_LABEL_LONG_SCROLL_CIRCULAR);
-        lv_obj_set_style_anim_duration(media_detail, 4000, 0);
-    }
-}
-
 void add_mac_tile(lv_event_cb_t on_open) {
     add_pair_tile(&mac_tile, &mac_icon, &mac_detail, " ", theme::widget_mac(), "Mac", "Nenhum",
                   dashboard::id_mac(), on_open);
@@ -474,32 +454,38 @@ void add_generic_tile(const char *title, const char *widget_id) {
          widget_id ? const_cast<char *>(widget_id) : nullptr);
 }
 
+void add_registered_id(const char **registered, int &reg_n, const char *id) {
+    if (!id || !id[0] || reg_n >= tessera::kMaxWidgetTypes) return;
+    for (int i = 0; i < reg_n; ++i) {
+        if (strcmp(registered[i], id) == 0) return;
+    }
+    registered[reg_n++] = id;
+}
+
 void mount_enabled_tiles(const dashboard::Layout &layout) {
     cache_hero_flags(layout);
-    // Compose = enabled ∩ runtime registry (new widgets appear without editing this list).
+    // Compose = enabled ∩ (registry ∪ shell tiles). A package with draws_tile
+    // paints its own card. The shell list covers the sim, which does not link
+    // every factory.
     const char *registered[tessera::kMaxWidgetTypes];
     int reg_n = 0;
-    for (int i = 0; i < tessera::runtime().type_count() && reg_n < tessera::kMaxWidgetTypes; ++i) {
-        const char *id = tessera::runtime().type_id(i);
-        if (id && id[0]) registered[reg_n++] = id;
-    }
-    if (reg_n == 0) {
-        // Registry not ready yet (sim can call home before register_builtin).
-        registered[reg_n++] = dashboard::id_greeting();
-        registered[reg_n++] = dashboard::id_date();
-        registered[reg_n++] = dashboard::id_todoist();
-        registered[reg_n++] = dashboard::id_weather();
-        registered[reg_n++] = dashboard::id_aitokens();
-        registered[reg_n++] = dashboard::id_calendar();
-        registered[reg_n++] = dashboard::id_media();
-        registered[reg_n++] = dashboard::id_mac();
-        registered[reg_n++] = dashboard::id_clock();
-    }
+    auto &rt = tessera::runtime();
+    for (int i = 0; i < rt.type_count(); ++i) add_registered_id(registered, reg_n, rt.type_id(i));
+    const char *shell_ids[] = {
+        dashboard::id_greeting(), dashboard::id_date(),     dashboard::id_todoist(),
+        dashboard::id_weather(),  dashboard::id_aitokens(), dashboard::id_calendar(),
+        dashboard::id_mac(),      dashboard::id_clock(),
+    };
+    for (const char *id : shell_ids) add_registered_id(registered, reg_n, id);
     char slots[dashboard::kMaxSlots][dashboard::kIdLen];
     int n = dashboard::compose(layout, registered, reg_n, slots, dashboard::kMaxSlots);
     for (int i = 0; i < n; ++i) {
         const char *id = slots[i];
-        auto &rt = tessera::runtime();
+        if (rt.type_draws_tile(id)) {
+            ensure_pair_row();
+            rt.mount(id, pair, tessera::Surface::Tile);
+            continue;
+        }
         // Package declares tile kind (None = hero-only / no grid).
         tessera::HomeTile kind = rt.type_home_tile(id);
         if (kind == tessera::HomeTile::None) {
@@ -512,7 +498,6 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
             else if (strcmp(id, dashboard::id_weather()) == 0) kind = tessera::HomeTile::Weather;
             else if (strcmp(id, dashboard::id_aitokens()) == 0) kind = tessera::HomeTile::AiTokens;
             else if (strcmp(id, dashboard::id_calendar()) == 0) kind = tessera::HomeTile::Calendar;
-            else if (strcmp(id, dashboard::id_media()) == 0) kind = tessera::HomeTile::Media;
             else if (strcmp(id, dashboard::id_mac()) == 0) kind = tessera::HomeTile::Mac;
             else kind = tessera::HomeTile::Generic;
         }
@@ -529,9 +514,6 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
             case tessera::HomeTile::Calendar:
                 add_calendar_tile(open_widget_cb);
                 break;
-            case tessera::HomeTile::Media:
-                add_media_tile(open_widget_cb);
-                break;
             case tessera::HomeTile::Mac:
                 add_mac_tile(open_widget_cb);
                 break;
@@ -543,6 +525,8 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
             }
             case tessera::HomeTile::None:
                 break;
+            default:
+                break;
         }
     }
 }
@@ -550,6 +534,8 @@ void mount_enabled_tiles(const dashboard::Layout &layout) {
 
 void home::rebuild(const dashboard::Layout &layout) {
     if (!stage || !grid) return;
+    // Drop package tiles before their parent row is deleted.
+    tessera::runtime().unmount_surface(tessera::Surface::Tile);
     // AI Tokens + Calendar stay full-width on `stage`. Música+Mac share a side-by-side `pair` row.
     if (aitokens_tile) {
         lv_obj_delete(aitokens_tile);
@@ -562,7 +548,6 @@ void home::rebuild(const dashboard::Layout &layout) {
     if (pair) {
         lv_obj_delete(pair);
         pair = nullptr;
-        media_tile = media_icon = media_detail = nullptr;
         mac_tile = mac_icon = mac_detail = nullptr;
     }
     lv_obj_clean(grid);
@@ -574,6 +559,7 @@ void home::rebuild(const dashboard::Layout &layout) {
 
 void home::begin(lv_event_cb_t on_open_widget, lv_event_cb_t on_settings) {
     open_widget_cb = on_open_widget;
+    tessera::runtime().set_tile_open(reinterpret_cast<tessera::EventFn>(on_open_widget));
     screen = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(screen, theme::background(), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
@@ -650,7 +636,7 @@ void home::begin(lv_event_cb_t on_open_widget, lv_event_cb_t on_settings) {
 
     // Tabular slots: proportional Montserrat digits must not shift the hero each second.
     clock_face_ui = kit::tabular_time(hero, &theme::display_font(), theme::text_primary());
-    // paint_clock() fills immediately; avoid a "--:--" flash before the first tick.
+    // paint_clock() fills at once; avoid a "--:--" flash before the first tick.
     kit::tabular_time_set(clock_face_ui, "  :  ");
     if (clock_face_ui.root) {
         lv_obj_add_flag(clock_face_ui.root, LV_OBJ_FLAG_CLICKABLE);
@@ -703,29 +689,6 @@ void home::set_summary(int total, bool pending) {
     todoist::format_home_count(summary, text, sizeof(text));
     lv_obj_remove_flag(task_count, LV_OBJ_FLAG_HIDDEN);
     set_if_changed(task_count, text);
-}
-
-void home::set_media(const media::View &view, bool agent_ok) {
-    if (!media_detail) return;
-    char text[72];
-    if (!agent_ok) {
-        snprintf(text, sizeof(text), "sem Agente");
-    } else if (!view.ready || !view.media.ok || view.media.state == media::MediaState::Stopped ||
-               !view.media.title[0]) {
-        snprintf(text, sizeof(text), "Nada tocando%s", view.stale ? " · desatualizado" : "");
-    } else if (view.media.artist[0]) {
-        snprintf(text, sizeof(text), "%s · %s%s%s", view.media.title, view.media.artist,
-                 view.media.state == media::MediaState::Paused ? " · pausado" : "",
-                 view.stale ? " · desatualizado" : "");
-    } else {
-        snprintf(text, sizeof(text), "%s%s%s", view.media.title,
-                 view.media.state == media::MediaState::Paused ? " · pausado" : "",
-                 view.stale ? " · desatualizado" : "");
-    }
-    set_if_changed(media_detail, text);
-    if (media_icon) {
-        lv_obj_set_style_text_color(media_icon, agent_ok ? lv_color_hex(0xAF52DE) : theme::error(), 0);
-    }
 }
 
 void home::set_mac(const focus::View &view, bool agent_ok) {
@@ -872,7 +835,7 @@ void home::set_weather(const weather::View &view) {
         snprintf(text, sizeof(text), "carregando…");
         show_spin(true);
     } else {
-        snprintf(text, sizeof(text), "%d °C · %s%s", view.forecast.temperature_c, weather::phrase(view.forecast.code),
+        snprintf(text, sizeof(text), "%d° · %s%s", view.forecast.temperature_c, weather::phrase(view.forecast.code),
                  view.stale ? " · desatualizado" : "");
         show_spin(false);
         set_glyph(weather_icons::for_code(view.forecast.code));
@@ -908,74 +871,16 @@ void home::set_aitokens(const aitokens::View &view) {
             return;
         }
 
-        // Codex: value = % restante. Claude: value = % consumido. Cursor: dual % usados no display.
-        const bool cursor = strcmp(id, "cursor") == 0;
-        const bool codex = strcmp(id, "codex") == 0;
-        const bool claude = strcmp(id, "claude") == 0;
-
-        int rem = 100;
-        if (src->kind == aitokens::Kind::Pct) {
-            int v = src->value;
-            if (v < 0) v = 0;
-            if (v > 100) v = 100;
-            rem = claude ? (100 - v) : v;
-        }
+        // value is remaining percent for Codex, Claude and Cursor.
+        char out[80];
+        aitokens::RowLevel level = aitokens::RowLevel::Ok;
+        const int rem = aitokens::home_row_text(name, *src, view.stale, out, sizeof(out), &level);
         any = true;
         if (rem < worst) worst = rem;
 
         lv_color_t tone = theme::text_secondary();
-        char out[80];
-        // Cursor: keep Modelos/Outros separate — never sum (can exceed 100%).
-        char shown[40];
-        if (cursor) {
-            int a = -1, b = -1;
-            if (sscanf(src->display, "%d%% · %d%%", &a, &b) == 2 && a >= 0 && b >= 0) {
-                snprintf(shown, sizeof(shown), "Modelos %d%% · Outros %d%%", a, b);
-            } else {
-                snprintf(shown, sizeof(shown), "%s", src->display);
-            }
-        } else if (codex) {
-            snprintf(shown, sizeof(shown), "%d%%", rem);
-        } else if (claude && src->kind == aitokens::Kind::Pct) {
-            int used = src->value;
-            if (used < 0) used = 0;
-            if (used > 100) used = 100;
-            snprintf(shown, sizeof(shown), "%d%%", used);
-        } else {
-            snprintf(shown, sizeof(shown), "%s", src->display);
-        }
-        const char *unit = cursor ? nullptr : (claude ? "consumido" : (codex ? "restante" : nullptr));
-        if (rem < kAiCriticalPct) {
-            tone = theme::error();
-            if (src->reset[0] && unit)
-                snprintf(out, sizeof(out), "%s · %s %s · alerta · %s", name, shown, unit, src->reset);
-            else if (src->reset[0])
-                snprintf(out, sizeof(out), "%s · %s · alerta · %s", name, shown, src->reset);
-            else if (unit)
-                snprintf(out, sizeof(out), "%s · %s %s · alerta", name, shown, unit);
-            else
-                snprintf(out, sizeof(out), "%s · %s · alerta", name, shown);
-        } else if (rem < kAiWarnPct) {
-            tone = theme::warning();
-            if (src->reset[0] && unit)
-                snprintf(out, sizeof(out), "%s · %s %s · baixo · %s", name, shown, unit, src->reset);
-            else if (src->reset[0])
-                snprintf(out, sizeof(out), "%s · %s · baixo · %s", name, shown, src->reset);
-            else if (unit)
-                snprintf(out, sizeof(out), "%s · %s %s · baixo", name, shown, unit);
-            else
-                snprintf(out, sizeof(out), "%s · %s · baixo", name, shown);
-        } else if (view.stale) {
-            if (unit) snprintf(out, sizeof(out), "%s · %s %s · desatualizado", name, shown, unit);
-            else snprintf(out, sizeof(out), "%s · %s · desatualizado", name, shown);
-        } else if (src->reset[0]) {
-            if (unit) snprintf(out, sizeof(out), "%s · %s %s · %s", name, shown, unit, src->reset);
-            else snprintf(out, sizeof(out), "%s · %s · %s", name, shown, src->reset);
-        } else if (unit) {
-            snprintf(out, sizeof(out), "%s · %s %s", name, shown, unit);
-        } else {
-            snprintf(out, sizeof(out), "%s · %s", name, shown);
-        }
+        if (level == aitokens::RowLevel::Alert) tone = theme::error();
+        else if (level == aitokens::RowLevel::Low) tone = theme::warning();
         set_if_changed(label, out);
         if (label) lv_obj_set_style_text_color(label, tone, 0);
     };
@@ -1033,10 +938,10 @@ void home::set_aitokens(const aitokens::View &view) {
     if (aitokens_tile) {
         lv_color_t border = theme::border();
         int width = 1;
-        if (any && worst < kAiCriticalPct) {
+        if (any && worst < aitokens::kRemainAlert) {
             border = theme::error();
             width = 2;
-        } else if (any && worst < kAiWarnPct) {
+        } else if (any && worst < aitokens::kRemainLow) {
             border = theme::warning();
             width = 2;
         }
@@ -1044,8 +949,9 @@ void home::set_aitokens(const aitokens::View &view) {
         lv_obj_set_style_border_width(aitokens_tile, width, 0);
     }
     if (aitokens_alert) {
-        if (any && worst < kAiWarnPct) {
-            lv_obj_set_style_text_color(aitokens_alert, worst < kAiCriticalPct ? theme::error() : theme::warning(), 0);
+        if (any && worst < aitokens::kRemainLow) {
+            lv_obj_set_style_text_color(aitokens_alert,
+                                        worst < aitokens::kRemainAlert ? theme::error() : theme::warning(), 0);
             lv_obj_remove_flag(aitokens_alert, LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_obj_add_flag(aitokens_alert, LV_OBJ_FLAG_HIDDEN);
@@ -1095,8 +1001,7 @@ void home::apply_theme() {
         if (line) lv_obj_set_style_text_color(line, theme::text_secondary(), 0);
     }
     if (aitokens_icon) lv_obj_set_style_text_color(aitokens_icon, theme::widget_aitokens(), 0);
-    if (media_icon) lv_obj_set_style_text_color(media_icon, lv_color_hex(0xAF52DE), 0);
-    if (media_detail) lv_obj_set_style_text_color(media_detail, theme::text_secondary(), 0);
+    tessera::runtime().notify_theme();
     if (mac_icon) {
         lv_obj_set_style_image_recolor(mac_icon, theme::widget_mac(), 0);
         lv_obj_set_style_image_recolor_opa(mac_icon, LV_OPA_COVER, 0);
@@ -1105,7 +1010,6 @@ void home::apply_theme() {
     paint_card(tasks_tile);
     paint_card(weather_tile);
     paint_card(calendar_tile);
-    paint_card(media_tile);
     paint_card(mac_tile);
     // Só o fundo do card AI Tokens — borda/cores de alerta vêm de set_aitokens.
     if (aitokens_tile) lv_obj_set_style_bg_color(aitokens_tile, theme::surface(), 0);
@@ -1116,7 +1020,6 @@ void home::apply_theme() {
     recolor_name(tasks_tile);
     recolor_name(weather_tile);
     recolor_name(calendar_tile);
-    recolor_name(media_tile);
     recolor_name(mac_tile);
     if (aitokens_tile) {
         lv_obj_t *head = lv_obj_get_child(aitokens_tile, 0);

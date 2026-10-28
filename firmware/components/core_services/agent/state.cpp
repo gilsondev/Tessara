@@ -59,7 +59,7 @@ agent::View agent::for_display(const View &view, uint32_t now_ms) {
     uint32_t age = now_ms - out.received_ms;
     if (age > kFreshMs) {
         out.ok = false;
-        strncpy(out.detail, "sem sinal recente", sizeof(out.detail) - 1);
+        strncpy(out.detail, "agent offline", sizeof(out.detail) - 1);
         out.detail[sizeof(out.detail) - 1] = '\0';
     }
     return out;

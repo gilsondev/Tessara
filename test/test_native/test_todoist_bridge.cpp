@@ -91,6 +91,17 @@ void test_todoist_bridge_tasks_chunks_append(void) {
     TEST_ASSERT_EQUAL_STRING("d", snap->views[0].tasks[3].id);
 }
 
+void test_todoist_tasks_keep_a_question_mark_in_the_title(void) {
+    TEST_ASSERT_FALSE(todoist_bridge::apply_line(
+        "TODOIST\tv1\t1\t1\t1\tTrabalho\t@Trabalho", 100));
+    TEST_ASSERT_FALSE(todoist_bridge::apply_line(
+        "TODOIST_TASKS\tv1\t0\t1\ta\t1\tLigar pro João?\t", 110));
+    TEST_ASSERT_TRUE(todoist_bridge::apply_line("TODOIST_END\tv1\t1\t1\t1", 120));
+    const todoist_bridge::Snapshot *snap = todoist_bridge::last();
+    TEST_ASSERT_NOT_NULL(snap);
+    TEST_ASSERT_EQUAL_STRING("Ligar pro João?", snap->views[0].tasks[0].content);
+}
+
 void test_todoist_bridge_full_list_one_line(void) {
     // Mirrors agent packing: all tasks for one view on a single TASKS line (≤60).
     char line[4096];

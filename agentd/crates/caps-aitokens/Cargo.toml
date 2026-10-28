@@ -9,6 +9,7 @@ serde_json = { workspace = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
 ureq = { version = "2.12", features = ["json"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+tessera-proc = { path = "../proc" }
 
 [dev-dependencies]
 tempfile = "3"

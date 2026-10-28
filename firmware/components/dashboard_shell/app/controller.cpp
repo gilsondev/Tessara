@@ -1,11 +1,15 @@
 #include "app/controller.h"
 
+#include <cstring>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
 #include "agent/state.h"
 #include "aitokens/snapshot.h"
 #include "calendar/catalog.h"
 #include "calendar/snapshot.h"
 #include "mac/focus_snapshot.h"
-#include "media/snapshot.h"
+#include "playing_feed.h"
 #include "app/nav.h"
 #include "domain/list_prefs.h"
 #include "domain/pending_closes.h"
@@ -19,12 +23,15 @@
 #include "platform/device_resources.h"
 #include "platform/face_prefs.h"
 #include "platform/display_host.h"
+#include "platform/host_services_bind.h"
+#include "tessera/data.h"
 #include "platform/input_host.h"
 #include "platform/log.h"
 #include "platform/screen_rest.h"
 #include "platform/sd_host.h"
 #include "platform/settings.h"
 #include "platform/widget_settings.h"
+#include "platform/weather_cache_store.h"
 #include "domain/dashboard_layout.h"
 #include "domain/home_tile_size.h"
 #include "services/net_worker.h"
@@ -39,6 +46,7 @@
 #include "weather/cache.h"
 
 #include <Arduino.h>
+#include <esp_heap_caps.h>
 #include <esp_system.h>
 #include <lvgl.h>
 
@@ -46,6 +54,30 @@
 #include <cstring>
 
 namespace {
+// Survives a panic reboot. The next boot prints it so the USB log shows
+// the last step the UI task reached.
+RTC_NOINIT_ATTR uint32_t g_crash_magic;
+RTC_NOINIT_ATTR uint32_t g_crash_step;
+
+void crash_step(uint32_t step) {
+    g_crash_magic = 0xC0A571u;
+    g_crash_step = step;
+}
+
+// Two scratch catalogs (the USB snapshot and the visible subset) used to be
+// stack arrays inside the serial callback. PSRAM keeps them off the 16 KB loop
+// stack and off the internal heap Todoist TLS needs.
+ViewItem *view_scratch(int which) {
+    static ViewItem *bufs[2] = {};
+    if (which < 0 || which > 1) return nullptr;
+    if (bufs[which]) return bufs[which];
+    size_t bytes = sizeof(ViewItem) * kMaxViews;
+    bufs[which] = static_cast<ViewItem *>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!bufs[which]) bufs[which] = static_cast<ViewItem *>(std::malloc(bytes));
+    if (bufs[which]) std::memset(bufs[which], 0, bytes);
+    return bufs[which];
+}
+
 constexpr uint32_t kRetryMs = 6000;
 constexpr uint32_t kWarmGapMs = 20000;
 constexpr uint32_t kFailRetryMs = 8000;
@@ -81,6 +113,9 @@ Controller *g_controller = nullptr;
 class Controller final : public UiEvents, public ConsoleHandler {
 public:
     void begin(hal::Board &board) {
+        const uint32_t previous_step =
+            (g_crash_magic == 0xC0A571u) ? g_crash_step : 0;
+        crash_step(10);
         g_controller = this;
         board_ = &board;
         device_ = settings::load_device();
@@ -106,6 +141,8 @@ public:
         }
         face_prefs::reload();
         palette::set_mode(resolve_dark(device_) ? palette::Mode::Dark : palette::Mode::Light);
+        // Before the push task exists. Later USB paths must use this copy.
+        credentials_ = settings::load_credentials();
         display_host::begin(*board.display, board.backlight, board.descriptor, rotation_for(device_.portrait));
         display_host::set_brightness(device_.brightness);
         // Branded splash before the rest of boot (SD / Wi‑Fi / widgets).
@@ -123,6 +160,7 @@ public:
         chime::begin(board.sound);
         chime::set_enabled(device_.sound);
         sd_host::begin();
+        playing::prepare();
         task_store::begin();
         load_closes();
         net_worker::begin();
@@ -133,6 +171,8 @@ public:
         screen_rest::set_idle_minutes(rest_, device_.rest_minutes);
         screen_rest::set_clock_minutes(rest_, device_.clock_minutes);
         settings::WeatherPlace saved = settings::load_weather();
+        weather_cache_store::migrate_from_settings();
+        weather::set_blob_io(weather_cache_store::load, weather_cache_store::save);
         if (saved.set) weather::set_place(saved.name, saved.latitude, saved.longitude);
         reload_dash();
         if (tile_on(dashboard::id_weather())) paint_weather();
@@ -153,9 +193,14 @@ public:
         }
         if (!ui::loader_visible()) ui::show_loader("", "");
         display_host::refresh_now();
+        if (previous_step) {
+            Serial.printf("ultimo passo %u\n", static_cast<unsigned>(previous_step));
+        }
         Serial.printf("tela %s\n", device_.portrait ? "em pe" : "deitada");
         configure();
+        crash_step(11);
         publish();
+        crash_step(12);
     }
 
     void loop() {
@@ -189,6 +234,12 @@ public:
         pump_widget_http();
         feed_worker();
         pump_screen_rest();
+        if (tile_on(playing::tile_id())) {
+            playing::refresh(tessera::host_services().data, millis(), agent_.ok);
+            char cover_ask[800];
+            if (playing::cover_request(millis(), cover_ask, sizeof(cover_ask))) Serial.println(cover_ask);
+        }
+        if (tessera::IData *data = tessera::host_services().data) data->dispatch();
         display_host::tick();
         chime::pump();
         // Stale paint / USB pulls only for tiles that are on the home (hidden = not allocated).
@@ -198,7 +249,6 @@ public:
         if (tile_on(dashboard::id_calendar()) && calendar::refresh_age(calendar_, millis())) {
             paint_calendar();
         }
-        if (tile_on(dashboard::id_media()) && media::refresh_age(media_, millis())) paint_media();
         if (tile_on(dashboard::id_mac()) && focus::refresh_age(focus_, millis())) paint_mac();
         // USB drops often — re-ask while the agent is up but agenda never arrived.
         if (tile_on(dashboard::id_calendar()) && agent_.ok) {
@@ -221,6 +271,7 @@ public:
         }
         // Auto appearance: re-check when the clock crosses the evening/morning window
         // (or after the portal reports a new OS preference).
+        flush_portal();
         if (device_.appearance == Appearance::Auto && millis() - theme_check_at_ > 30000u) {
             theme_check_at_ = millis();
             bool want = resolve_dark(device_);
@@ -269,7 +320,7 @@ public:
         if (!rt.type_registered(widget_id)) return;
         if (rt.type_hero_only(widget_id)) return;
         // Prefetch Agente state before paint so pages don't flash offline.
-        if (std::strcmp(widget_id, dashboard::id_media()) == 0) ask_media_refresh();
+        if (playing::is_tile(widget_id)) ask_now_playing();
         if (std::strcmp(widget_id, dashboard::id_mac()) == 0) ask_focus_refresh();
         nav::open_detail(nav_, widget_id);
         ui::show_widget(widget_id);  // widget paints itself on mount
@@ -284,13 +335,13 @@ public:
         ui::aitokens_refreshing();
     }
 
-    void on_media_cmd(const char *cmd) override {
+    void on_playing_cmd(const char *cmd) override {
         if (!cmd || !cmd[0]) return;
         if (cmd[0] == '?' && cmd[1] == '\0') {
-            ask_media_refresh();
+            ask_now_playing();
             return;
         }
-        push_media_cmd(cmd);
+        push_now_playing(cmd);
     }
 
     void on_mac_cmd(const char *cmd) override {
@@ -308,7 +359,7 @@ public:
         ui::show_home();
         paint_summary();
         paint_aitokens();
-        paint_media();
+        publish_playing();
         paint_mac();
     }
 
@@ -330,8 +381,21 @@ public:
 
     bool tile_on(const char *id) const { return dashboard::is_enabled(dash_, id); }
 
+    bool note_weather_today() {
+        int hour = 0, minute = 0, second = 0, wday = 0, day = 0, month = 0, year = 0;
+        char buf[16] = {};
+        if (daytime::local(hour, minute, second, wday, day, month, year)) {
+            weather::note_hour(hour);
+            snprintf(buf, sizeof(buf), "%04d-%02d-%02d", year, month + 1, day);
+        }
+        if (std::strcmp(weather::today(), buf) == 0) return false;
+        weather::note_today(buf);
+        return true;
+    }
+
     void paint_weather() {
         if (!tile_on(dashboard::id_weather())) return;
+        note_weather_today();
         ui::set_weather(weather::view(millis()));
     }
 
@@ -340,18 +404,15 @@ public:
         ui::set_aitokens(aitokens_);
     }
 
-    void paint_media() {
-        if (!tile_on(dashboard::id_media())) return;
-        ui::set_media(media_, agent_.ok);
-    }
+    void publish_playing() { playing::publish(tessera::host_services().data, agent_.ok); }
 
     void paint_mac() {
         if (!tile_on(dashboard::id_mac())) return;
         ui::set_mac(focus_, agent_.ok);
     }
 
-    void ask_media_refresh() {
-        if (!tile_on(dashboard::id_media())) return;
+    void ask_now_playing() {
+        if (!tile_on(playing::tile_id())) return;
         Serial.println("MEDIA?");
     }
 
@@ -360,7 +421,7 @@ public:
         Serial.println("FOCUS?");
     }
 
-    void push_media_cmd(const char *cmd) {
+    void push_now_playing(const char *cmd) {
         if (!cmd || !cmd[0]) return;
         char line[32];
         snprintf(line, sizeof(line), "MEDIA\t%s", cmd);
@@ -463,18 +524,21 @@ public:
 
     // ConsoleHandler
     void on_wifi(const char *ssid, const char *pass) override {
-        if (!pass || !pass[0]) {
-            settings::Credentials kept = settings::load_credentials();
-            settings::save_wifi(ssid, kept.pass);
-        } else {
-            settings::save_wifi(ssid, pass);
-        }
+        display_host::pause_push();
+        if (!pass || !pass[0]) settings::save_wifi(ssid, credentials_.pass);
+        else settings::save_wifi(ssid, pass);
+        display_host::resume_push();
+        text::copy(credentials_.ssid, sizeof(credentials_.ssid), ssid ? ssid : "");
+        if (pass && pass[0]) text::copy(credentials_.pass, sizeof(credentials_.pass), pass);
         Serial.println("wi-fi salvo");
         configure();
     }
 
     void on_token(const char *token) override {
+        display_host::pause_push();
         settings::save_token(token);
+        display_host::resume_push();
+        text::copy(credentials_.token, sizeof(credentials_.token), token ? token : "");
         Serial.println("token salvo");
         configure();
     }
@@ -495,6 +559,8 @@ public:
                       stats.strip_us / 1000.0, stats.land_us / 1000.0, stats.preview_us / 1000.0,
                       stats.repaint_us / 1000.0, stats.sliding, stats.tracking, stats.completing);
         input_host::report(Serial);
+        const unsigned loop_free = static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t));
+        Serial.printf("STACK loop=%u net=%u\n", loop_free, net_worker::stack_high_water());
         logger::unlock();
     }
 
@@ -523,8 +589,11 @@ public:
     }
 
     void on_drop_token() override {
+        display_host::pause_push();
         settings::stash();
         settings::clear_token();
+        display_host::resume_push();
+        credentials_.token[0] = '\0';
         ++epoch_;
         todoist_ui_mounted_ = false;
         todoist_token_seeded_ = false;
@@ -543,14 +612,17 @@ public:
     }
 
     void on_aitokens(const char *line) override {
+        crash_step(50);
         if (!aitokens::apply_line(aitokens_, line, millis())) return;
         ui::aitokens_refresh_done();
         paint_aitokens();
     }
 
     void on_agent(const char *line) override {
+        crash_step(20);
         const bool was_ok = agent_.ok;
         if (!agent::apply_line(agent_, line, millis())) return;
+        console::send_boot_reason_once();
         if (agent_.ok) {
             // Bridge is up even before the first CALENDAR events line lands.
             if (!calendar_.bridge_ok) {
@@ -563,28 +635,25 @@ public:
                 calendar_ask_at_ = millis();
                 ask_todoist_refresh();
                 todoist_ask_at_ = millis();
-                ask_media_refresh();
+                ask_now_playing();
                 ask_focus_refresh();
                 if (device_.appearance == Appearance::Auto) Serial.println("THEME?");
             }
-            paint_media();
+            // Do not read the SD card or NVS here. The agent line arrives on every
+            // heartbeat and also on the connect edge, while the other core is
+            // pushing a PSRAM frame. That flash access panics the chip.
+            publish_playing();
             paint_mac();
         } else {
-            paint_media();
+            publish_playing();
             paint_mac();
         }
-        settings_panel_show_agent();
-        publish();
     }
 
-    void on_media(const char *line) override {
-        if (!line) return;
-        if (strncmp(line, "MEDIA_COVER\t", 12) == 0) {
-            if (media::apply_cover_line(media_, line)) paint_media();
-            return;
-        }
-        if (!media::apply_line(media_, line, millis())) return;
-        paint_media();
+    void on_now_playing(const char *line) override {
+        crash_step(60);
+        playing::ingest(tessera::host_services().data, line, millis(), agent_.ok);
+        crash_step(61);
     }
 
     void on_focus(const char *line) override {
@@ -606,9 +675,10 @@ public:
         else if (!strncmp(p, "light", 5)) dark = false;
         else return;
         bool was = resolve_dark(device_);
+        // Kept in RAM. Writing NVS here runs while the other core is pushing a
+        // PSRAM frame and the interrupt watchdog resets the panel (the screen freezes).
         device_.os_prefers_dark = dark;
         device_.os_theme_known = true;
-        settings::save_device(device_);
         if (device_.appearance != Appearance::Auto) return;
         bool want = resolve_dark(device_);
         if (want == was && (palette::mode() == palette::Mode::Dark) == want) return;
@@ -643,11 +713,15 @@ public:
             changed = true;
             paint_calendar();
         }
-        if (changed) publish();
+        if (changed) note_portal();
     }
 
     void on_todoist(const char *line) override {
         if (!line || !line[0]) return;
+        if (!strncmp(line, "TODOIST\t", 8)) crash_step(41);
+        else if (!strncmp(line, "TODOIST_TASKS\t", 14)) crash_step(42);
+        else if (!strncmp(line, "TODOIST_END\t", 12)) crash_step(43);
+        else crash_step(40);
         bool ok = false;
         char id[20] = {};
         if (todoist_bridge::apply_close_ack(line, &ok, id, sizeof(id))) {
@@ -663,7 +737,9 @@ public:
         if (!todoist_bridge::apply_line(line, millis())) return;
         const todoist_bridge::Snapshot *snap = todoist_bridge::last();
         if (!snap) return;
+        crash_step(44);
         ingest_todoist_usb(*snap);
+        crash_step(45);
     }
 
     bool todoist_via_agent() const {
@@ -708,10 +784,9 @@ public:
 
     void seed_todoist_token_to_agent() {
         if (todoist_token_seeded_ || !agent_.ok) return;
-        settings::Credentials credentials = settings::load_credentials();
-        if (!credentials.token[0]) return;
-        // Migrate NVS token → Mac (~/.tessera/todoist/) once per boot; never log the value.
-        Serial.printf("TODOIST_TOKEN\t%s\n", credentials.token);
+        if (!credentials_.token[0]) return;
+        // Token was read once at boot, before the frame push existed. Never log the value.
+        Serial.printf("TODOIST_TOKEN\t%s\n", credentials_.token);
         todoist_token_seeded_ = true;
     }
 
@@ -724,12 +799,13 @@ public:
             // set_views and the horizontal list slide never mounts.
             if (ui::loader_visible()) ui::hide_loader();
             paint_summary();
-            publish();
+            note_portal();
             return;
         }
         need_token_ = false;
         ui::hide_token_needed();
-        ViewItem catalog[kMaxViews];
+        ViewItem *catalog = view_scratch(0);
+        if (!catalog) return;
         for (int i = 0; i < snap.view_count; ++i) catalog[i] = snap.views[i].item;
         char active_name[sizeof(ViewItem::name)] = "";
         int keep = ui::active_view();
@@ -738,7 +814,9 @@ public:
         }
         const int prev_n = task_store::view_count();
         remember_catalog(catalog, snap.view_count);
+        crash_step(46);
         int selected = apply_visible(active_name);
+        crash_step(47);
         for (int i = 0; i < task_store::view_count(); ++i) {
             const char *q = task_store::view(i).query;
             for (int v = 0; v < snap.view_count; ++v) {
@@ -752,6 +830,7 @@ public:
         const bool need_mount =
             !todoist_ui_mounted_ || prev_n == 0 || task_store::view_count() != prev_n || refreshing_;
         phase_ = Phase::Running;
+        crash_step(48);
         if (need_mount) {
             ui::set_views(selected);
             todoist_ui_mounted_ = true;
@@ -762,7 +841,7 @@ public:
         if (refreshing_) finish_refresh();
         else if (ui::loader_visible() && !todoist_lists_loading()) ui::hide_loader();
         paint_summary();
-        publish();
+        note_portal();
     }
 
     void paint_calendar() {
@@ -832,6 +911,9 @@ public:
         lv_timer_handler();
         display_host::refresh_now();
         if (board_->backlight) board_->backlight->hold_through_reset();
+        // Normal sessions keep CDC reboot off. The host's 1200 baud after this line
+        // is what enters the ROM bootloader.
+        Serial.enableReboot(true);
         Serial.println("flash pronto");
         Serial.flush();
     }
@@ -1051,9 +1133,29 @@ private:
     }
 
     void on_setup(const web_portal::Request &request) {
+        display_host::pause_push();
         settings::save_wifi(request.ssid, request.pass);
         if (request.token[0]) settings::save_token(request.token);
+        display_host::resume_push();
+        if (request.token[0]) text::copy(credentials_.token, sizeof(credentials_.token), request.token);
+        text::copy(credentials_.ssid, sizeof(credentials_.ssid), request.ssid);
+        text::copy(credentials_.pass, sizeof(credentials_.pass), request.pass);
         setup_commit_at_ = millis() + 600;
+    }
+
+    void note_portal() { portal_dirty_ = true; }
+
+    // USB handlers used to publish immediately. That reads NVS while the host
+    // is still writing the next lines and the other core is pushing a frame.
+    void flush_portal() {
+        if (!portal_dirty_) return;
+        if (Serial.available()) return;
+        if (portal_at_ && millis() - portal_at_ < 3000u) return;
+        crash_step(90);
+        portal_dirty_ = false;
+        portal_at_ = millis();
+        publish();
+        crash_step(91);
     }
 
     void publish() {
@@ -1061,6 +1163,8 @@ private:
         text::copy(info.host, sizeof(info.host), web_portal::host());
         net_worker::describe(info);
         ui::set_device(device_, info);
+        // Flash reads while the other core pushes a PSRAM frame panic the chip.
+        display_host::pause_push();
         // Static: Snapshot is large; stack allocation here was rebooting the board.
         static web_portal::Snapshot snapshot;
         snapshot = {};
@@ -1072,7 +1176,7 @@ private:
             text::copy(snapshot.lists[i].name, sizeof(snapshot.lists[i].name), choices[i].name);
             snapshot.lists[i].shown = choices[i].shown;
         }
-        snapshot.token_set = settings::load_credentials().token[0] != '\0';
+        snapshot.token_set = credentials_.token[0] != '\0';
         settings::WeatherPlace saved = settings::load_weather();
         if (saved.set) text::copy(snapshot.weather_city, sizeof(snapshot.weather_city), saved.name);
         weather::View seen = weather::view(millis());
@@ -1132,10 +1236,11 @@ private:
             text::copy(snapshot.calendar_home_tile_size, sizeof(snapshot.calendar_home_tile_size),
                        home_tile::to_string(home_tile::Size::M));
         }
+        display_host::resume_push();
         ui::set_face(snapshot.clock_timezone, snapshot.clock_time_format, snapshot.date_format);
         web_portal::publish(snapshot);
         web_portal::publish_calendar_catalog(catalog_view);
-        ui::set_agent(agent_ui, agent_pack_ready(), snapshot.agent_pack_version);
+        ui::set_agent(agent_ui, snapshot.agent_pack, snapshot.agent_pack_version);
         paint_summary();
         paint_weather();
     }
@@ -1153,7 +1258,7 @@ private:
             case web_portal::Kind::WeatherPlace: on_weather_place(request); break;
             case web_portal::Kind::Dashboard: {
                 const bool had_cal = tile_on(dashboard::id_calendar());
-                const bool had_media = tile_on(dashboard::id_media());
+                const bool had_playing = tile_on(playing::tile_id());
                 const bool had_mac = tile_on(dashboard::id_mac());
                 settings::save_dashboard(request.dashboard);
                 dash_ = request.dashboard;
@@ -1164,7 +1269,8 @@ private:
                 paint_calendar();
                 // Kick USB only when a tile was just turned on (hidden stays quiet).
                 if (!had_cal && tile_on(dashboard::id_calendar())) ask_calendar_refresh();
-                if (!had_media && tile_on(dashboard::id_media())) ask_media_refresh();
+                if (!had_playing && tile_on(playing::tile_id())) ask_now_playing();
+                if (tile_on(playing::tile_id())) publish_playing();
                 if (!had_mac && tile_on(dashboard::id_mac())) ask_focus_refresh();
                 publish();
                 break;
@@ -1296,8 +1402,10 @@ private:
                 return;
             }
         }
+        if (tile_on(dashboard::id_weather()) && note_weather_today()) paint_weather();
         if (tile_on(dashboard::id_weather()) && !refreshing_ && closes_n == 0 && !quiet && wanted_ < 0 &&
-            weather::wants_fetch(millis()) && millis() - last_weather_warm_ >= kWarmGapMs) {
+            weather::wants_fetch(millis()) &&
+            weather::retry_allowed(millis(), weather_backoff_, weather_next_ms_)) {
             last_weather_warm_ = millis();
             weather_gen_ = weather::note_request();
             submit(net_worker::Kind::WeatherForecast);
@@ -1380,13 +1488,20 @@ private:
         }
     }
 
+    void clear_weather_backoff() {
+        weather_fail_n_ = 0;
+        weather_backoff_ = false;
+    }
+
     void on_weather_place(const web_portal::Request &request) {
         if (request.weather_has_coords) {
+            clear_weather_backoff();
             pending_weather_city_[0] = '\0';
             apply_weather_place(request.weather_name, request.weather_lat, request.weather_lon);
             return;
         }
         if (!request.weather_city[0]) return;
+        clear_weather_backoff();
         text::copy(pending_weather_city_, sizeof(pending_weather_city_), request.weather_city);
         try_weather_geocode();
     }
@@ -1421,13 +1536,18 @@ private:
             return;
         }
         if (result.ok) {
+            clear_weather_backoff();
             if (!weather::store(weather_gen_, result.forecast, millis())) {
                 ui::set_status("previsão atrasada");
             }
         } else {
             weather::note_failure();
-            ui::set_status(result.error[0] ? result.error : "clima falhou");
-            last_weather_warm_ = 0;
+            if (weather_fail_n_ == 0) {
+                ui::set_status(result.error[0] ? result.error : "clima falhou");
+            }
+            weather_backoff_ = true;
+            weather_next_ms_ = millis() + weather::next_retry_ms(weather_fail_n_);
+            weather_fail_n_++;
         }
         paint_weather();
         publish();
@@ -1468,7 +1588,8 @@ private:
     }
 
     int apply_visible(const char *active_name) {
-        ViewItem shown[kMaxViews];
+        ViewItem *shown = view_scratch(1);
+        if (!shown) return 0;
         int count = list_prefs::visible(catalog_, catalog_n_, shown, kMaxViews);
         task_store::set_views(shown, count);
         int selected = 0;
@@ -1687,6 +1808,7 @@ private:
 
     hal::Board *board_ = nullptr;
     DeviceSettings device_;
+    settings::Credentials credentials_{};
     dashboard::Layout dash_{};  // cached home layout — hidden tiles skip USB/HTTP work
     uint32_t theme_check_at_ = 0;
     uint32_t last_check_ = 0;
@@ -1695,6 +1817,9 @@ private:
     uint32_t retry_at_ = 0;
     uint32_t last_warm_ = 0;
     uint32_t last_weather_warm_ = 0;
+    uint32_t weather_fail_n_ = 0;
+    bool weather_backoff_ = false;
+    uint32_t weather_next_ms_ = 0;
     uint32_t weather_gen_ = 0;
     char pending_weather_city_[48] = {};
     bool reconfigure_ = false;
@@ -1713,7 +1838,6 @@ private:
     calendar::View calendar_{};
     calendar::Catalog calendar_catalog_{};
     uint32_t calendar_ask_at_ = 0;
-    media::View media_{};
     focus::View focus_{};
     agent::View agent_{};
     bool close_usb_wait_ = false;
@@ -1723,6 +1847,8 @@ private:
     // False until the first catalog or USB snapshot. The tile spinner stays up until then.
     bool todoist_answered_ = false;
     uint32_t todoist_ask_at_ = 0;
+    bool portal_dirty_ = false;
+    uint32_t portal_at_ = 0;
     // First ask still unanswered; zero once a bundle lands.
     uint32_t todoist_quiet_since_ = 0;
     todoist::Gate gate_{};
