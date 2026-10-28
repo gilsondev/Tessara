@@ -452,14 +452,20 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("calendar");
         std::fs::create_dir_all(&root).unwrap();
+        // Offsets are counted from the cache day. A fixed date drops the event once that day passes.
+        let now = chrono::Local::now().to_rfc3339();
         std::fs::write(
             root.join("health.json"),
-            r#"{"ok":true,"phase":"ok","message":"","event_count":1,"checked_at":"2026-10-27T18:00:00-03:00","calendars":[]}"#,
+            format!(
+                r#"{{"ok":true,"phase":"ok","message":"","event_count":1,"checked_at":"{now}","calendars":[]}}"#
+            ),
         )
         .unwrap();
         std::fs::write(
             root.join("events_cache.json"),
-            r#"{"fetched_at":"2026-10-27T18:00:00-03:00","events":[{"start_hhmm":"1900","end_hhmm":"1930","all_day":false,"title":"Ensaio","location":"","duration_min":30,"color":"1A73E8","day_offset":0}]}"#,
+            format!(
+                r#"{{"fetched_at":"{now}","events":[{{"start_hhmm":"1900","end_hhmm":"1930","all_day":false,"title":"Ensaio","location":"","duration_min":30,"color":"1A73E8","day_offset":0}}]}}"#
+            ),
         )
         .unwrap();
         let mut cap = CalendarCapability::new(CalendarPaths::isolated(root));
