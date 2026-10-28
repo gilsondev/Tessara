@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use tessera_doctor::{prepare_permission, DoctorDeps, DoctorReport, PreparePermission};
 use tessera_logbuf::SharedLogBuf;
 use tessera_profile::{
-    load_or_init_with_paths, read_scan_json, write_config, write_machine_display_name,
+    load_or_init_with_paths, read_config, read_scan_json, write_config, write_machine_display_name,
     write_scan_json, AgentdConfig, ProfilePaths,
 };
 use tessera_scan::{run_scan, ScanConfigEnabled, ScanItem, ScanResult, ScanRoots};
@@ -303,7 +303,7 @@ fn profile_snapshot(paths: &ProfilePaths) -> Result<(AgentdConfig, MachineStatus
 
 fn config_from_scan(
     base: &AgentdConfig,
-    found: &[ScanItem],
+    _found: &[ScanItem],
     overrides: Option<&[ScanItemApply]>,
 ) -> AgentdConfig {
     // Empty `found: []` must not wipe every capability — treat as "no override".
@@ -330,31 +330,9 @@ fn config_from_scan(
         cfg.sync_aitokens_master();
         return cfg;
     }
-    let toggles = ScanConfigEnabled::toggles_from_scan(found);
-    let mut cfg = AgentdConfig {
-        media: toggles.media,
-        focus: toggles.focus,
-        aitokens: toggles.aitokens,
-        // Auto-scan: enable providers that are present (not missing).
-        aitokens_cursor: found
-            .iter()
-            .find(|f| f.id == "cursor")
-            .is_some_and(|f| f.state != tessera_scan::ScanState::Missing),
-        aitokens_claude: found
-            .iter()
-            .find(|f| f.id == "claude")
-            .is_some_and(|f| f.state != tessera_scan::ScanState::Missing),
-        aitokens_codex: found
-            .iter()
-            .find(|f| f.id == "codex")
-            .is_some_and(|f| f.state != tessera_scan::ScanState::Missing),
-        calendar: toggles.calendar,
-        todoist: base.todoist,
-        setup_completed: base.setup_completed,
-        auto_update: base.auto_update,
-    };
-    cfg.sync_aitokens_master();
-    cfg
+    // No toggles in the body: this is a rescan. Keep the saved choices.
+    // Turning Claude off must survive the next open, even if Claude is installed.
+    *base
 }
 
 fn stamp_enabled(result: &mut ScanResult, config: &AgentdConfig) {
@@ -387,6 +365,11 @@ fn persist_scan(
     config.calendar = auto.calendar;
     let setup_was = config.setup_completed;
     config.setup_completed = body.setup_completed.unwrap_or(setup_was);
+    // A scan can outlive the toggle click. Re-read so that write does not
+    // put auto-update back to the value from before the click.
+    if let Ok(fresh) = read_config(&paths.config_toml()) {
+        config.auto_update = fresh.auto_update;
+    }
     write_config(&paths.config_toml(), &config).map_err(|e| e.to_string())?;
 
     stamp_enabled(result, &config);
@@ -1035,6 +1018,63 @@ mod tests {
         let logs =
             Arc::new(tessera_logbuf::LogBuf::with_file(paths.agentd_log(), 100).expect("test log"));
         AppState::new(paths, logs)
+    }
+
+    #[test]
+    fn rescan_keeps_a_provider_the_user_turned_off() {
+        let mut base = AgentdConfig::default();
+        base.aitokens_claude = false;
+        base.auto_update = true;
+        base.sync_aitokens_master();
+        let found = vec![
+            ScanItem::new("claude", tessera_scan::ScanState::NeedsAuth, true),
+            ScanItem::new("cursor", tessera_scan::ScanState::Ready, true),
+        ];
+        let cfg = config_from_scan(&base, &found, None);
+        assert!(!cfg.aitokens_claude);
+        assert!(cfg.aitokens_cursor);
+        assert!(cfg.auto_update);
+        assert!(cfg.aitokens);
+    }
+
+    #[test]
+    fn empty_scan_does_not_turn_claude_back_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ProfilePaths::from_tessera_root(dir.path());
+        load_or_init_with_paths(&paths).unwrap();
+        let mut cfg = read_config(&paths.config_toml()).unwrap();
+        cfg.aitokens_claude = false;
+        cfg.auto_update = true;
+        cfg.sync_aitokens_master();
+        write_config(&paths.config_toml(), &cfg).unwrap();
+        let mut result = ScanResult {
+            scanned_at: String::new(),
+            found: vec![ScanItem::new(
+                "claude",
+                tessera_scan::ScanState::NeedsAuth,
+                true,
+            )],
+        };
+        persist_scan(&paths, &mut result, ScanApplyBody::default()).unwrap();
+        let saved = read_config(&paths.config_toml()).unwrap();
+        assert!(!saved.aitokens_claude);
+        assert!(saved.auto_update);
+        let claude = result.found.iter().find(|i| i.id == "claude").unwrap();
+        assert!(!claude.enabled);
+    }
+
+    #[test]
+    fn explicit_off_saves_one_provider() {
+        let base = AgentdConfig::default();
+        let ov = vec![ScanItemApply {
+            id: "claude".into(),
+            enabled: false,
+        }];
+        let cfg = config_from_scan(&base, &[], Some(&ov));
+        assert!(!cfg.aitokens_claude);
+        assert!(cfg.aitokens_cursor);
+        assert!(cfg.aitokens_codex);
+        assert!(cfg.auto_update);
     }
 
     #[tokio::test]

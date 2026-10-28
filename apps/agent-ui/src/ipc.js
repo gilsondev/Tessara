@@ -14,15 +14,19 @@ export function agentdUrl(path) {
 
 const IPC_TIMEOUT_MS = 1500;
 
-let cachedIpcToken;
+let cachedIpcToken = "";
 
 async function ipcToken() {
-  if (cachedIpcToken !== undefined) return cachedIpcToken;
+  if (cachedIpcToken) return cachedIpcToken;
+  // The window is the raw files in the app, not a bundled module.
+  // The token comes from the Tauri command already injected on the page.
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (typeof invoke !== "function") return "";
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    cachedIpcToken = (await invoke("ipc_token")) || "";
+    const token = String((await invoke("ipc_token")) || "").trim();
+    if (token) cachedIpcToken = token;
   } catch {
-    cachedIpcToken = "";
+    return "";
   }
   return cachedIpcToken;
 }

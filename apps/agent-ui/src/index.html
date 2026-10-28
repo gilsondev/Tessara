@@ -33,6 +33,7 @@
         <button type="button" data-go="activity">Atividade</button>
         <button type="button" data-go="more">Mais</button>
       </nav>
+      <p class="action-feedback" data-live="action-feedback" role="status" hidden></p>
       <div class="body">
 
         <!-- HOME -->
@@ -236,7 +237,6 @@
           </div>
           <div class="actions">
             <button class="btn primary" type="button" data-action="panel-refresh">Atualizar / acordar</button>
-            <button class="btn ghost" type="button" data-action="panel-reload">Recarregar estado</button>
           </div>
           <p class="note">USB sincroniza música, Focus e cotas. Ocultar exige painel na rede (e Tessera com acesso à rede local).</p>
         </div>
@@ -508,7 +508,7 @@
             <button class="btn primary" type="button" data-go="setup">Resolver o que falta</button>
             <button class="btn ghost" type="button" data-go="scan">Varrer de novo</button>
             <button class="btn ghost" type="button" data-go="activity" data-mode-open="advanced">Ver log</button>
-            <button class="btn ghost" type="button">Copiar relatório</button>
+            <button class="btn ghost" type="button" data-action="copy-report">Copiar relatório</button>
           </div>
         </div>
 
@@ -516,7 +516,7 @@
         <div class="screen" data-screen="more">
           <div class="hero">
             <h2>Mais</h2>
-            <p>Atualização, perfis e remoção deste Mac.</p>
+            <p>Atualização deste Mac e o painel na rede.</p>
           </div>
           <div class="grid">
             <div class="card">
@@ -540,54 +540,10 @@
               </div>
               <div class="row">
                 <div class="copy">
-                  <h3>Nome do painel na rede</h3>
-                  <p class="sub">tessera.local</p>
+                  <h3>Painel na rede</h3>
+                  <p class="sub">tessera.local — o endereço é fixo neste aparelho</p>
                 </div>
-                <div class="meta"><button class="btn ghost" type="button">Alterar</button></div>
-              </div>
-            </div>
-            <div class="card">
-              <div class="row">
-                <div class="copy">
-                  <h3>Meus computadores</h3>
-                  <p class="sub">Perfis neste e em outros Macs</p>
-                </div>
-                <div class="meta"><button class="btn ghost" type="button" data-go="machines">Ver</button></div>
-              </div>
-              <div class="row">
-                <div class="copy">
-                  <h3>Doctor</h3>
-                  <p class="sub">O que funciona e o que precisa de você</p>
-                </div>
-                <div class="meta"><button class="btn ghost" type="button" data-go="doctor">Rodar</button></div>
-              </div>
-              <div class="row">
-                <div class="copy">
-                  <h3>Varrer este Mac de novo</h3>
-                  <p class="sub">Apps de IA e autorizações</p>
-                </div>
-                <div class="meta"><button class="btn ghost" type="button" data-go="scan">Varrer</button></div>
-              </div>
-              <div class="row">
-                <div class="copy">
-                  <h3>Autorizações</h3>
-                  <p class="sub">Acesso a arquivos e atalhos</p>
-                </div>
-                <div class="meta"><button class="btn ghost" type="button" data-go="setup">Abrir</button></div>
-              </div>
-              <div class="row">
-                <div class="copy">
-                  <h3>Abrir site do Tessera</h3>
-                  <p class="sub">Wi‑Fi, clima, Todoist e widgets</p>
-                </div>
-                <div class="meta"><button class="btn ghost" type="button">Abrir</button></div>
-              </div>
-              <div class="row">
-                <div class="copy">
-                  <h3>Remover deste Mac</h3>
-                  <p class="sub">Não apaga o perfil dos outros computadores</p>
-                </div>
-                <div class="meta"><button class="btn danger" type="button">Remover…</button></div>
+                <div class="meta"><button class="btn ghost" type="button" data-action="open-portal">Abrir</button></div>
               </div>
             </div>
           </div>
@@ -612,7 +568,7 @@
             <p class="sub">1. Reencaixe o USB · 2. Outra porta do Mac · 3. Evite hub sem energia</p>
           </div>
           <div class="actions">
-            <button class="btn primary" type="button">Tentar de novo</button>
+            <button class="btn primary" type="button" data-action="retry-panel">Tentar de novo</button>
             <button class="btn ghost" type="button" data-go="doctor">Rodar Doctor</button>
             <button class="btn ghost" type="button" data-go="activity" data-mode-open="advanced">Ver log</button>
             <button class="btn ghost" type="button" data-go="home">Dispensar</button>

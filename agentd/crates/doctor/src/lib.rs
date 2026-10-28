@@ -322,11 +322,15 @@ fn item<'a>(scan: &'a ScanResult, id: &str) -> Option<&'a ScanItem> {
     scan.found.iter().find(|i| i.id == id)
 }
 
+fn provider_on(master: bool, provider: bool) -> bool {
+    master && provider
+}
+
 fn check_cursor(deps: &DoctorDeps) -> DoctorCheck {
     ai_check(
         "cursor",
         "Cursor",
-        deps.config.aitokens,
+        provider_on(deps.config.aitokens, deps.config.aitokens_cursor),
         item(&deps.scan, "cursor"),
         deps.files_ok,
     )
@@ -336,7 +340,7 @@ fn check_claude(deps: &DoctorDeps) -> DoctorCheck {
     ai_check(
         "claude",
         "Claude",
-        deps.config.aitokens,
+        provider_on(deps.config.aitokens, deps.config.aitokens_claude),
         item(&deps.scan, "claude"),
         deps.files_ok,
     )
@@ -346,7 +350,7 @@ fn check_codex(deps: &DoctorDeps) -> DoctorCheck {
     ai_check(
         "codex",
         "Codex / ChatGPT",
-        deps.config.aitokens,
+        provider_on(deps.config.aitokens, deps.config.aitokens_codex),
         item(&deps.scan, "codex"),
         deps.files_ok,
     )
@@ -622,6 +626,21 @@ mod tests {
             report.checks.iter().find(|c| c.id == "push").unwrap().level,
             "warn"
         );
+    }
+
+    #[test]
+    fn claude_off_does_not_ask_to_sign_in() {
+        let mut deps = fake_deps(true, true, 0);
+        deps.config.aitokens_claude = false;
+        deps.config.aitokens_cursor = true;
+        deps.config.sync_aitokens_master();
+        let report = run_doctor(&deps);
+        let claude = report.checks.iter().find(|c| c.id == "claude").unwrap();
+        assert_eq!(claude.level, "skip");
+        assert!(claude.detail.contains("Desligado"));
+        assert!(claude.action.is_none());
+        let cursor = report.checks.iter().find(|c| c.id == "cursor").unwrap();
+        assert_eq!(cursor.level, "ok");
     }
 
     #[test]

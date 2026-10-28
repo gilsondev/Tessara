@@ -25,6 +25,14 @@ fn emit_navigate(app: &AppHandle, screen_id: &str) {
     }
 }
 
+/// Open the panel portal in the browser.
+#[tauri::command]
+fn open_portal(app: AppHandle) -> Result<(), String> {
+    app.opener()
+        .open_url("http://tessera.local", None::<&str>)
+        .map_err(|e| format!("abrir o painel: {e}"))
+}
+
 /// Open a macOS Privacy / Login Items deep link. Optionally reveal `reveal_path` in Finder
 /// (FDA: user can drag Tessera onto the list if it is missing).
 #[tauri::command]
@@ -95,6 +103,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            open_portal,
             open_privacy_settings,
             service::ipc_token,
             service::agentd_service,

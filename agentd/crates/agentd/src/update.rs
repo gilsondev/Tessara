@@ -139,6 +139,11 @@ impl UpdateService {
     pub fn set_auto_update(&self, on: bool) -> Result<UpdateStatus, String> {
         let path = self.paths.config_toml();
         let mut cfg = read_config(&path).map_err(|e| e.to_string())?;
+        // Read again so a scan that finished while this click was in flight
+        // does not lose its capability flags, and this click is the one written.
+        if let Ok(fresh) = read_config(&path) {
+            cfg = fresh;
+        }
         cfg.auto_update = on;
         write_config(&path, &cfg).map_err(|e| e.to_string())?;
         Ok(self.status())

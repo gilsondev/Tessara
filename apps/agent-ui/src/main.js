@@ -28,6 +28,8 @@ import {
 
 /** @type {object|null} */
 let lastPanelState = null;
+/** In-flight auto-update save. A refresh must not paint the value from before the click. */
+let updateSave = null;
 /** Selected widget id on Widgets tab. */
 let selectedWidgetId = "";
 
@@ -328,7 +330,10 @@ function renderScanFound(found) {
     .map((item) => {
       const meta = SCAN_META[item.id] || { title: item.id, detail: "" };
       const ui = scanStateUi(item);
-      const on = item.enabled !== false && ui.defaultOn;
+      const turnedOff = item.enabled === false;
+      const needText = turnedOff ? "Desligado" : ui.needText;
+      const needClass = turnedOff ? "skip" : ui.needClass;
+      const on = !turnedOff && ui.defaultOn;
       const disabled = ui.canEnable ? "" : " disabled style=\"opacity:.45\"";
       const pressed = on && ui.canEnable ? "true" : "false";
       const togOn = on && ui.canEnable ? " on" : "";
@@ -336,14 +341,16 @@ function renderScanFound(found) {
               <div class="copy">
                 <b>${escapeHtml(meta.title)}</b>
                 <span>${escapeHtml(meta.detail)}</span>
-                <span class="need${ui.needClass ? ` ${ui.needClass}` : ""}">${ui.needText}</span>
+                <span class="need${needClass ? ` ${needClass}` : ""}">${needText}</span>
               </div>
               <button class="toggle${togOn}" type="button" aria-pressed="${pressed}" data-scan-toggle="${escapeHtml(item.id)}"${disabled}></button>
             </li>`;
     })
     .join("");
 
-  const needsAuth = found.filter((f) => String(f.state).toLowerCase() === "needs_auth");
+  const needsAuth = found.filter(
+    (f) => f.enabled !== false && String(f.state).toLowerCase() === "needs_auth",
+  );
   const banner = document.querySelector('[data-live="scan-auth-banner"]');
   if (banner) {
     const bits = [];
@@ -388,7 +395,14 @@ async function persistScanChoices({ setupCompleted, displayName } = {}) {
   if (toggles.length) body.found = toggles;
   if (setupCompleted != null) body.setup_completed = setupCompleted;
   if (displayName) body.display_name = displayName;
-  const result = await postScan(body);
+  showFeedback("busy", "Salvando neste Mac…");
+  let result;
+  try {
+    result = await postScan(body);
+  } catch (err) {
+    showFeedback("err", String(err?.message ?? err));
+    throw err;
+  }
   lastScan = result;
   renderScanFound(result.found);
   const enabled = (id) => toggles.find((item) => item.id === id)?.enabled;
@@ -407,6 +421,7 @@ async function persistScanChoices({ setupCompleted, displayName } = {}) {
   } catch {
     /* ignore */
   }
+  showFeedback("ok", "Salvo neste Mac.");
   return result;
 }
 
@@ -611,6 +626,35 @@ function formatUsbAge(secs) {
   return `há ${Math.round(min / 60)} h`;
 }
 
+let feedbackTimer = 0;
+
+function showFeedback(kind, text) {
+  const el = document.querySelector('[data-live="action-feedback"]');
+  if (!el) return;
+  clearTimeout(feedbackTimer);
+  el.hidden = !text;
+  el.classList.remove("busy", "ok", "err");
+  if (kind) el.classList.add(kind);
+  el.textContent = text || "";
+  if (kind === "ok") {
+    feedbackTimer = setTimeout(() => {
+      el.hidden = true;
+    }, 2800);
+  }
+}
+
+function setControlBusy(busy) {
+  document
+    .querySelectorAll(
+      "[data-action='agentd-restart'], [data-action='agentd-stop'], [data-action='agentd-start'], [data-action='panel-reboot']",
+    )
+    .forEach((btn) => {
+      btn.disabled = busy;
+      if (busy) btn.setAttribute("aria-busy", "true");
+      else btn.removeAttribute("aria-busy");
+    });
+}
+
 function setDaemonResult(text) {
   const el = document.querySelector('[data-live="daemon-result"]');
   if (!el) return;
@@ -708,28 +752,42 @@ async function controlAgent(action) {
     stop: "Parando o Agent…",
     start: "Iniciando o Agent…",
   };
-  setDaemonResult(pending[action] || "Executando…");
+  const busy = pending[action] || "Executando…";
+  setControlBusy(true);
+  setDaemonResult(busy);
+  showFeedback("busy", busy);
   try {
     const reply = await agentdService(action);
     if (action === "stop") {
-      setDaemonResult(reply?.ok ? "Agent parado." : reply?.message || "Não consegui parar o Agent.");
+      const text = reply?.ok ? "Agent parado." : reply?.message || "Não consegui parar o Agent.";
+      setDaemonResult(text);
+      showFeedback(reply?.ok ? "ok" : "err", text);
       return;
     }
     if (!reply?.ok) {
-      setDaemonResult(reply?.message || "Não consegui.");
+      const text = reply?.message || "Não consegui.";
+      setDaemonResult(text);
+      showFeedback("err", text);
       return;
     }
     const online = await waitForAgent(12000);
-    setDaemonResult(online ? "Agent no ar." : reply?.message || "O Agent não voltou.");
+    const text = online ? "Agent no ar." : reply?.message || "O Agent não voltou.";
+    setDaemonResult(text);
+    showFeedback(online ? "ok" : "err", text);
   } catch (err) {
-    setDaemonResult(controlError(err));
+    const text = controlError(err);
+    setDaemonResult(text);
+    showFeedback("err", text);
   } finally {
+    setControlBusy(false);
     refreshLiveStatus();
   }
 }
 
 async function rebootPanel() {
+  setControlBusy(true);
   setDaemonResult("Reiniciando o painel…");
+  showFeedback("busy", "Reiniciando o painel…");
   try {
     let reply = null;
     if (isAgentdOnline(lastStatus) && isUsbUp(lastStatus)) {
@@ -738,24 +796,31 @@ async function rebootPanel() {
     if (!reply?.ok) {
       const forced = await panelForceReset();
       const back = forced?.ok ? await waitUntilUsbUp(20000) : false;
-      setDaemonResult(
-        back
-          ? "Painel voltou no cabo."
-          : forced?.message || "Não consegui reiniciar o painel.",
-      );
+      const text = back
+        ? "Painel voltou no cabo."
+        : forced?.message || "Não consegui reiniciar o painel.";
+      setDaemonResult(text);
+      showFeedback(back ? "ok" : "err", text);
       return;
     }
     if (reply.method === "dtr") {
-      setDaemonResult("A tela não caiu. O painel ignorou o restart.");
+      const text = "A tela não caiu. O painel ignorou o restart.";
+      setDaemonResult(text);
+      showFeedback("err", text);
       return;
     }
     const back = await waitUntilUsbUp(20000);
-    setDaemonResult(
-      back ? "Painel reiniciou e voltou no cabo." : "O painel caiu e o cabo ainda não voltou.",
-    );
+    const text = back
+      ? "Painel reiniciou e voltou no cabo."
+      : "O painel caiu e o cabo ainda não voltou.";
+    setDaemonResult(text);
+    showFeedback(back ? "ok" : "err", text);
   } catch (err) {
-    setDaemonResult(controlError(err));
+    const text = controlError(err);
+    setDaemonResult(text);
+    showFeedback("err", text);
   } finally {
+    setControlBusy(false);
     refreshLiveStatus();
   }
 }
@@ -879,9 +944,10 @@ function paintUpdateStatus(st) {
 }
 
 async function refreshUpdateRow() {
-  if (visibleScreenId() !== "more") return;
+  if (visibleScreenId() !== "more" || updateSave) return;
   try {
     const st = await fetchUpdate();
+    if (updateSave) return;
     paintUpdateStatus(st);
   } catch {
     const sub = document.querySelector('[data-live="update-sub"]');
@@ -1098,17 +1164,13 @@ function paintAiToggles(state) {
     ["show_aitokens_claude", "claude"],
     ["show_aitokens_cursor", "cursor"],
   ];
-  map.forEach(([key, capId]) => {
-    const on = typeof ds[key] === "boolean" ? ds[key] : true;
+  map.forEach(([key]) => {
+    if (typeof ds[key] !== "boolean") return;
+    const on = ds[key];
     const btn = document.querySelector(`[data-panel-ai="${key}"]`);
     if (btn) {
       btn.classList.toggle("on", on);
       btn.setAttribute("aria-pressed", on ? "true" : "false");
-    }
-    const cap = document.querySelector(`[data-cap-toggle="${capId}"]`);
-    if (cap && !cap.disabled) {
-      cap.classList.toggle("on", on);
-      cap.setAttribute("aria-pressed", on ? "true" : "false");
     }
   });
 }
@@ -1318,7 +1380,13 @@ async function persistMacCaps() {
       { id: "codex", enabled: !!on("codex") },
     ],
   };
-  await postScan(body);
+  showFeedback("busy", "Salvando neste Mac…");
+  try {
+    await postScan(body);
+  } catch (err) {
+    showFeedback("err", String(err?.message ?? err));
+    throw err;
+  }
   // Cotas No Mac ↔ fontes no widget AI Tokens (painel).
   try {
     await postPanelSettings({
@@ -1332,6 +1400,7 @@ async function persistMacCaps() {
   await refreshMacScreen();
   await refreshHomeCaps();
   if (visibleScreenId() === "widgets") void refreshWidgetsScreen();
+  showFeedback("ok", "Salvo neste Mac.");
 }
 
 function renderActivityChecks(checks) {
@@ -1848,7 +1917,7 @@ async function runAgentInstallIfNeeded(id) {
     const status = await waitForAgentStatus();
     if (!status) {
       throw new Error(
-        "O agente foi instalado, mas ainda não respondeu. Confira o login deste usuário e tente de novo.",
+        "O agente está no ar, mas esta janela não leu o status. Tente de novo.",
       );
     }
     paintInstallSteps([
@@ -1993,6 +2062,7 @@ document.body.addEventListener("click", (e) => {
       "aria-pressed",
       scanToggle.classList.contains("on") ? "true" : "false",
     );
+    void persistScanChoices().catch((err) => window.alert(String(err?.message ?? err)));
     return;
   }
   const updateAuto = e.target.closest("[data-update-auto]");
@@ -2001,12 +2071,29 @@ document.body.addEventListener("click", (e) => {
     const next = !updateAuto.classList.contains("on");
     updateAuto.classList.toggle("on", next);
     updateAuto.setAttribute("aria-pressed", next ? "true" : "false");
-    void postUpdate({ auto_update: next })
-      .then(paintUpdateStatus)
+    showFeedback(
+      "busy",
+      next ? "Ligando atualização automática…" : "Desligando atualização automática…",
+    );
+    const pending = postUpdate({ auto_update: next });
+    updateSave = pending;
+    void pending
+      .then((st) => {
+        paintUpdateStatus(st);
+        showFeedback(
+          "ok",
+          st?.auto_update
+            ? "Atualização automática ligada."
+            : "Atualização automática desligada.",
+        );
+      })
       .catch((err) => {
         updateAuto.classList.toggle("on", !next);
         updateAuto.setAttribute("aria-pressed", !next ? "true" : "false");
-        window.alert(String(err?.message ?? err));
+        showFeedback("err", String(err?.message ?? err));
+      })
+      .finally(() => {
+        if (updateSave === pending) updateSave = null;
       });
     return;
   }
@@ -2015,10 +2102,25 @@ document.body.addEventListener("click", (e) => {
     e.preventDefault();
     const sub = document.querySelector('[data-live="update-sub"]');
     if (sub) sub.textContent = "Procurando…";
+    updateCheck.disabled = true;
+    showFeedback("busy", "Procurando atualização…");
     void postUpdate({ check: true })
-      .then(paintUpdateStatus)
+      .then((st) => {
+        paintUpdateStatus(st);
+        showFeedback(
+          "ok",
+          st?.update_available
+            ? `Nova versão ${st.latest_version}.`
+            : "Você está na versão mais recente.",
+        );
+      })
       .catch((err) => {
-        if (sub) sub.textContent = String(err?.message ?? err);
+        const text = String(err?.message ?? err);
+        if (sub) sub.textContent = text;
+        showFeedback("err", text);
+      })
+      .finally(() => {
+        updateCheck.disabled = false;
       });
     return;
   }
@@ -2089,14 +2191,17 @@ document.body.addEventListener("click", (e) => {
       group.querySelectorAll("button").forEach((b) => b.classList.remove("on", "pending"));
       wsBtn.classList.add("on", "pending");
     }
+    showFeedback("busy", "Salvando no painel…");
     void postWidgetSettings(payload.id, payload.key, payload.value)
       .then((state) => {
         wsBtn.classList.remove("pending");
         applyWidgetsScreen(state);
+        showFeedback("ok", "Salvo no painel.");
       })
       .catch((err) => {
         wsBtn.classList.remove("pending");
         void refreshWidgetsScreen();
+        showFeedback("err", String(err?.message ?? err));
         window.alert(
           String(err?.message ?? err) +
             "\n\nLigue o cabo ou a rede do painel para salvar.",
@@ -2119,9 +2224,11 @@ document.body.addEventListener("click", (e) => {
           : key === "show_aitokens_cursor"
             ? "cursor"
             : "";
+    showFeedback("busy", "Salvando no painel…");
     void postPanelSettings({ [key]: next })
       .then(async (state) => {
         applyWidgetsScreen(state);
+        showFeedback("ok", "Salvo no painel.");
         if (capId) {
           const cap = document.querySelector(`[data-cap-toggle="${capId}"]`);
           if (cap) {
@@ -2142,6 +2249,7 @@ document.body.addEventListener("click", (e) => {
       .catch((err) => {
         panelAi.classList.toggle("on", !next);
         panelAi.setAttribute("aria-pressed", !next ? "true" : "false");
+        showFeedback("err", String(err?.message ?? err));
         window.alert(
           String(err?.message ?? err) +
             "\n\nLigue o cabo ou a rede do painel para salvar.",
@@ -2158,10 +2266,12 @@ document.body.addEventListener("click", (e) => {
       window.alert("Cole um token para salvar. Em branco não altera o atual.");
       return;
     }
+    showFeedback("busy", "Salvando o token…");
     void postPanelToken(token)
       .then((state) => {
         if (input) input.value = "";
         applyWidgetsScreen(state);
+        showFeedback("ok", "Token salvo no painel.");
       })
       .catch((err) =>
         window.alert(
@@ -2188,10 +2298,12 @@ document.body.addEventListener("click", (e) => {
             longitude: weatherPick.longitude,
           }
         : { city: name };
+    showFeedback("busy", "Salvando a cidade…");
     void postPanelWeather(body)
       .then((state) => {
         weatherPick = null;
         applyWidgetsScreen(state);
+        showFeedback("ok", "Cidade salva no painel.");
       })
       .catch((err) =>
         window.alert(
@@ -2276,14 +2388,17 @@ document.body.addEventListener("click", (e) => {
         patch.brightness <= 40 ? "Baixo" : patch.brightness <= 70 ? "Médio" : "Alto";
       brightSub.textContent = `Agora: ${label} (${patch.brightness}%)`;
     }
+    showFeedback("busy", "Salvando no painel…");
     void postPanelSettings(patch)
       .then((state) => {
         panelSet.classList.remove("pending");
         applyPanelState(state);
+        showFeedback("ok", "Salvo no painel.");
       })
       .catch((err) => {
         panelSet.classList.remove("pending");
         void refreshPanelScreen();
+        showFeedback("err", String(err?.message ?? err));
         window.alert(String(err?.message ?? err));
       });
     return;
@@ -2294,9 +2409,14 @@ document.body.addEventListener("click", (e) => {
     const next = !panelToggle.classList.contains("on");
     panelToggle.classList.toggle("on", next);
     panelToggle.setAttribute("aria-pressed", next ? "true" : "false");
+    showFeedback("busy", "Salvando no painel…");
     void postPanelSettings({ sound: next })
-      .then(applyPanelState)
+      .then((state) => {
+        applyPanelState(state);
+        showFeedback("ok", "Salvo no painel.");
+      })
       .catch((err) => {
+        showFeedback("err", String(err?.message ?? err));
         panelToggle.classList.toggle("on", !next);
         panelToggle.setAttribute("aria-pressed", !next ? "true" : "false");
         window.alert(String(err?.message ?? err));
@@ -2306,15 +2426,15 @@ document.body.addEventListener("click", (e) => {
   const panelRefresh = e.target.closest("[data-action='panel-refresh']");
   if (panelRefresh) {
     e.preventDefault();
+    panelRefresh.disabled = true;
+    showFeedback("busy", "Acordando o painel…");
     void postPanelRefresh()
       .then(() => refreshPanelScreen())
-      .catch((err) => window.alert(String(err?.message ?? err)));
-    return;
-  }
-  const panelReload = e.target.closest("[data-action='panel-reload']");
-  if (panelReload) {
-    e.preventDefault();
-    void refreshPanelScreen();
+      .then(() => showFeedback("ok", "Painel acordado."))
+      .catch((err) => showFeedback("err", String(err?.message ?? err)))
+      .finally(() => {
+        panelRefresh.disabled = false;
+      });
     return;
   }
   const editName = e.target.closest("[data-action='edit-machine-name']");
@@ -2349,7 +2469,15 @@ document.body.addEventListener("click", (e) => {
   const recheck = e.target.closest("[data-action='recheck-permissions']");
   if (recheck) {
     e.preventDefault();
-    void refreshSetupScreen().then(() => refreshDoctorScreen());
+    recheck.disabled = true;
+    showFeedback("busy", "Conferindo autorizações…");
+    void refreshSetupScreen()
+      .then(() => refreshDoctorScreen())
+      .then(() => showFeedback("ok", "Conferência feita."))
+      .catch((err) => showFeedback("err", String(err?.message ?? err)))
+      .finally(() => {
+        recheck.disabled = false;
+      });
     return;
   }
   const daemon = e.target.closest(
@@ -2410,9 +2538,69 @@ document.body.addEventListener("click", (e) => {
   if (copyLog) {
     e.preventDefault();
     const pre = document.querySelector('[data-live="activity-log"]');
-    if (pre?.textContent) {
-      navigator.clipboard?.writeText(pre.textContent).catch(() => {});
+    const text = pre?.textContent?.trim() || "";
+    if (!text) {
+      showFeedback("err", "O log ainda está vazio.");
+      return;
     }
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => showFeedback("ok", "Log copiado."))
+      .catch((err) => showFeedback("err", String(err?.message ?? err)));
+    return;
+  }
+  const copyReport = e.target.closest("[data-action='copy-report']");
+  if (copyReport) {
+    e.preventDefault();
+    const title = document.querySelector('[data-live="doctor-status-title"]')?.textContent?.trim();
+    const sub = document.querySelector('[data-live="doctor-status-sub"]')?.textContent?.trim();
+    const lines = Array.from(document.querySelectorAll('[data-live="doctor-checks"] li')).map((li) =>
+      li.innerText.replace(/\s+/g, " ").trim(),
+    );
+    const text = [title, sub, ...lines].filter(Boolean).join("\n");
+    if (!text) {
+      showFeedback("err", "O relatório ainda não carregou.");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => showFeedback("ok", "Relatório copiado."))
+      .catch((err) => showFeedback("err", String(err?.message ?? err)));
+    return;
+  }
+  const openPortal = e.target.closest("[data-action='open-portal']");
+  if (openPortal) {
+    e.preventDefault();
+    const invoke = window.__TAURI__?.core?.invoke;
+    showFeedback("busy", "Abrindo tessera.local…");
+    const open = invoke
+      ? invoke("open_portal")
+      : Promise.reject(new Error("Abra pelo app Tessera."));
+    void open
+      .then(() => showFeedback("ok", "Abri tessera.local no navegador."))
+      .catch((err) => showFeedback("err", String(err?.message ?? err)));
+    return;
+  }
+  const retryPanel = e.target.closest("[data-action='retry-panel']");
+  if (retryPanel) {
+    e.preventDefault();
+    retryPanel.disabled = true;
+    showFeedback("busy", "Conferindo o cabo…");
+    void fetchStatus()
+      .then((status) => {
+        lastStatus = status;
+        applyMachineName(status);
+        if (isUsbUp(status)) {
+          showFeedback("ok", "Painel no cabo.");
+          go("home");
+          return;
+        }
+        showFeedback("err", "O cabo ainda não respondeu.");
+      })
+      .catch((err) => showFeedback("err", String(err?.message ?? err)))
+      .finally(() => {
+        retryPanel.disabled = false;
+      });
     return;
   }
   const help = e.target.closest("[data-action='open-agentd-help']");
