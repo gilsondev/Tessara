@@ -673,9 +673,12 @@ async fn v1_update_get(State(state): State<AppState>) -> Json<crate::update::Upd
 struct UpdateBody {
     /// When set, persist auto_update.
     auto_update: Option<bool>,
-    /// When true, fetch manifest now (and apply if Auto).
+    /// When true, fetch the manifest and remember it. Does not download.
     #[serde(default)]
     check: bool,
+    /// When true, fetch the manifest and install it if it is newer.
+    #[serde(default)]
+    apply: bool,
 }
 
 async fn v1_update_post(
@@ -688,11 +691,18 @@ async fn v1_update_post(
             .set_auto_update(on)
             .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e))?;
     }
-    if body.check {
+    if body.check || body.apply {
         let svc = state.update.clone();
-        let status = tokio::task::spawn_blocking(move || svc.check_and_maybe_apply())
-            .await
-            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let install = body.apply;
+        let status = tokio::task::spawn_blocking(move || {
+            if install {
+                svc.install_if_newer()
+            } else {
+                svc.check()
+            }
+        })
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         return Ok(Json(status));
     }
     Ok(Json(state.update.status()))

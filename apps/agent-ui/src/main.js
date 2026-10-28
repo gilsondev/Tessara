@@ -920,22 +920,31 @@ function setCapToggle(id, on, detail) {
   if (sub && detail) sub.textContent = detail;
 }
 
+function updateErrorText(err) {
+  const text = String(err?.message ?? err);
+  if (text === "update 401") return "A janela não autenticou no agente.";
+  if (text.startsWith("update ")) return "Não deu para falar com o agente neste Mac.";
+  return text || "Companion offline — não dá para checar updates.";
+}
+
 function paintUpdateStatus(st) {
   const sub = document.querySelector('[data-live="update-sub"]');
   const tog = document.querySelector("[data-update-auto]");
+  const download = document.querySelector("[data-action='update-apply']");
   if (tog) {
     const on = !!st?.auto_update;
     tog.classList.toggle("on", on);
     tog.setAttribute("aria-pressed", on ? "true" : "false");
   }
+  if (download) {
+    download.hidden = !st?.update_available || !!st?.applying;
+  }
   if (!sub) return;
   const cur = st?.current_version || "?";
   if (st?.applying) {
-    sub.textContent = `Atualizando para ${st.latest_version || "…"}…`;
+    sub.textContent = `Baixando ${st.latest_version || "a nova versão"}. O app vai fechar e abrir de novo.`;
   } else if (st?.update_available) {
-    sub.textContent = st.auto_update
-      ? `v${cur} → ${st.latest_version} (aplicando sozinho)`
-      : `Nova: ${st.latest_version} (atual: v${cur})`;
+    sub.textContent = `Nova versão ${st.latest_version}. Você está na v${cur}.`;
   } else if (st?.last_error) {
     sub.textContent = `v${cur} · ${st.last_error}`;
   } else {
@@ -949,9 +958,9 @@ async function refreshUpdateRow() {
     const st = await fetchUpdate();
     if (updateSave) return;
     paintUpdateStatus(st);
-  } catch {
+  } catch (err) {
     const sub = document.querySelector('[data-live="update-sub"]');
-    if (sub) sub.textContent = "Companion offline — não dá para checar updates.";
+    if (sub) sub.textContent = updateErrorText(err);
   }
 }
 
@@ -2097,6 +2106,28 @@ document.body.addEventListener("click", (e) => {
       });
     return;
   }
+  const updateApply = e.target.closest("[data-action='update-apply']");
+  if (updateApply) {
+    e.preventDefault();
+    updateApply.disabled = true;
+    showFeedback("busy", "Baixando. O app vai fechar e abrir de novo.");
+    const sub = document.querySelector('[data-live="update-sub"]');
+    if (sub) sub.textContent = "Baixando. O app vai fechar e abrir de novo.";
+    void postUpdate({ apply: true })
+      .then((st) => {
+        paintUpdateStatus(st);
+        if (st?.last_error) showFeedback("err", st.last_error);
+      })
+      .catch((err) => {
+        const text = updateErrorText(err);
+        if (sub) sub.textContent = text;
+        showFeedback("err", text);
+      })
+      .finally(() => {
+        updateApply.disabled = false;
+      });
+    return;
+  }
   const updateCheck = e.target.closest("[data-action='update-check']");
   if (updateCheck) {
     e.preventDefault();
@@ -2107,15 +2138,19 @@ document.body.addEventListener("click", (e) => {
     void postUpdate({ check: true })
       .then((st) => {
         paintUpdateStatus(st);
+        if (st?.last_error) {
+          showFeedback("err", st.last_error);
+          return;
+        }
         showFeedback(
           "ok",
           st?.update_available
-            ? `Nova versão ${st.latest_version}.`
+            ? `Nova versão ${st.latest_version}. Baixe quando quiser.`
             : "Você está na versão mais recente.",
         );
       })
       .catch((err) => {
-        const text = String(err?.message ?? err);
+        const text = updateErrorText(err);
         if (sub) sub.textContent = text;
         showFeedback("err", text);
       })
