@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/gilsondev/Tessera/compare/agent-v0.3.0...agent-v0.3.1) (2026-10-28)
+
+
+### Bug fixes
+
+* **agent:** age the calendar cache fixture from today ([c9e5ce8](https://github.com/gilsondev/Tessera/commit/c9e5ce88fc847a3d00adaca7fc9196752a0e3081))
+* **agent:** age the calendar cache fixture from today ([25ed175](https://github.com/gilsondev/Tessera/commit/25ed175e6b296c6e1c71f5bf5b056dba48439f1b))
+
 ## [0.3.0](https://github.com/gilsondev/Tessera/compare/agent-v0.2.2...agent-v0.3.0) (2026-10-28)
 
 
