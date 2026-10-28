@@ -188,6 +188,7 @@ void reset_sheet() {
 }
 
 void show_view(int view) {
+    if (!list || !sheet) return;
     reset_sheet();
     active = view;
     task_page::paint(current, view, on_mark);
@@ -319,7 +320,7 @@ void go_to(int view) {
     }
     sliding = true;
     pending_view = view;
-    select_tab(view, false);  // chip reacts immediately; scroll settles on land
+    select_tab(view, false);  // chip reacts at once; scroll settles on land
     build_strip(view);
     play_shift(view > active ? -page_width() : 0, landed);
 }
@@ -697,7 +698,7 @@ void todoist_panel::set_views(int selected) {
 
 void todoist_panel::view_changed(int view) {
     (void)view;
-    // Chip counts update immediately. Page rebuild waits for idle_step so an agent
+    // Chip counts update at once. Page rebuild waits for idle_step so an agent
     // USB push never reset_sheet() mid-swipe (that made the horizontal drag feel broken).
     announce();
 }

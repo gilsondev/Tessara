@@ -418,9 +418,7 @@ fn read_auth_code(listener: &TcpListener) -> Result<String, String> {
 fn query_param(path: &str, key: &str) -> Option<String> {
     let query = path.split('?').nth(1)?;
     query.split('&').find_map(|pair| {
-        let mut parts = pair.splitn(2, '=');
-        let name = parts.next()?;
-        let val = parts.next()?;
+        let (name, val) = pair.split_once('=')?;
         (name == key).then(|| pct_decode(val))
     })
 }

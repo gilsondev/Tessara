@@ -12,6 +12,8 @@ void test_forecast_url_includes_open_meteo_and_coords(void) {
     TEST_ASSERT_NOT_NULL(std::strstr(url, "http://api.open-meteo.com/v1/forecast"));
     TEST_ASSERT_NOT_NULL(std::strstr(url, "latitude=-23.55"));
     TEST_ASSERT_NOT_NULL(std::strstr(url, "longitude=-46.63"));
+    TEST_ASSERT_NOT_NULL(std::strstr(url, "timezone=auto"));
+    TEST_ASSERT_NULL(std::strstr(url, "Sao_Paulo"));
 }
 
 void test_accept_http_forecast_rejects_stale_generation(void) {

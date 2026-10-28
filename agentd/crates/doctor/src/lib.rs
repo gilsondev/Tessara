@@ -74,17 +74,14 @@ pub struct PreparePermission {
     pub hint: String,
 }
 
-/// Path shown in Privacy / Finder. The LaunchAgent runs `Tessera Agent.app`.
-/// Older installs may still have `Tessera.app` or a bare binary.
+/// LaunchAgent binary. Update, the doctor and the plist all use this path.
+pub fn agentd_install_binary(home: &Path) -> std::path::PathBuf {
+    home.join(".tessera/agentd/Tessera Agent.app/Contents/MacOS/Tessera")
+}
+
+/// Path shown in Privacy / Finder. Same file the LaunchAgent runs.
 pub fn agentd_identity_path(home: &Path) -> std::path::PathBuf {
-    let root = home.join(".tessera/agentd");
-    for name in ["Tessera Agent.app", "Tessera.app"] {
-        let app = root.join(name);
-        if app.join("Contents/MacOS/Tessera").is_file() {
-            return app;
-        }
-    }
-    root.join("bin/Tessera")
+    agentd_install_binary(home)
 }
 
 /// Touch protected APIs so **Tessera** shows up in the Privacy list (toggle still off
@@ -107,9 +104,11 @@ pub fn prepare_permission(pane: &str, home: &Path) -> Result<PreparePermission, 
         }
         "automation" => {
             // Harmless AppleEvent so Tessera appears under Automation → Shortcuts.
-            let _ = Command::new("osascript")
-                .args(["-e", "tell application \"System Events\" to get name"])
-                .output();
+            let _ = tessera_proc::command_output_timeout(
+                Command::new("osascript")
+                    .args(["-e", "tell application \"System Events\" to get name"]),
+                std::time::Duration::from_secs(2),
+            );
         }
         "login_items" | "calendar" => {}
         _ => {}
@@ -323,11 +322,15 @@ fn item<'a>(scan: &'a ScanResult, id: &str) -> Option<&'a ScanItem> {
     scan.found.iter().find(|i| i.id == id)
 }
 
+fn provider_on(master: bool, provider: bool) -> bool {
+    master && provider
+}
+
 fn check_cursor(deps: &DoctorDeps) -> DoctorCheck {
     ai_check(
         "cursor",
         "Cursor",
-        deps.config.aitokens,
+        provider_on(deps.config.aitokens, deps.config.aitokens_cursor),
         item(&deps.scan, "cursor"),
         deps.files_ok,
     )
@@ -337,7 +340,7 @@ fn check_claude(deps: &DoctorDeps) -> DoctorCheck {
     ai_check(
         "claude",
         "Claude",
-        deps.config.aitokens,
+        provider_on(deps.config.aitokens, deps.config.aitokens_claude),
         item(&deps.scan, "claude"),
         deps.files_ok,
     )
@@ -347,7 +350,7 @@ fn check_codex(deps: &DoctorDeps) -> DoctorCheck {
     ai_check(
         "codex",
         "Codex / ChatGPT",
-        deps.config.aitokens,
+        provider_on(deps.config.aitokens, deps.config.aitokens_codex),
         item(&deps.scan, "codex"),
         deps.files_ok,
     )
@@ -461,19 +464,21 @@ fn file_readable(path: &Path) -> bool {
 
 #[cfg(target_os = "macos")]
 fn probe_launch_agent() -> bool {
-    let uid = std::process::Command::new("id")
-        .arg("-u")
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "501".into());
-    Command::new("launchctl")
-        .arg("print")
-        .arg(format!("gui/{uid}/com.tessera.agentd"))
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(true)
+    let uid = tessera_proc::command_output_timeout(
+        std::process::Command::new("id").arg("-u"),
+        std::time::Duration::from_secs(2),
+    )
+    .and_then(|o| String::from_utf8(o.stdout).ok())
+    .map(|s| s.trim().to_string())
+    .unwrap_or_else(|| "501".into());
+    tessera_proc::command_output_timeout(
+        Command::new("launchctl")
+            .arg("print")
+            .arg(format!("gui/{uid}/com.tessera.agentd")),
+        std::time::Duration::from_secs(2),
+    )
+    .map(|o| o.status.success())
+    .unwrap_or(true)
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -550,31 +555,11 @@ mod tests {
             scan: ScanResult {
                 scanned_at: "0".into(),
                 found: vec![
-                    ScanItem {
-                        id: "cursor".into(),
-                        state: ScanState::Ready,
-                        enabled: true,
-                    },
-                    ScanItem {
-                        id: "claude".into(),
-                        state: ScanState::NeedsAuth,
-                        enabled: true,
-                    },
-                    ScanItem {
-                        id: "codex".into(),
-                        state: ScanState::Missing,
-                        enabled: false,
-                    },
-                    ScanItem {
-                        id: "media".into(),
-                        state: ScanState::Ready,
-                        enabled: true,
-                    },
-                    ScanItem {
-                        id: "focus".into(),
-                        state: ScanState::Ready,
-                        enabled: true,
-                    },
+                    ScanItem::new("cursor", ScanState::Ready, true),
+                    ScanItem::new("claude", ScanState::NeedsAuth, true),
+                    ScanItem::new("codex", ScanState::Missing, false),
+                    ScanItem::new("media", ScanState::Ready, true),
+                    ScanItem::new("focus", ScanState::Ready, true),
                 ],
             },
             media_level: "ok",
@@ -618,7 +603,7 @@ mod tests {
         let prep = prepare_permission("full_disk_access", dir.path()).unwrap();
         assert!(prep.ok);
         assert!(prep.settings_url.contains("Privacy_AllFiles"));
-        assert!(prep.binary_path.ends_with(".tessera/agentd/bin/Tessera"));
+        assert!(prep.binary_path.ends_with("Tessera Agent.app/Contents/MacOS/Tessera"));
         assert!(prep.hint.contains("Tessera Agent"));
     }
 
@@ -631,7 +616,7 @@ mod tests {
         std::fs::create_dir_all(&macos).unwrap();
         std::fs::write(macos.join("Tessera"), b"bin").unwrap();
         let prep = prepare_permission("full_disk_access", dir.path()).unwrap();
-        assert!(prep.binary_path.ends_with("Tessera Agent.app"));
+        assert!(prep.binary_path.contains("Tessera Agent.app"));
     }
 
     #[test]
@@ -641,6 +626,21 @@ mod tests {
             report.checks.iter().find(|c| c.id == "push").unwrap().level,
             "warn"
         );
+    }
+
+    #[test]
+    fn claude_off_does_not_ask_to_sign_in() {
+        let mut deps = fake_deps(true, true, 0);
+        deps.config.aitokens_claude = false;
+        deps.config.aitokens_cursor = true;
+        deps.config.sync_aitokens_master();
+        let report = run_doctor(&deps);
+        let claude = report.checks.iter().find(|c| c.id == "claude").unwrap();
+        assert_eq!(claude.level, "skip");
+        assert!(claude.detail.contains("Desligado"));
+        assert!(claude.action.is_none());
+        let cursor = report.checks.iter().find(|c| c.id == "cursor").unwrap();
+        assert_eq!(cursor.level, "ok");
     }
 
     #[test]

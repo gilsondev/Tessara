@@ -26,7 +26,7 @@ public:
     virtual void on_agent(const char *line) = 0;
     virtual void on_calendar(const char *line) = 0;
     virtual void on_todoist(const char *line) = 0;
-    virtual void on_media(const char *line) = 0;
+    virtual void on_now_playing(const char *line) = 0;
     virtual void on_focus(const char *line) = 0;
     // macOS appearance: THEME\tv1\t1\tdark|light (Agente).
     virtual void on_theme(const char *line) = 0;
@@ -38,4 +38,7 @@ public:
 
 namespace console {
 void poll(ConsoleHandler &handler);
+// Remembered at boot and sent once, after the first valid AGENT line, so the host is already reading.
+void set_boot_reason(const char *why);
+void send_boot_reason_once();
 }

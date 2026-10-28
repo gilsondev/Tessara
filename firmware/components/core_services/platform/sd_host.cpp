@@ -1,5 +1,6 @@
 #include "platform/sd_host.h"
 
+#include "platform/flash_trace.h"
 #include "platform/log.h"
 
 #include <Arduino.h>
@@ -148,6 +149,7 @@ void log_sd_ok() {
 }  // namespace
 
 bool sd_host::open_read(const char *path, size_t *size) {
+    flash_trace::note(__func__);
     if (size) *size = 0;
     close_read();
     close_write(0);
@@ -174,6 +176,7 @@ void sd_host::close_read() {
 }
 
 bool sd_host::open_write(const char *path) {
+    flash_trace::note(__func__);
     close_read();
     close_write(0);
     if (!ensure() || !path || !path[0]) return false;
@@ -226,6 +229,7 @@ bool sd_host::close_write(size_t expect) {
 }
 
 bool sd_host::begin() {
+    flash_trace::note(__func__);
     Serial.println("storage: begin");
     Serial.flush();
     // Prefer microSD. FFat is only a fallback — never keep both mounted
@@ -245,6 +249,7 @@ bool sd_host::begin() {
 }
 
 bool sd_host::ensure() {
+    flash_trace::note(__func__);
     if (backend == Backend::Sd && sd_probe_ok()) return true;
     if (backend == Backend::Flash && flash_ready) return true;
     if (try_sd()) {
@@ -260,6 +265,7 @@ bool sd_host::ensure() {
 }
 
 bool sd_host::remount() {
+    flash_trace::note(__func__);
     close_stream_quiet();
     unmount_sd();
     unmount_flash();
@@ -279,6 +285,7 @@ bool sd_host::remount() {
 }
 
 void sd_host::poll() {
+    flash_trace::note(__func__);
     if (!poll_armed) return;
     if (backend == Backend::Sd && sd_probe_ok()) {
         poll_armed = false;
@@ -333,11 +340,13 @@ const char *sd_host::backend_name() {
 }
 
 bool sd_host::exists(const char *path) {
+    flash_trace::note(__func__);
     auto *vol = volume();
     return ready() && path && vol && vol->exists(path);
 }
 
 bool sd_host::mkdir_p(const char *path) {
+    flash_trace::note(__func__);
     if (!ensure() || !path || !path[0]) return false;
     auto *vol = volume();
     if (!vol) return false;
@@ -368,6 +377,7 @@ void sd_host::free_buf(void *p) {
 void sd_host::pause_ms(uint32_t ms) { delay(ms); }
 
 uint8_t *sd_host::read_file(const char *path, size_t *size) {
+    flash_trace::note(__func__);
     if (size) *size = 0;
     if (!ensure() || !path) return nullptr;
     auto *vol = volume();
@@ -391,6 +401,7 @@ uint8_t *sd_host::read_file(const char *path, size_t *size) {
 }
 
 bool sd_host::write_file(const char *path, const uint8_t *data, size_t size) {
+    flash_trace::note(__func__);
     if (!ensure() || !path || !data) return false;
     auto *vol = volume();
     if (!vol) return false;
@@ -426,6 +437,7 @@ bool sd_host::write_file(const char *path, const uint8_t *data, size_t size) {
 }
 
 bool sd_host::remove_file(const char *path) {
+    flash_trace::note(__func__);
     auto *vol = volume();
     return ready() && path && vol && vol->remove(path);
 }

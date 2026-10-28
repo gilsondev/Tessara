@@ -14,6 +14,7 @@ void tessera::Runtime::cancel_jobs(uint32_t generation) {
     if (!services_ || generation == 0) return;
     if (services_->http) services_->http->cancel_generation(generation);
     if (services_->scheduler) services_->scheduler->cancel_generation(generation);
+    if (services_->data) services_->data->cancel_generation(generation);
 }
 
 bool tessera::Runtime::register_type(const char *id, WidgetFactory factory) {
@@ -39,6 +40,7 @@ bool tessera::Runtime::register_type(const char *id, WidgetFactory factory) {
         entry.home_tile = m.home_tile;
         entry.accent_rgb = m.accent_rgb;
         entry.supports_home_tile_size = m.supports_home_tile_size;
+        entry.draws_tile = m.draws_tile;
         delete probe;
     }
     ++type_count_;
@@ -73,9 +75,20 @@ bool tessera::Runtime::type_supports_home_tile_size(const char *type_id) const {
     return i >= 0 && types_[i].supports_home_tile_size;
 }
 
-int tessera::Runtime::find_type(const char *type_id) const {
+bool tessera::Runtime::type_draws_tile(const char *type_id) const {
+    int i = find_registered(type_id);
+    return i >= 0 && types_[i].draws_tile;
+}
+
+uint32_t tessera::Runtime::take_generation() {
+    if (next_generation_ == 0 || next_generation_ >= 0xFFFFFF00u) next_generation_ = 1;
+    return next_generation_++;
+}
+
+int tessera::Runtime::find_type(const char *type_id, Surface surface) const {
     for (int i = 0; i < instance_count_; ++i) {
-        if (instances_[i].widget && id_eq(instances_[i].type_id, type_id)) return i;
+        if (instances_[i].widget && instances_[i].surface == surface && id_eq(instances_[i].type_id, type_id))
+            return i;
     }
     return -1;
 }
@@ -94,6 +107,7 @@ int tessera::Runtime::mount_exclusive(const char *type_id, void *ui_parent) {
     if (!type_id || !type_id[0]) return -1;
     for (int i = 0; i < instance_count_; ++i) {
         if (!instances_[i].widget || !instances_[i].mounted) continue;
+        if (instances_[i].surface != Surface::Detail) continue;
         if (id_eq(instances_[i].type_id, type_id)) continue;
         unmount(i);
     }
@@ -106,7 +120,19 @@ void tessera::Runtime::unmount_all() {
     }
 }
 
-int tessera::Runtime::mount(const char *type_id, void *ui_parent) {
+void tessera::Runtime::unmount_surface(Surface surface) {
+    for (int i = 0; i < instance_count_; ++i) {
+        if (instances_[i].widget && instances_[i].surface == surface) unmount(i);
+    }
+}
+
+void tessera::Runtime::notify_theme() {
+    for (int i = 0; i < instance_count_; ++i) {
+        if (instances_[i].mounted && instances_[i].widget) instances_[i].widget->on_theme();
+    }
+}
+
+int tessera::Runtime::mount(const char *type_id, void *ui_parent, Surface surface) {
     if (!type_id || !type_id[0]) return -1;
     WidgetFactory factory = nullptr;
     for (int i = 0; i < type_count_; ++i) {
@@ -117,27 +143,43 @@ int tessera::Runtime::mount(const char *type_id, void *ui_parent) {
     }
     if (!factory) return -1;
 
-    int slot = find_type(type_id);
+    int slot = -1;
+    for (int i = 0; i < instance_count_; ++i) {
+        if (instances_[i].widget && instances_[i].surface == surface && id_eq(instances_[i].type_id, type_id)) {
+            slot = i;
+            break;
+        }
+    }
     if (slot < 0) {
-        if (instance_count_ >= kMaxInstances) return -1;
-        slot = instance_count_++;
-        instances_[slot] = {};
+        for (int i = 0; i < instance_count_; ++i) {
+            if (!instances_[i].widget) {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 0) {
+            if (instance_count_ >= kMaxInstances) return -1;
+            slot = instance_count_++;
+            instances_[slot] = {};
+        }
         instances_[slot].widget = factory();
         if (!instances_[slot].widget) {
-            --instance_count_;
+            instances_[slot].type_id[0] = '\0';
             return -1;
         }
         std::strncpy(instances_[slot].type_id, type_id, sizeof(instances_[slot].type_id) - 1);
+        instances_[slot].type_id[sizeof(instances_[slot].type_id) - 1] = '\0';
+        instances_[slot].surface = surface;
     }
 
     Instance &inst = instances_[slot];
+    inst.surface = surface;
     if (inst.mounted) {
         cancel_jobs(inst.generation);
         inst.widget->unmount();
     }
-    inst.generation = next_generation_++;
-    if (next_generation_ == 0) next_generation_ = 1;
-    WidgetContext ctx(ui_parent, inst.generation, inst.type_id, services_);
+    inst.generation = take_generation();
+    WidgetContext ctx(ui_parent, inst.generation, inst.type_id, services_, inst.surface);
     inst.widget->mount(ctx);
     inst.mounted = true;
     return slot;
@@ -153,8 +195,7 @@ bool tessera::Runtime::unmount(int instance) {
         inst.mounted = false;
     }
     cancel_jobs(old_gen);
-    inst.generation = next_generation_++;
-    if (next_generation_ == 0) next_generation_ = 1;
+    inst.generation = take_generation();
     cancel_jobs(inst.generation);  // new tag also inert
     delete inst.widget;
     inst.widget = nullptr;
@@ -162,8 +203,8 @@ bool tessera::Runtime::unmount(int instance) {
     return true;
 }
 
-bool tessera::Runtime::unmount_type(const char *type_id) {
-    int slot = find_type(type_id);
+bool tessera::Runtime::unmount_type(const char *type_id, Surface surface) {
+    int slot = find_type(type_id, surface);
     if (slot < 0) return false;
     return unmount(slot);
 }

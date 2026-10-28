@@ -41,7 +41,7 @@ fn auth_get(token: &str, path_and_query: &str) -> Result<Value, String> {
     let url = format!("{API}{path_and_query}");
     let resp = ureq::get(&url)
         .set("Authorization", &format!("Bearer {token}"))
-        .timeout(std::time::Duration::from_secs(25))
+        .timeout(std::time::Duration::from_secs(8))
         .call()
         .map_err(|e| format!("GET {path_and_query}: {e}"))?;
     resp.into_json()
@@ -53,7 +53,7 @@ fn auth_post_form(token: &str, path: &str, form: &str) -> Result<Value, String> 
     let resp = ureq::post(&url)
         .set("Authorization", &format!("Bearer {token}"))
         .set("Content-Type", "application/x-www-form-urlencoded")
-        .timeout(std::time::Duration::from_secs(25))
+        .timeout(std::time::Duration::from_secs(8))
         .send_string(form)
         .map_err(|e| format!("POST {path}: {e}"))?;
     let status = resp.status();
@@ -290,7 +290,7 @@ pub fn refresh_cache(paths: &TodoistPaths, selected: Option<&[CachedView]>) -> R
     });
     fs::create_dir_all(&paths.root).map_err(|e| e.to_string())?;
     let raw = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
-    fs::write(paths.cache_json(), raw).map_err(|e| e.to_string())?;
+    crate::write_atomic(&paths.cache_json(), raw).map_err(|e| e.to_string())?;
     Ok(views.len())
 }
 
@@ -307,7 +307,7 @@ pub fn close_task(paths: &TodoistPaths, id: &str) -> Result<(), String> {
     let resp = ureq::post(&url)
         .set("Authorization", &format!("Bearer {token}"))
         .set("Content-Type", "application/x-www-form-urlencoded")
-        .timeout(std::time::Duration::from_secs(20))
+        .timeout(std::time::Duration::from_secs(8))
         .send_string("")
         .map_err(|e| format!("close: {e}"))?;
     let status = resp.status();

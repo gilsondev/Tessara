@@ -4,7 +4,6 @@
 #include "calendar/snapshot.h"
 #include "domain/dashboard_layout.h"
 #include "mac/focus_snapshot.h"
-#include "media/snapshot.h"
 #include "weather/cache.h"
 
 #include <lvgl.h>
@@ -25,7 +24,6 @@ void set_summary(int total, bool pending);
 void set_weather(const weather::View &view);
 void set_aitokens(const aitokens::View &view);
 void set_calendar(const calendar::View &view);
-void set_media(const media::View &view, bool agent_ok);
 void set_mac(const focus::View &view, bool agent_ok);
 void apply_theme();
 

@@ -12,6 +12,9 @@
 #include "ui/settings_panel.h"
 #include "ui/todoist_panel.h"
 #include "ui/media_page.h"
+#include "ui/media_tile.h"
+#include "media_widget.h"
+#include "tessera/runtime.h"
 #include "ui/weather_page.h"
 #include "mac/focus_snapshot.h"
 #include "media/snapshot.h"
@@ -144,7 +147,7 @@ void sim_app::paint_fixture(State &app) {
     playing.media.state = media::MediaState::Playing;
     std::snprintf(playing.media.title, sizeof(playing.media.title), "%s", track);
     std::snprintf(playing.media.artist, sizeof(playing.media.artist), "%s", artist);
-    home::set_media(playing, s.agent_ok);
+    media_tile::set(playing, s.agent_ok);
 
     focus::View focus = {};
     focus.ready = true;
@@ -168,6 +171,7 @@ void sim_app::init(State &app, const Scenario &scenario) {
 
     sim_detail::load_todoist_store(app.scenario);
 
+    tessera::runtime().register_type(tessera::media_widget_id(), tessera::create_media_widget);
     home::begin(open_widget, on_settings);
     // begin() monta a partir de settings; reforça o layout do fixture.
     home::rebuild(app.scenario.dashboard);

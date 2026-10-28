@@ -67,6 +67,8 @@ public:
     virtual void warn(const char *msg) = 0;
 };
 
+class IData;
+
 // Non-owning bag; lifetime owned by host (shell / test harness).
 struct HostServices {
     ITime *time = nullptr;
@@ -74,6 +76,7 @@ struct HostServices {
     IHttp *http = nullptr;
     IScheduler *scheduler = nullptr;
     ILogger *logger = nullptr;
+    IData *data = nullptr;
 };
 
 }  // namespace tessera

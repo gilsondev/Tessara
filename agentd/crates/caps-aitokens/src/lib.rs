@@ -1,6 +1,7 @@
 //! AITOKENS capability — credential discovery + live usage (Cursor/Codex) and
 //! Claude statusLine cache → USB wire line.
 
+mod claude_live;
 mod codex_live;
 mod cursor_live;
 
@@ -9,6 +10,9 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, OpenFlags};
@@ -309,17 +313,17 @@ fn db_value(db: &Connection, key: &str) -> Option<String> {
 }
 
 fn keychain_value(service: &str) -> Option<String> {
-    let output = Command::new("security")
-        .args([
+    let output = tessera_proc::command_output_timeout(
+        Command::new("security").args([
             "find-generic-password",
             "-s",
             service,
             "-a",
             "cursor-user",
             "-w",
-        ])
-        .output()
-        .ok()?;
+        ]),
+        Duration::from_secs(20),
+    )?;
     output
         .status
         .success()
@@ -355,60 +359,68 @@ struct ClaudeReading {
     reset: String,
 }
 
-/// Claude Code statusLine, Claude Desktop local storage, then the last reading
-/// kept for a week. The panel shows percent remaining.
+/// StatusLine, the account usage cache, Claude Desktop storage, then the last
+/// reading kept for a week. A week-old number is marked old. The panel shows
+/// percent remaining.
 pub fn read_claude(home: &Path) -> AiTokenSource {
     let tessera = home.join(".tessera");
     let now = now_s();
-    let mut live: Vec<ClaudeReading> = Vec::new();
+    let mut fresh: Option<ClaudeReading> = None;
+    let mut remembered: Option<ClaudeReading> = None;
+    let consider = |into: &mut Option<ClaudeReading>, reading: ClaudeReading| {
+        let replace = into
+            .as_ref()
+            .map(|current| reading.observed_at > current.observed_at)
+            .unwrap_or(true);
+        if replace {
+            *into = Some(reading);
+        }
+    };
     if let Some(reading) = read_claude_desktop(home, now) {
-        live.push(reading);
+        consider(&mut fresh, reading);
     }
     if let Some(reading) = read_claude_json(
         &tessera.join("claude_status.json"),
         now,
         CLAUDE_STATUSLINE_MAX_AGE_S,
     ) {
-        live.push(reading);
+        consider(&mut fresh, reading);
     }
-    if let Some(best) = live.into_iter().max_by(|a, b| {
-        a.observed_at
-            .partial_cmp(&b.observed_at)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    }) {
-        return claude_source(best);
+    if let Some(reading) = read_claude_json(
+        &tessera.join("claude_usage_cache.json"),
+        now,
+        180.0,
+    ) {
+        consider(&mut fresh, reading);
     }
-    let remembered = [
-        read_claude_json(
-            &tessera.join("claude_usage_cache.json"),
-            now,
-            CLAUDE_LAST_KNOWN_MAX_AGE_S,
-        ),
-        read_claude_json(
-            &tessera.join("claude_status.json"),
-            now,
-            CLAUDE_LAST_KNOWN_MAX_AGE_S,
-        ),
-    ];
+    if let Some(best) = fresh {
+        return claude_source(best, true);
+    }
+    for path in [
+        tessera.join("claude_usage_cache.json"),
+        tessera.join("claude_status.json"),
+    ] {
+        if let Some(reading) = read_claude_json(&path, now, CLAUDE_LAST_KNOWN_MAX_AGE_S) {
+            consider(&mut remembered, reading);
+        }
+    }
     remembered
-        .into_iter()
-        .flatten()
-        .max_by(|a, b| {
-            a.observed_at
-                .partial_cmp(&b.observed_at)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
-        .map(claude_source)
+        .map(|reading| claude_source(reading, false))
         .unwrap_or_else(|| AiTokenSource::unavailable("claude"))
 }
 
-fn claude_source(reading: ClaudeReading) -> AiTokenSource {
+fn claude_source(reading: ClaudeReading, live: bool) -> AiTokenSource {
     let remaining = (100.0 - reading.used).round().clamp(0.0, 100.0) as i32;
+    let display = if live {
+        format!("{remaining}%")
+    } else {
+        format!("{remaining}% antigo")
+    };
     AiTokenSource::available(
         "claude",
         SourceKind::Pct,
         remaining,
-        format!("{remaining}%"),
+        display,
         reading.reset.chars().take(15).collect::<String>(),
     )
 }
@@ -416,7 +428,7 @@ fn claude_source(reading: ClaudeReading) -> AiTokenSource {
 fn read_claude_json(path: &Path, now: f64, max_age: f64) -> Option<ClaudeReading> {
     let raw = fs::read_to_string(path).ok()?;
     let value: ClaudeStatus = serde_json::from_str(&raw).ok()?;
-    let used = norm_used_percent(value.percent_used?)?;
+    let used = clamp_used_percent(value.percent_used?)?;
     let observed = value.generated_at.unwrap_or(now);
     let age = now - observed;
     if age > max_age || age < -60.0 {
@@ -539,6 +551,13 @@ fn number_after_key(bytes: &[u8]) -> Option<f64> {
         .ok()
 }
 
+fn clamp_used_percent(raw: f64) -> Option<f64> {
+    if !raw.is_finite() || raw < 0.0 {
+        return None;
+    }
+    Some(raw.clamp(0.0, 100.0))
+}
+
 fn norm_used_percent(raw: f64) -> Option<f64> {
     if !raw.is_finite() || raw < 0.0 {
         return None;
@@ -592,17 +611,45 @@ pub fn read_cursor(resolver: &CursorResolver, env_credentials: CursorCredentials
     last
 }
 
+/// Codex, Claude, Cursor, in that order, and only the providers the filter leaves on.
+fn collect_enabled(
+    filter: AiTokensFilter,
+    codex: impl FnOnce() -> AiTokenSource,
+    claude: impl FnOnce() -> AiTokenSource,
+    cursor: impl FnOnce() -> AiTokenSource,
+) -> Vec<AiTokenSource> {
+    let mut sources = Vec::with_capacity(3);
+    if filter.codex {
+        sources.push(codex());
+    }
+    if filter.claude {
+        sources.push(claude());
+    }
+    if filter.cursor {
+        sources.push(cursor());
+    }
+    sources
+}
+
+fn refresh_claude_if_enabled(filter: AiTokensFilter, refresh: impl FnOnce()) {
+    if filter.claude {
+        refresh();
+    }
+}
+
 /// Builds the fixed legacy order: Codex, Claude, Cursor.
 fn collect_sources_with_cursor(
     home: &Path,
     resolver: &CursorResolver,
     cursor_env: CursorCredentials,
+    filter: AiTokensFilter,
 ) -> Vec<AiTokenSource> {
-    vec![
-        read_codex_auth(home),
-        read_claude(home),
-        read_cursor(resolver, cursor_env),
-    ]
+    collect_enabled(
+        filter,
+        || read_codex_auth(home),
+        || read_claude(home),
+        || read_cursor(resolver, cursor_env),
+    )
 }
 
 /// Which providers to include in the USB line (agent collect toggles).
@@ -633,15 +680,7 @@ pub fn collect_sources_filtered(filter: AiTokensFilter) -> Vec<AiTokenSource> {
         token: env::var("CURSOR_TOKEN").ok(),
         api_key: env::var("CURSOR_API_KEY").ok(),
     };
-    let all = collect_sources_with_cursor(&home, &CursorResolver::default_home(), cursor_env);
-    all.into_iter()
-        .filter(|s| match s.id {
-            "cursor" => filter.cursor,
-            "claude" => filter.claude,
-            "codex" => filter.codex,
-            _ => true,
-        })
-        .collect()
+    collect_sources_with_cursor(&home, &CursorResolver::default_home(), cursor_env, filter)
 }
 
 fn home_dir() -> PathBuf {
@@ -664,14 +703,18 @@ fn now_s() -> f64 {
         .as_secs_f64()
 }
 
+struct LineCache {
+    line: Option<String>,
+    at: Instant,
+    last_good: HashMap<&'static str, LastGoodEntry>,
+    claude_stamp: Option<SystemTime>,
+}
+
 pub struct AiTokensCapability {
     last_pushed: Option<String>,
-    cached_line: Option<String>,
-    cached_at: Instant,
-    last_good: HashMap<&'static str, LastGoodEntry>,
     filter: AiTokensFilter,
-    /// mtime of `claude_status.json`. A new write skips the API cache.
-    claude_stamp: Option<SystemTime>,
+    cache: Arc<Mutex<LineCache>>,
+    inflight: Arc<AtomicBool>,
 }
 
 impl AiTokensCapability {
@@ -682,58 +725,135 @@ impl AiTokensCapability {
     pub fn with_filter(filter: AiTokensFilter) -> Self {
         Self {
             last_pushed: None,
-            cached_line: None,
-            cached_at: Instant::now()
-                .checked_sub(Duration::from_secs(USAGE_CACHE_TTL_S))
-                .unwrap_or_else(Instant::now),
-            last_good: HashMap::new(),
             filter,
-            claude_stamp: None,
+            cache: Arc::new(Mutex::new(LineCache {
+                line: None,
+                at: Instant::now()
+                    .checked_sub(Duration::from_secs(USAGE_CACHE_TTL_S))
+                    .unwrap_or_else(Instant::now),
+                last_good: HashMap::new(),
+                claude_stamp: None,
+            })),
+            inflight: Arc::new(AtomicBool::new(false)),
         }
     }
 
     pub fn set_filter(&mut self, filter: AiTokensFilter) {
         if self.filter != filter {
             self.filter = filter;
-            // Force refresh on next build so toggles apply immediately.
-            self.cached_line = None;
+            if let Ok(mut cache) = self.cache.lock() {
+                cache.line = None;
+                cache.at = Instant::now()
+                    .checked_sub(Duration::from_secs(USAGE_CACHE_TTL_S))
+                    .unwrap_or_else(Instant::now);
+            }
         }
     }
 
+    /// Blocks on the network. Doctor and a one-shot collect use this.
     pub fn build_line(&mut self) -> String {
+        let home = home_dir();
+        refresh_claude_if_enabled(self.filter, || claude_live::refresh_usage_cache(&home));
+        let fresh = collect_sources_filtered(self.filter);
+        self.store(fresh)
+    }
+
+    /// Last line, kicking a worker when it is stale. The USB session must not wait on HTTP.
+    pub fn cached_or_kick(&mut self) -> String {
+        if let Some(line) = self.fresh_line() {
+            return line;
+        }
+        self.kick();
+        self.cache
+            .lock()
+            .ok()
+            .and_then(|cache| cache.line.clone())
+            .unwrap_or_else(|| self.placeholder())
+    }
+
+    fn fresh_line(&self) -> Option<String> {
+        let cache = self.cache.lock().ok()?;
         let stamp = claude_status_stamp();
-        let claude_changed = stamp != self.claude_stamp;
-        if !claude_changed {
-            if let Some(line) = &self.cached_line {
-                if self.cached_at.elapsed() < Duration::from_secs(USAGE_CACHE_TTL_S) {
-                    return line.clone();
+        if stamp != cache.claude_stamp {
+            return None;
+        }
+        let line = cache.line.clone()?;
+        (cache.at.elapsed() < Duration::from_secs(USAGE_CACHE_TTL_S)).then_some(line)
+    }
+
+    fn kick(&self) {
+        if self.inflight.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let filter = self.filter;
+        let cache = Arc::clone(&self.cache);
+        let inflight = Arc::clone(&self.inflight);
+        thread::spawn(move || {
+            struct Done(Arc<AtomicBool>);
+            impl Drop for Done {
+                fn drop(&mut self) {
+                    self.0.store(false, Ordering::SeqCst);
                 }
             }
-        }
-        let fresh = collect_sources_filtered(self.filter);
+            let _done = Done(inflight);
+            let home = home_dir();
+            refresh_claude_if_enabled(filter, || claude_live::refresh_usage_cache(&home));
+            let fresh = collect_sources_filtered(filter);
+            let summary = fresh
+                .iter()
+                .map(|source| format!("{} {}", source.id, source.display))
+                .collect::<Vec<_>>()
+                .join(", ");
+            eprintln!("Tessera: aitokens refresh ({summary})");
+            let stamp = claude_status_stamp();
+            let mut guard = match cache.lock() {
+                Ok(guard) => guard,
+                Err(poison) => poison.into_inner(),
+            };
+            let now = Instant::now();
+            let sources = merge_last_good(
+                &mut guard.last_good,
+                &fresh,
+                now,
+                Duration::from_secs(AITOKENS_LAST_GOOD_TTL_S),
+            );
+            guard.line = Some(encode_aitokens_line(&sources));
+            guard.at = now;
+            guard.claude_stamp = stamp;
+        });
+    }
+
+    fn store(&self, fresh: Vec<AiTokenSource>) -> String {
+        let mut guard = match self.cache.lock() {
+            Ok(guard) => guard,
+            Err(poison) => poison.into_inner(),
+        };
         let now = Instant::now();
         let sources = merge_last_good(
-            &mut self.last_good,
+            &mut guard.last_good,
             &fresh,
             now,
             Duration::from_secs(AITOKENS_LAST_GOOD_TTL_S),
         );
         let line = encode_aitokens_line(&sources);
-        let summary: Vec<String> = sources
-            .iter()
-            .map(|s| {
-                if s.available {
-                    format!("{}={}", s.id, s.display)
-                } else {
-                    format!("{}=—", s.id)
-                }
-            })
-            .collect();
-        eprintln!("Tessera: aitokens refresh ({})", summary.join(", "));
-        self.cached_line = Some(line.clone());
-        self.cached_at = now;
-        self.claude_stamp = stamp;
+        guard.line = Some(line.clone());
+        guard.at = now;
+        guard.claude_stamp = claude_status_stamp();
         line
+    }
+
+    fn placeholder(&self) -> String {
+        let mut sources = Vec::new();
+        if self.filter.codex {
+            sources.push(AiTokenSource::unavailable("codex"));
+        }
+        if self.filter.claude {
+            sources.push(AiTokenSource::unavailable("claude"));
+        }
+        if self.filter.cursor {
+            sources.push(AiTokenSource::unavailable("cursor"));
+        }
+        encode_aitokens_line(&sources)
     }
 
     pub fn last_pushed_line(&self) -> Option<&str> {
@@ -745,9 +865,11 @@ impl AiTokensCapability {
     }
 
     pub fn handle_line(&mut self, text: &str) -> Vec<String> {
-        (text.trim() == "AITOKENS?")
-            .then(|| vec![self.build_line()])
-            .unwrap_or_default()
+        if text.trim() == "AITOKENS?" {
+            vec![self.cached_or_kick()]
+        } else {
+            Vec::new()
+        }
     }
 }
 
@@ -821,8 +943,12 @@ mod tests {
         fs::write(&auth, r#"{"accessToken":"test-access"}"#).unwrap();
 
         let resolver = CursorResolver::with_paths(temp.path().join("missing.vscdb"), vec![auth]);
-        let sources =
-            collect_sources_with_cursor(temp.path(), &resolver, CursorCredentials::default());
+        let sources = collect_sources_with_cursor(
+            temp.path(),
+            &resolver,
+            CursorCredentials::default(),
+            AiTokensFilter::default(),
+        );
         let source = sources
             .iter()
             .find(|source| source.id == "cursor")
@@ -832,13 +958,77 @@ mod tests {
         // Live API will fail with a fake token; still report the cursor slot.
         assert!(!source.available);
         assert!(
-            source.display.contains("401")
-                || source.display.contains("refresh")
+            source.display.contains("indisponível")
+                || source.display == "abra Cursor"
                 || source.display == "—"
                 || source.display == "acesso",
             "display={}",
             source.display
         );
+    }
+
+    #[test]
+    fn claude_only_filter_skips_cursor_and_codex_reads() {
+        let mut codex_reads = 0;
+        let mut claude_reads = 0;
+        let mut cursor_reads = 0;
+        let claude_only = AiTokensFilter {
+            cursor: false,
+            claude: true,
+            codex: false,
+        };
+        let sources = collect_enabled(
+            claude_only,
+            || {
+                codex_reads += 1;
+                AiTokenSource::unavailable("codex")
+            },
+            || {
+                claude_reads += 1;
+                AiTokenSource::unavailable("claude")
+            },
+            || {
+                cursor_reads += 1;
+                AiTokenSource::unavailable("cursor")
+            },
+        );
+        assert_eq!(codex_reads, 0);
+        assert_eq!(cursor_reads, 0);
+        assert_eq!(claude_reads, 1);
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].id, "claude");
+
+        let mut refresh = 0;
+        refresh_claude_if_enabled(claude_only, || refresh += 1);
+        assert_eq!(refresh, 1);
+        refresh_claude_if_enabled(
+            AiTokensFilter {
+                cursor: true,
+                claude: false,
+                codex: true,
+            },
+            || refresh += 1,
+        );
+        assert_eq!(refresh, 1);
+    }
+
+    #[test]
+    fn claude_status_one_percent_stays_one_percent_used() {
+        let temp = tempfile::tempdir().unwrap();
+        let tessera = temp.path().join(".tessera");
+        fs::create_dir_all(&tessera).unwrap();
+        fs::write(
+            tessera.join("claude_status.json"),
+            format!(
+                r#"{{"generated_at":{},"percent_used":1,"reset_label":"19:50"}}"#,
+                now_s()
+            ),
+        )
+        .unwrap();
+        let source = read_claude(temp.path());
+        assert!(source.available);
+        assert_eq!(source.value, 99);
+        assert_eq!(source.display, "99%");
     }
 
     #[test]
@@ -857,7 +1047,7 @@ mod tests {
         let source = read_claude(temp.path());
         assert!(source.available);
         assert_eq!(source.value, 92);
-        assert_eq!(source.display, "92%");
+        assert_eq!(source.display, "92% antigo");
         assert_eq!(source.reset, "19:50");
     }
 
@@ -885,6 +1075,7 @@ mod tests {
         .unwrap();
         let source = read_claude(temp.path());
         assert_eq!(source.value, 60);
+        assert_eq!(source.display, "60%");
         assert_eq!(source.reset, "06:10");
     }
 

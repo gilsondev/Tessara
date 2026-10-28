@@ -1,5 +1,6 @@
 #include "aitokens/snapshot.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -99,4 +100,81 @@ const aitokens::Source *aitokens::find(const View &view, const char *id) {
         if (eq(view.sources[i].id, id)) return &view.sources[i];
     }
     return nullptr;
+}
+
+int aitokens::home_row_text(const char *name, const Source &src, bool stale, char *out, size_t out_n,
+                            RowLevel *level) {
+    if (!out || out_n == 0) {
+        if (level) *level = RowLevel::Ok;
+        return 0;
+    }
+    int rem = 100;
+    if (src.kind == Kind::Pct) {
+        rem = static_cast<int>(src.value);
+        if (rem < 0) rem = 0;
+        if (rem > 100) rem = 100;
+    }
+    RowLevel tone = RowLevel::Ok;
+    if (src.kind == Kind::Pct) {
+        if (rem < kRemainAlert) tone = RowLevel::Alert;
+        else if (rem < kRemainLow) tone = RowLevel::Low;
+    }
+    if (level) *level = tone;
+
+    const bool cursor = eq(src.id, "cursor");
+    const bool codex = eq(src.id, "codex");
+    const bool claude = eq(src.id, "claude");
+
+    char shown[48];
+    if (cursor) {
+        int a = -1;
+        int b = -1;
+        if (sscanf(src.display, "%d%% · %d%%", &a, &b) == 2 && a >= 0 && b >= 0)
+            snprintf(shown, sizeof(shown), "Modelos %d%% · Outros %d%%", a, b);
+        else
+            snprintf(shown, sizeof(shown), "%s", src.display);
+    } else if (claude) {
+        if (src.display[0]) snprintf(shown, sizeof(shown), "%s", src.display);
+        else snprintf(shown, sizeof(shown), "%d%%", rem);
+    } else if (codex) {
+        snprintf(shown, sizeof(shown), "%d%%", rem);
+    } else if (src.display[0]) {
+        snprintf(shown, sizeof(shown), "%s", src.display);
+    } else {
+        snprintf(shown, sizeof(shown), "%d%%", rem);
+    }
+
+    const char *unit = (claude || codex) ? "restante" : nullptr;
+    const char *label = (name && name[0]) ? name : src.id;
+
+    if (tone == RowLevel::Alert) {
+        if (src.reset[0] && unit)
+            snprintf(out, out_n, "%s · %s %s · alerta · %s", label, shown, unit, src.reset);
+        else if (src.reset[0])
+            snprintf(out, out_n, "%s · %s · alerta · %s", label, shown, src.reset);
+        else if (unit)
+            snprintf(out, out_n, "%s · %s %s · alerta", label, shown, unit);
+        else
+            snprintf(out, out_n, "%s · %s · alerta", label, shown);
+    } else if (tone == RowLevel::Low) {
+        if (src.reset[0] && unit)
+            snprintf(out, out_n, "%s · %s %s · baixo · %s", label, shown, unit, src.reset);
+        else if (src.reset[0])
+            snprintf(out, out_n, "%s · %s · baixo · %s", label, shown, src.reset);
+        else if (unit)
+            snprintf(out, out_n, "%s · %s %s · baixo", label, shown, unit);
+        else
+            snprintf(out, out_n, "%s · %s · baixo", label, shown);
+    } else if (stale) {
+        if (unit) snprintf(out, out_n, "%s · %s %s · desatualizado", label, shown, unit);
+        else snprintf(out, out_n, "%s · %s · desatualizado", label, shown);
+    } else if (src.reset[0]) {
+        if (unit) snprintf(out, out_n, "%s · %s %s · %s", label, shown, unit, src.reset);
+        else snprintf(out, out_n, "%s · %s · %s", label, shown, src.reset);
+    } else if (unit) {
+        snprintf(out, out_n, "%s · %s %s", label, shown, unit);
+    } else {
+        snprintf(out, out_n, "%s · %s", label, shown);
+    }
+    return rem;
 }

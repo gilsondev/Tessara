@@ -12,13 +12,14 @@ members = [
   "crates/caps-todoist",
   "crates/doctor",
   "crates/logbuf",
+  "crates/proc",
   "crates/agentd",
 ]
 
 [workspace.package]
 edition = "2021"
 license = "MIT"
-version = "0.1.5"
+version = "0.2.2"
 
 [workspace.dependencies]
 serde = { version = "1", default-features = true, features = ["derive"] }

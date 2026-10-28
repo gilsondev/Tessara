@@ -16,6 +16,7 @@ namespace {
 tessera::MemoryTime g_time;
 tessera::MemoryScheduler g_scheduler;
 tessera::MemoryLogger g_logger;
+tessera::TopicBus g_bus;
 tessera::HostServices g_bag;
 
 class DaytimeBridge final : public tessera::ITime {
@@ -83,6 +84,7 @@ void tessera::bind_host_services() {
         g_bag.http = &device_http();
         g_bag.scheduler = &g_scheduler;
         g_bag.logger = &g_logger;
+        g_bag.data = &g_bus;
         set_host_now_ms([]() -> uint32_t { return millis(); });
         g_bound = true;
     }

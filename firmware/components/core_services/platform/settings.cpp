@@ -1,6 +1,7 @@
 #include "platform/settings.h"
 
 #include "hal/board.h"
+#include "platform/flash_trace.h"
 #include "services/text.h"
 
 #include <cstring>
@@ -25,10 +26,12 @@ constexpr char kBackup[] = "todobak";
 hal::StoragePort *store() { return hal::board().storage; }
 
 void put_str(const char *key, const char *value) {
+    flash_trace::note(__func__);
     if (auto *s = store()) s->set(kNamespace, key, value ? value : "");
 }
 
 bool get_str(const char *key, char *out, size_t cap, const char *fallback = "") {
+    flash_trace::note(__func__);
     if (auto *s = store()) {
         if (s->get(kNamespace, key, out, cap)) return true;
     }
@@ -37,12 +40,14 @@ bool get_str(const char *key, char *out, size_t cap, const char *fallback = "") 
 }
 
 uint32_t get_u32(const char *key, uint32_t fallback) {
+    flash_trace::note(__func__);
     uint32_t v = fallback;
     if (auto *s = store()) s->get_u32(kNamespace, key, &v);
     return v;
 }
 
 bool get_bool(const char *key, bool fallback) {
+    flash_trace::note(__func__);
     bool v = fallback;
     if (auto *s = store()) {
         if (s->get_bool(kNamespace, key, &v)) return v;

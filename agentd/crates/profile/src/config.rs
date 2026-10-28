@@ -213,10 +213,10 @@ fn default_display_name() -> String {
     // Prefer the friendly ComputerName (e.g. "MacBook Pro de Gilson") over DNS hostname.
     #[cfg(target_os = "macos")]
     {
-        if let Ok(out) = std::process::Command::new("scutil")
-            .args(["--get", "ComputerName"])
-            .output()
-        {
+        if let Some(out) = tessera_proc::command_output_timeout(
+            std::process::Command::new("scutil").args(["--get", "ComputerName"]),
+            std::time::Duration::from_secs(2),
+        ) {
             if out.status.success() {
                 let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 if !name.is_empty() {

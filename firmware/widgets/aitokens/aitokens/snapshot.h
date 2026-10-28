@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 // Parsed Bridge snapshot for the AI Tokens card and detail screen.
@@ -39,5 +40,14 @@ bool apply_line(View &view, const char *line, uint32_t now_ms);
 bool refresh_age(View &view, uint32_t now_ms);
 
 const Source *find(const View &view, const char *id);
+
+// Home tile thresholds. `Source::value` is remaining percent for every provider.
+constexpr int kRemainLow = 50;
+constexpr int kRemainAlert = 20;
+
+enum class RowLevel : uint8_t { Ok, Low, Alert };
+
+// Writes the home line, e.g. "Claude · 92% restante". Returns the remaining percent.
+int home_row_text(const char *name, const Source &src, bool stale, char *out, size_t out_n, RowLevel *level);
 
 }  // namespace aitokens

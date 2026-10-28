@@ -100,21 +100,21 @@ fn resolve_base(url: &str) -> String {
     if host.parse::<std::net::Ipv4Addr>().is_ok() {
         return url.to_string();
     }
-    let ip = Command::new("/sbin/ping")
-        .args(["-c", "1", "-t", "2", host])
-        .output()
-        .ok()
-        .and_then(|o| {
-            let text = String::from_utf8_lossy(&o.stdout);
-            let start = text.find('(')?;
-            let end = text[start + 1..].find(')')? + start + 1;
-            let inside = text[start + 1..end].to_string();
-            if inside.parse::<std::net::Ipv4Addr>().is_ok() {
-                Some(inside)
-            } else {
-                None
-            }
-        });
+    let ip = tessera_proc::command_output_timeout(
+        Command::new("/sbin/ping").args(["-c", "1", "-t", "2", host]),
+        Duration::from_secs(4),
+    )
+    .and_then(|o| {
+        let text = String::from_utf8_lossy(&o.stdout);
+        let start = text.find('(')?;
+        let end = text[start + 1..].find(')')? + start + 1;
+        let inside = text[start + 1..end].to_string();
+        if inside.parse::<std::net::Ipv4Addr>().is_ok() {
+            Some(inside)
+        } else {
+            None
+        }
+    });
     let Some(ip) = ip else {
         return url.to_string();
     };
@@ -170,17 +170,18 @@ fn map_info(v: &Value) -> Option<PanelInfo> {
 }
 
 fn curl_get(url: &str) -> Result<String, String> {
-    let out = Command::new("/usr/bin/curl")
-        .args([
+    let out = tessera_proc::command_output_timeout(
+        Command::new("/usr/bin/curl").args([
             "-fsS",
             "--max-time",
             "8",
             "-H",
             "Accept: application/json",
             url,
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
+        ]),
+        Duration::from_secs(12),
+    )
+    .ok_or_else(|| "curl excedeu o tempo".to_string())?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         return Err(if err.trim().is_empty() {
@@ -193,8 +194,8 @@ fn curl_get(url: &str) -> Result<String, String> {
 }
 
 fn curl_post_json(url: &str, body: &str) -> Result<String, String> {
-    let out = Command::new("/usr/bin/curl")
-        .args([
+    let out = tessera_proc::command_output_timeout(
+        Command::new("/usr/bin/curl").args([
             "-fsS",
             "--max-time",
             "8",
@@ -207,9 +208,10 @@ fn curl_post_json(url: &str, body: &str) -> Result<String, String> {
             "--data-binary",
             body,
             url,
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
+        ]),
+        Duration::from_secs(12),
+    )
+    .ok_or_else(|| "curl excedeu o tempo".to_string())?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         return Err(if err.trim().is_empty() {

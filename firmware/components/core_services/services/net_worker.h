@@ -48,5 +48,7 @@ bool submit(const Job &job);
 bool take(Result &result);
 bool online();
 void describe(DeviceInfo &info);  // fills ip, ssid and online
+// Free stack of the net task, in bytes. 0 before begin().
+unsigned stack_high_water();
 
 }  // namespace net_worker

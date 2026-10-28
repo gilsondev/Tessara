@@ -1,10 +1,16 @@
 #include "domain/list_prefs.h"
 
 #include "hal/board.h"
+#include "platform/flash_trace.h"
 #include "services/text.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+
+#if defined(ARDUINO)
+#include <esp_heap_caps.h>
+#endif
 
 namespace {
 constexpr char kNamespace[] = "todoist";
@@ -18,11 +24,49 @@ struct Saved {
 
 hal::StoragePort *store() { return hal::board().storage; }
 
+// The USB snapshot applies these prefs while the other core is pushing a PSRAM
+// frame. Reading NVS in that window disables the flash cache and panics the chip.
+// The first call (boot, before the Mac is writing) fills this; later calls stay in RAM.
+// The bytes live in PSRAM so the internal heap still has room for Todoist TLS.
+char *cached = nullptr;
+bool cached_ok = false;
+
+char *cache_buf() {
+    if (cached) return cached;
+#if defined(ARDUINO)
+    cached = static_cast<char *>(heap_caps_malloc(kRawCap, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+#endif
+    if (!cached) cached = static_cast<char *>(std::malloc(kRawCap));
+    if (cached) cached[0] = '\0';
+    return cached;
+}
+
+void remember(const char *body) {
+    char *dest = cache_buf();
+    if (!dest) return;
+    if (!body) body = "";
+    size_t n = std::strlen(body);
+    if (n >= kRawCap) n = kRawCap - 1;
+    std::memcpy(dest, body, n);
+    dest[n] = '\0';
+    cached_ok = true;
+}
+
+void fill_cache() {
+    if (cached_ok) return;
+    flash_trace::note(__func__);
+    char *dest = cache_buf();
+    if (!dest) return;
+    dest[0] = '\0';
+    if (auto *s = store()) s->get(kNamespace, kKey, dest, kRawCap);
+    cached_ok = true;
+}
+
 int load(Saved *saved, int cap) {
-    char raw[kRawCap] = {};
-    if (auto *s = store()) s->get(kNamespace, kKey, raw, sizeof(raw));
+    fill_cache();
     int count = 0;
-    const char *at = raw;
+    const char *at = cache_buf();
+    if (!at) return 0;
     while (*at && count < cap) {
         bool shown = *at != '-';
         if (*at == '+' || *at == '-') ++at;
@@ -50,7 +94,20 @@ void fill(list_prefs::Choice &choice, const ViewItem &item, bool shown) {
 int list_prefs::arrange(const ViewItem *catalog, int count, Choice *out, int cap) {
     if (count > kMaxViews) count = kMaxViews;
     if (count > cap) count = cap;
-    Saved saved[kMaxViews];
+    // PSRAM: this runs on the 16 KB loop stack, under the USB parser.
+    static Saved *saved = nullptr;
+    if (!saved) {
+#if defined(ARDUINO)
+        saved = static_cast<Saved *>(
+            heap_caps_malloc(sizeof(Saved) * kMaxViews, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+#endif
+        if (!saved) saved = static_cast<Saved *>(std::malloc(sizeof(Saved) * kMaxViews));
+        if (saved) std::memset(saved, 0, sizeof(Saved) * kMaxViews);
+    }
+    if (!saved) {
+        for (int i = 0; i < count; ++i) fill(out[i], catalog[i], true);
+        return count;
+    }
     int saved_n = load(saved, kMaxViews);
     if (!saved_n) {
         for (int i = 0; i < count; ++i) fill(out[i], catalog[i], true);
@@ -76,7 +133,19 @@ int list_prefs::arrange(const ViewItem *catalog, int count, Choice *out, int cap
 }
 
 int list_prefs::visible(const ViewItem *catalog, int count, ViewItem *out, int cap) {
-    Choice choices[kMaxViews];
+    static Choice *choices = nullptr;
+    if (!choices) {
+#if defined(ARDUINO)
+        choices = static_cast<Choice *>(
+            heap_caps_malloc(sizeof(Choice) * kMaxViews, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+#endif
+        if (!choices) choices = static_cast<Choice *>(std::malloc(sizeof(Choice) * kMaxViews));
+    }
+    if (!choices) {
+        int fallback = count < cap ? count : cap;
+        for (int i = 0; i < fallback; ++i) out[i] = catalog[i];
+        return fallback;
+    }
     int n = arrange(catalog, count, choices, kMaxViews);
     int shown = 0;
     for (int i = 0; i < n && shown < cap; ++i) {
@@ -92,6 +161,7 @@ int list_prefs::visible(const ViewItem *catalog, int count, ViewItem *out, int c
 }
 
 bool list_prefs::save(const ViewItem *catalog, int count, const char names[][28], const bool *shown, int names_n) {
+    flash_trace::note(__func__);
     if (count > kMaxViews) count = kMaxViews;
     if (names_n > kMaxViews) names_n = kMaxViews;
     int visible_n = 0;
@@ -106,6 +176,7 @@ bool list_prefs::save(const ViewItem *catalog, int count, const char names[][28]
     for (int i = 0; untouched && i < count; ++i) untouched = shown[i] && !strcmp(names[i], catalog[i].name);
     if (untouched) {
         s->erase(kNamespace, kKey);
+        remember("");
         return true;
     }
 
@@ -133,5 +204,7 @@ bool list_prefs::save(const ViewItem *catalog, int count, const char names[][28]
         kept++;
     }
     if (!kept) return false;
-    return s->set(kNamespace, kKey, body);
+    if (!s->set(kNamespace, kKey, body)) return false;
+    remember(body);
+    return true;
 }

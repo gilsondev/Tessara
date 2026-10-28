@@ -1,5 +1,6 @@
 #pragma once
 
+#include "tessera/data.h"
 #include "tessera/services.h"
 
 #include <stddef.h>
@@ -21,6 +22,9 @@ enum class HomeTile : uint8_t {
     Media = 7,
 };
 
+// One mount per surface. The home grid uses Tile; the opened screen uses Detail.
+enum class Surface : uint8_t { Tile = 1, Detail = 2 };
+
 struct WidgetManifest {
     const char *id;     // e.g. "org.tessera.weather"
     const char *title;  // UI label
@@ -32,22 +36,31 @@ struct WidgetManifest {
     uint32_t accent_rgb;  // 0 = use shell primary
     // Opt-in: portal/settings expose S–M–L–XL home grid height (`home_tile_size`).
     bool supports_home_tile_size;
+    // The package paints its own home card via mount(Surface::Tile).
+    bool draws_tile = false;
 };
 
 // Non-owning; valid only while the instance is mounted.
 class WidgetContext {
 public:
-    WidgetContext(void *ui_parent, uint32_t generation, const char *instance_id, HostServices *services)
-        : ui_parent_(ui_parent), generation_(generation), instance_id_(instance_id), services_(services) {}
+    WidgetContext(void *ui_parent, uint32_t generation, const char *instance_id, HostServices *services,
+                  Surface surface = Surface::Detail)
+        : ui_parent_(ui_parent),
+          generation_(generation),
+          instance_id_(instance_id),
+          services_(services),
+          surface_(surface) {}
 
     void *ui_parent() const { return ui_parent_; }
     uint32_t generation() const { return generation_; }
+    Surface surface() const { return surface_; }
     const char *instance_id() const { return instance_id_ ? instance_id_ : ""; }
 
     ITime *time() const { return services_ ? services_->time : nullptr; }
     IHttp *http() const { return services_ ? services_->http : nullptr; }
     IScheduler *scheduler() const { return services_ ? services_->scheduler : nullptr; }
     ILogger *logger() const { return services_ ? services_->logger : nullptr; }
+    IData *data() const { return services_ ? services_->data : nullptr; }
 
     // Namespaced get/set: stores as "<instance_id>/<key>".
     bool settings_get(const char *key, char *out, size_t out_len) const;
@@ -58,6 +71,7 @@ private:
     uint32_t generation_;
     const char *instance_id_;
     HostServices *services_;
+    Surface surface_;
 
     bool make_key(const char *key, char *out, size_t out_len) const;
 };
@@ -69,6 +83,7 @@ public:
     // Called on the UI executor. Parent container is owned by the shell/runtime.
     virtual void mount(WidgetContext &context) = 0;
     virtual void on_resize(uint16_t width, uint16_t height) = 0;
+    virtual void on_theme() {}
     virtual void unmount() = 0;
 };
 

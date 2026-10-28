@@ -15,6 +15,14 @@ void set_rotation(hal::Rotation rotation);
 hal::Rotation rotation();
 bool landscape();
 void set_brightness(uint8_t percent);
+// Stop the core-0 frame push. Flash (NVS, SD, Wi-Fi, mDNS) disables the cache;
+// a push of a PSRAM frame in that window panics the chip. Balance every pause.
+void pause_push();
+void resume_push();
+// True while the core-0 task holds the frame semaphore. Also true during pause_push;
+// push_paused() separates that safe hold from a live DMA push.
+bool push_busy();
+bool push_paused();
 // Renders pending changes and waits until they are on the glass.
 void refresh_now();
 // Streams the visible logical frame as "SNAP w h\n" + RGB888 rows + "\nSNAP END".

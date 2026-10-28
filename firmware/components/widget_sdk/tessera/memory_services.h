@@ -1,5 +1,6 @@
 #pragma once
 
+#include "tessera/data.h"
 #include "tessera/services.h"
 
 #include <stddef.h>
@@ -101,6 +102,7 @@ struct MemoryHost {
     MemoryHttp http;
     MemoryScheduler scheduler;
     MemoryLogger logger;
+    TopicBus data;
 
     HostServices bag();
 };

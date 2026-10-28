@@ -375,7 +375,7 @@ void flip_digit(int index, char next, uint32_t delay_ms) {
     char cur = shown[index];
     if (cur == next && !flipping[index]) return;
     if (flipping[index]) {
-        // Keep latest target — physical cards also skip intermediate if spun fast.
+        // Keep latest target — physical cards also skip the frames in between if spun fast.
         queued[index] = next;
         return;
     }

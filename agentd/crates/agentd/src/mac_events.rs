@@ -55,10 +55,7 @@ pub fn macos_prefers_dark() -> bool {
 }
 
 pub fn theme_line(dark: bool) -> String {
-    format!(
-        "THEME\tv1\t1\t{}",
-        if dark { "dark" } else { "light" }
-    )
+    format!("THEME\tv1\t1\t{}", if dark { "dark" } else { "light" })
 }
 
 #[cfg(target_os = "macos")]
@@ -171,17 +168,16 @@ mod macos {
 
     fn cfstr(s: &str) -> CFStringRef {
         let c = std::ffi::CString::new(s).expect("cfstr");
-        unsafe {
-            CFStringCreateWithCString(ptr::null(), c.as_ptr(), K_CF_STRING_ENCODING_UTF8)
-        }
+        unsafe { CFStringCreateWithCString(ptr::null(), c.as_ptr(), K_CF_STRING_ENCODING_UTF8) }
     }
 
     pub fn prefers_dark() -> bool {
-        let out = Command::new("defaults")
-            .args(["read", "-g", "AppleInterfaceStyle"])
-            .output();
+        let out = tessera_proc::command_output_timeout(
+            Command::new("defaults").args(["read", "-g", "AppleInterfaceStyle"]),
+            std::time::Duration::from_secs(2),
+        );
         match out {
-            Ok(o) if o.status.success() => {
+            Some(o) if o.status.success() => {
                 let s = String::from_utf8_lossy(&o.stdout);
                 s.trim().eq_ignore_ascii_case("Dark")
             }

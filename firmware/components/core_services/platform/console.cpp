@@ -1,6 +1,9 @@
 #include "platform/console.h"
 
+#include "platform/boot_notice.h"
+
 #include <Arduino.h>
+#include <esp_core_dump.h>
 
 #include <cstdio>
 #include <cstring>
@@ -8,6 +11,7 @@
 namespace {
 char line[4096];  // Todoist TASKS lines pack full lists (was 2KB → truncava)
 size_t used = 0;
+BootNotice boot_notice;
 
 // The host writes one capability per line. When the panel drops the newline, the next
 // header (`FOCUS\tv1`, `CALENDAR_CATALOG`, …) sticks to the previous line and shows up
@@ -86,15 +90,15 @@ void dispatch(char *text, ConsoleHandler &handler) {
         if (text[5] == '?') return;
         handler.on_agent(text);
     } else if (!strncmp(text, "CALENDAR", 8)) {
-        // Panel→host queries end with '?'; agent pushes have no '?'.
-        if (strchr(text, '?')) return;
+        // A query is `CALENDAR?`. A '?' inside an event title is payload.
+        if (text[8] == '?') return;
         handler.on_calendar(text);
     } else if (!strncmp(text, "TODOIST", 7)) {
-        if (strchr(text, '?')) return;
+        if (text[7] == '?') return;
         handler.on_todoist(text);
     } else if (!strncmp(text, "MEDIA", 5)) {
         if (text[5] == '?') return;
-        handler.on_media(text);
+        handler.on_now_playing(text);
     } else if (!strncmp(text, "FOCUS", 5)) {
         if (text[5] == '?') return;
         handler.on_focus(text);
@@ -108,6 +112,32 @@ void dispatch(char *text, ConsoleHandler &handler) {
     }
 }
 }  // namespace
+
+void console::set_boot_reason(const char *why) { boot_notice.set(why); }
+
+static void send_panic_summary() {
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH && CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF
+    esp_core_dump_summary_t summary = {};
+    if (esp_core_dump_get_summary(&summary) != ESP_OK) return;
+    int depth = static_cast<int>(summary.exc_bt_info.depth);
+    char line[192];
+    if (!format_panic_line(line, sizeof(line), summary.exc_pc, summary.ex_info.exc_cause, summary.exc_bt_info.bt,
+                           depth)) {
+        return;
+    }
+    Serial.print(line);
+    esp_core_dump_image_erase();
+#else
+    (void)0;
+#endif
+}
+
+void console::send_boot_reason_once() {
+    char line[96];
+    if (!boot_notice.take(line, sizeof(line))) return;
+    Serial.print(line);
+    if (!std::strcmp(line, "BOOT\tpanic\n")) send_panic_summary();
+}
 
 void console::poll(ConsoleHandler &handler) {
     while (Serial.available()) {

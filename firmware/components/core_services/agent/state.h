@@ -7,7 +7,7 @@ namespace agent {
 
 constexpr int kDetailMax = 48;
 
-constexpr uint32_t kFreshMs = 15000;  // sem AGENT recente → não está comunicando
+constexpr uint32_t kFreshMs = 20000;  // sem AGENT recente → agent offline, sem reiniciar
 
 struct View {
     bool ready = false;  // recebeu ≥1 AGENT válido neste boot

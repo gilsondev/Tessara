@@ -8,6 +8,7 @@ serde = { workspace = true, features = ["derive"] }
 tessera-caps-media = { path = "../caps-media" }
 tessera-profile = { path = "../profile" }
 tessera-scan = { path = "../scan" }
+tessera-proc = { path = "../proc" }
 
 [dev-dependencies]
 serde_json.workspace = true

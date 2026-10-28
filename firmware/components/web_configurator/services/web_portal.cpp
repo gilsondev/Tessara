@@ -1,6 +1,7 @@
 #include "services/web_portal.h"
 
 #include "platform/agent_push.h"
+#include "platform/display_host.h"
 #include "platform/log.h"
 #include "platform/sd_host.h"
 #include "services/text.h"
@@ -498,7 +499,7 @@ bool send_install_command(WiFiClient &client) {
 
     // Same shape as agentd/pack_sd.sh install.command — binary Tessera + LaunchAgent agentd.
     String body;
-    body.reserve(2800);
+    body.reserve(4200);
     body += "#!/bin/bash\n";
     body += "# Tessera Agent — gerado pelo painel (agentd)\n";
     body += "# Uso: curl -fsSL http://painel/agentd/install.command | bash\n";
@@ -522,9 +523,19 @@ bool send_install_command(WiFiClient &client) {
     body += "LOG=\"$LOG_DIR/agentd.log\"\n";
     body += "mkdir -p \"$BIN_DIR\" \"$LOG_DIR\" \"$HOME/Library/LaunchAgents\"\n";
     body += "if [ -n \"$HERE\" ] && [ -f \"$HERE/agentd.tgz\" ]; then TGZ=\"$HERE/agentd.tgz\"; else\n";
-    body += "  echo \"baixando agentd.tgz de $PANEL …\"\n";
-    body += "  curl -fsSL \"$PANEL/agentd/agentd.tgz\" -o /tmp/tessera-agentd.tgz\n";
-    body += "  TGZ=/tmp/tessera-agentd.tgz\nfi\n";
+    body += "  echo \"baixando o agent dos GitHub Releases …\"\n";
+    body += "  MANIFEST=$(curl -fsSL \"https://gilsondev.github.io/Tessera/latest.json\")\n";
+    body += "  URL=$(printf '%s' \"$MANIFEST\" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"agentd_url\"])')\n";
+    body += "  SHA=$(printf '%s' \"$MANIFEST\" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"sha256\"][\"agentd\"])')\n";
+    body += "  case \"$URL\" in\n";
+    body += "    https://github.com/gilsondev/Tessera/releases/download/*) ;;\n";
+    body += "    *) echo \"url recusada: $URL\" >&2; exit 1 ;;\n";
+    body += "  esac\n";
+    body += "  [ -n \"$SHA\" ] || { echo \"manifest sem sha256\" >&2; exit 1; }\n";
+    body += "  TGZ=$(mktemp)\n";
+    body += "  curl -fsSL \"$URL\" -o \"$TGZ\"\n";
+    body += "  printf '%s  %s\\n' \"$SHA\" \"$TGZ\" | shasum -a 256 -c -\n";
+    body += "fi\n";
     body += "rm -rf \"$INSTALL_ROOT/staging\"\n";
     body += "mkdir -p \"$INSTALL_ROOT/staging\"\n";
     body += "tar -C \"$INSTALL_ROOT/staging\" -xzf \"$TGZ\"\n";
@@ -540,7 +551,12 @@ bool send_install_command(WiFiClient &client) {
     body += "  rm -rf \"/Applications/Tessera.app\"\n";
     body += "  cp -R \"$INSTALL_ROOT/staging/Tessera.app\" /Applications/\nfi\n";
     body += "rm -rf \"$INSTALL_ROOT/staging\"\n";
-    body += "AGENTD=\"$BIN_DIR/$INSTALL_BIN_NAME\"\n";
+    body += "APP=\"$INSTALL_ROOT/Tessera Agent.app\"\n";
+    body += "mkdir -p \"$APP/Contents/MacOS\"\n";
+    body += "install -m 755 \"$BIN_DIR/$INSTALL_BIN_NAME\" \"$APP/Contents/MacOS/Tessera\"\n";
+    body += "codesign --force --sign - \"$APP\"\n";
+    body += "codesign --verify --strict \"$APP\"\n";
+    body += "AGENTD=\"$APP/Contents/MacOS/Tessera\"\n";
     body += "UID_NUM=\"$(id -u)\"\n";
     body += "launchctl bootout \"gui/$UID_NUM/$LEGACY_LABEL\" 2>/dev/null || true\n";
     body += "rm -f \"$HOME/Library/LaunchAgents/$LEGACY_LABEL.plist\"\n";
@@ -871,8 +887,11 @@ void run(void *) {
         }
         if (!listening && want == 2 && sta_up) {
             if (!mdns_on) {
-                if (MDNS.begin(hostname)) {
-                    MDNS.addService("http", "tcp", 80);
+                display_host::pause_push();
+                bool named = MDNS.begin(hostname);
+                if (named) MDNS.addService("http", "tcp", 80);
+                display_host::resume_push();
+                if (named) {
                     logger::printf("web http://%s (%s)\n", host_local, WiFi.localIP().toString().c_str());
                     mdns_on = true;
                     mdns_refresh_at = millis();
@@ -887,12 +906,12 @@ void run(void *) {
         // Re-advertise .local periodically — macOS/Tailscale DNS often drops the record.
         if (mdns_on && sta_up && millis() - mdns_refresh_at > 60000u) {
             mdns_refresh_at = millis();
+            display_host::pause_push();
             MDNS.end();
-            if (MDNS.begin(hostname)) {
-                MDNS.addService("http", "tcp", 80);
-            } else {
-                mdns_on = false;
-            }
+            bool named = MDNS.begin(hostname);
+            if (named) MDNS.addService("http", "tcp", 80);
+            display_host::resume_push();
+            if (!named) mdns_on = false;
         }
         bool active = false;
         if (listening) {

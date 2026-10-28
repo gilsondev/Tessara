@@ -24,8 +24,30 @@ bool standalone_screen = false;
 media::View cached = {};
 bool cached_agent_ok = false;
 bool had_good_agent = false;
-lv_image_dsc_t cover_dsc = {};
+lv_image_dsc_t cover_dsc[2] = {};
+int cover_slot = 0;
 char cover_shown_key[media::kCoverKeyMax] = {};
+
+void bind_cover(lv_obj_t *img, const media::Cover &cover) {
+    const bool same = std::strcmp(cover_shown_key, cover.key) == 0 && cover_dsc[cover_slot].data == cover.rgb565;
+    if (same) return;
+    if (cover_dsc[0].data) lv_image_cache_drop(&cover_dsc[0]);
+    if (cover_dsc[1].data) lv_image_cache_drop(&cover_dsc[1]);
+    cover_slot ^= 1;
+    lv_image_dsc_t &dsc = cover_dsc[cover_slot];
+    dsc = {};
+    dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+    dsc.header.cf = LV_COLOR_FORMAT_RGB565;
+    dsc.header.w = cover.w;
+    dsc.header.h = cover.h;
+    dsc.header.stride = static_cast<uint16_t>(cover.w * 2);
+    dsc.data_size = media::kCoverBytes;
+    dsc.data = cover.rgb565;
+    lv_image_set_src(img, &dsc);
+    lv_obj_invalidate(img);
+    std::strncpy(cover_shown_key, cover.key, sizeof(cover_shown_key) - 1);
+    cover_shown_key[sizeof(cover_shown_key) - 1] = '\0';
+}
 
 void set_if(lv_obj_t *label, const char *text) {
     if (label && text && strcmp(lv_label_get_text(label), text) != 0) lv_label_set_text(label, text);
@@ -119,7 +141,9 @@ void media_page::unmount() {
     track_label = artist_label = nullptr;
     cover_img = nullptr;
     cover_shown_key[0] = '\0';
-    cover_dsc = {};
+    cover_dsc[0] = {};
+    cover_dsc[1] = {};
+    cover_slot = 0;
     standalone_screen = false;
 }
 
@@ -169,19 +193,7 @@ void media_page::paint(const media::View &view, bool agent_ok) {
             hide_cover();
             return;
         }
-        if (strcmp(cover_shown_key, view.cover.key) != 0) {
-            cover_dsc = {};
-            cover_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
-            cover_dsc.header.cf = LV_COLOR_FORMAT_RGB565;
-            cover_dsc.header.w = view.cover.w;
-            cover_dsc.header.h = view.cover.h;
-            cover_dsc.header.stride = static_cast<uint16_t>(view.cover.w * 2);
-            cover_dsc.data_size = media::kCoverBytes;
-            cover_dsc.data = view.cover.rgb565;
-            lv_image_set_src(cover_img, &cover_dsc);
-            strncpy(cover_shown_key, view.cover.key, sizeof(cover_shown_key) - 1);
-            cover_shown_key[sizeof(cover_shown_key) - 1] = '\0';
-        }
+        bind_cover(cover_img, view.cover);
         lv_obj_remove_flag(cover_img, LV_OBJ_FLAG_HIDDEN);
     };
 

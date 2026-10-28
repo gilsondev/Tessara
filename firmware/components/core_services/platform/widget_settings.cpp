@@ -2,6 +2,7 @@
 
 #include "domain/dashboard_layout.h"
 #include "hal/board.h"
+#include "platform/flash_trace.h"
 
 #include <cstdio>
 #include <cstring>
@@ -52,6 +53,7 @@ bool key_ok(const char *key) {
 }  // namespace
 
 bool widget_settings::get(const char *instance_id, const char *key, char *out, size_t out_len) {
+    flash_trace::note(__func__);
     if (!out || out_len == 0) return false;
     out[0] = '\0';
     const char *nk = nvs_key(key);
@@ -62,6 +64,7 @@ bool widget_settings::get(const char *instance_id, const char *key, char *out, s
 }
 
 bool widget_settings::set(const char *instance_id, const char *key, const char *value) {
+    flash_trace::note(__func__);
     const char *nk = nvs_key(key);
     if (!key_ok(nk)) return false;
     auto *s = store();
@@ -70,6 +73,7 @@ bool widget_settings::set(const char *instance_id, const char *key, const char *
 }
 
 uint8_t widget_settings::get_u8(const char *instance_id, const char *key, uint8_t fallback) {
+    flash_trace::note(__func__);
     uint32_t v = fallback;
     const char *nk = nvs_key(key);
     if (!key_ok(nk)) return fallback;
@@ -80,6 +84,7 @@ uint8_t widget_settings::get_u8(const char *instance_id, const char *key, uint8_
 }
 
 bool widget_settings::set_u8(const char *instance_id, const char *key, uint8_t value) {
+    flash_trace::note(__func__);
     const char *nk = nvs_key(key);
     if (!key_ok(nk)) return false;
     auto *s = store();
@@ -88,6 +93,7 @@ bool widget_settings::set_u8(const char *instance_id, const char *key, uint8_t v
 }
 
 bool widget_settings::get_bool(const char *instance_id, const char *key, bool fallback) {
+    flash_trace::note(__func__);
     bool v = fallback;
     const char *nk = nvs_key(key);
     if (!key_ok(nk)) return fallback;
@@ -97,6 +103,7 @@ bool widget_settings::get_bool(const char *instance_id, const char *key, bool fa
 }
 
 bool widget_settings::set_bool(const char *instance_id, const char *key, bool value) {
+    flash_trace::note(__func__);
     const char *nk = nvs_key(key);
     if (!key_ok(nk)) return false;
     auto *s = store();

@@ -6,3 +6,5 @@ otadata,  data, ota,     0xe000,  0x2000,
 factory,  app,  factory, 0x10000, 0x600000,
 # Fallback when microSD is absent / not seated (agent pack, wxia, etc.)
 ffat,     data, fat,     0x610000,0x200000,
+# 64 KB after ffat (ends 0x810000). NVS offset and size stay put.
+coredump, data, coredump, 0x810000, 0x10000,

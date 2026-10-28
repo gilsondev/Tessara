@@ -4,6 +4,9 @@ mod fetch;
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -12,6 +15,11 @@ pub const TODOIST_REFRESH_INTERVAL_S: u64 = 120;
 pub const TODOIST_PUSH_INTERVAL_S: u64 = 45;
 pub(crate) const MAX_VIEWS: usize = 8;
 pub(crate) const MAX_TASKS: usize = 60;
+
+/// Write `bytes` via a unique sibling temp file so a reader never sees a partial cache.
+pub(crate) fn write_atomic(path: &std::path::Path, bytes: impl AsRef<[u8]>) -> std::io::Result<()> {
+    tessera_proc::write_atomic(path, bytes)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CachedTask {
@@ -184,6 +192,7 @@ pub struct TodoistCapability {
     last_pushed: Option<String>,
     last_refresh: Instant,
     sync_minutes: u64,
+    refreshing: Arc<AtomicBool>,
 }
 
 impl TodoistCapability {
@@ -206,6 +215,7 @@ impl TodoistCapability {
                 .checked_sub(Duration::from_secs(TODOIST_REFRESH_INTERVAL_S))
                 .unwrap_or_else(Instant::now),
             sync_minutes: 15,
+            refreshing: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -262,19 +272,35 @@ impl TodoistCapability {
         if self.last_refresh.elapsed() < self.refresh_interval() {
             return;
         }
+        if self.refreshing.load(Ordering::SeqCst) {
+            return;
+        }
         self.last_refresh = Instant::now();
         if !self.linked() {
             return;
         }
-        let sel = if self.selected.is_empty() {
-            None
-        } else {
-            Some(self.selected.as_slice())
-        };
-        match fetch::refresh_cache(&self.paths, sel) {
-            Ok(n) => eprintln!("Tessera: todoist refresh ok ({n} listas)"),
-            Err(err) => eprintln!("Tessera: todoist refresh: {err}"),
-        }
+        let paths = self.paths.clone();
+        let selected = self.selected.clone();
+        let flag = Arc::clone(&self.refreshing);
+        flag.store(true, Ordering::SeqCst);
+        thread::spawn(move || {
+            struct Done(Arc<AtomicBool>);
+            impl Drop for Done {
+                fn drop(&mut self) {
+                    self.0.store(false, Ordering::SeqCst);
+                }
+            }
+            let _done = Done(flag);
+            let sel = if selected.is_empty() {
+                None
+            } else {
+                Some(selected)
+            };
+            match fetch::refresh_cache(&paths, sel.as_deref()) {
+                Ok(n) => eprintln!("Tessera: todoist refresh ok ({n} listas)"),
+                Err(err) => eprintln!("Tessera: todoist refresh: {err}"),
+            }
+        });
     }
 
     pub fn force_refresh(&mut self) {
@@ -362,7 +388,9 @@ impl TodoistCapability {
             let token = raw.strip_prefix("TODOIST_TOKEN\t").unwrap_or("").trim();
             let _ = self.save_token(token);
             self.force_refresh();
-            return self.build_lines();
+            // The panel sends this while it is still writing. A bundle reply on
+            // this same turn fills the USB buffer and drops the link.
+            return Vec::new();
         }
         if raw == "TODOIST?" || raw.starts_with("TODOIST?\t") {
             // Default: serve cache (and refresh only if due). `TODOIST?\tforce` hits the API.
@@ -386,7 +414,7 @@ impl TodoistCapability {
             "views": views,
         });
         if let Ok(raw) = serde_json::to_string_pretty(&payload) {
-            let _ = fs::write(self.paths.cache_json(), raw);
+            let _ = write_atomic(&self.paths.cache_json(), raw);
         }
     }
 }
@@ -467,6 +495,20 @@ mod tests {
         assert_eq!(task_lines.len(), 1);
         assert!(task_lines[0].starts_with("TODOIST_TASKS\tv1\t0\t16\t"));
         assert!(task_lines[0].len() <= WIRE_LINE_BUDGET);
+    }
+
+    #[test]
+    fn token_is_saved_without_writing_a_bundle() {
+        let root = std::env::temp_dir().join(format!(
+            "tessera-todoist-token-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let mut cap = TodoistCapability::new(TodoistPaths { root: root.clone() });
+        let lines = cap.handle_line("TODOIST_TOKEN\tsecret-token");
+        assert!(lines.is_empty());
+        assert!(cap.linked());
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

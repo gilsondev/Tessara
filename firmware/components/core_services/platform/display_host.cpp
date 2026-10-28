@@ -24,6 +24,7 @@ uint16_t *volatile front = nullptr;
 volatile hal::Rotation push_rotation = hal::Rotation::R0;
 TaskHandle_t push_task = nullptr;
 SemaphoreHandle_t push_idle = nullptr;
+bool pause_held = false;
 
 struct Perf {
     uint32_t frames;
@@ -152,6 +153,25 @@ hal::Rotation display_host::rotation() { return current; }
 void display_host::set_brightness(uint8_t percent) {
     if (backlight) backlight->set_brightness(percent);
 }
+
+void display_host::pause_push() {
+    if (!push_idle) return;
+    xSemaphoreTake(push_idle, portMAX_DELAY);
+    pause_held = true;
+}
+
+void display_host::resume_push() {
+    if (!push_idle) return;
+    xSemaphoreGive(push_idle);
+    pause_held = false;
+}
+
+bool display_host::push_busy() {
+    if (!push_idle) return false;
+    return uxSemaphoreGetCount(push_idle) == 0;
+}
+
+bool display_host::push_paused() { return pause_held; }
 
 bool display_host::landscape() { return board && logical_width() > logical_height(); }
 

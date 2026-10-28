@@ -2,6 +2,9 @@
 
 mod cover;
 
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
+
 use tessera_protocol::media_line;
 
 pub const MEDIA_PUSH_INTERVAL_S: u64 = 8;
@@ -129,10 +132,10 @@ mod macos {
 
     impl MediaWatcher for MacNowPlayingWatcher {
         fn read(&mut self) -> Option<MediaInfo> {
-            let out = Command::new("osascript")
-                .args(["-e", OSASCRIPT])
-                .output()
-                .ok()?;
+            let out = tessera_proc::command_output_timeout(
+                Command::new("osascript").args(["-e", OSASCRIPT]),
+                std::time::Duration::from_secs(2),
+            )?;
             if !out.status.success() {
                 return None;
             }
@@ -162,7 +165,7 @@ mod macos {
 pub fn default_watcher() -> Box<dyn MediaWatcher> {
     #[cfg(target_os = "macos")]
     {
-        Box::new(macos::MacNowPlayingWatcher::default())
+        Box::new(macos::MacNowPlayingWatcher)
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -174,14 +177,41 @@ pub struct MediaCapability {
     watcher: Box<dyn MediaWatcher>,
     last_pushed: Option<String>,
     last_info: Option<MediaInfo>,
+    cover_tx: Sender<MediaInfo>,
+    cover_rx: Receiver<(String, Vec<String>)>,
+    cover_ready: Option<(String, Vec<String>)>,
+    cover_inflight: Option<String>,
+}
+
+fn start_cover_worker() -> (Sender<MediaInfo>, Receiver<(String, Vec<String>)>) {
+    let (job_tx, job_rx) = mpsc::channel::<MediaInfo>();
+    let (out_tx, out_rx) = mpsc::channel();
+    thread::spawn(move || {
+        while let Ok(info) = job_rx.recv() {
+            let key = cover::cover_key(&info);
+            let lines = cover::fetch_cover_bytes(&info)
+                .and_then(|bytes| cover::jpeg_or_png_to_rgb565(&bytes, MEDIA_COVER_EDGE))
+                .map(|rgb| {
+                    cover::encode_cover_chunks(&key, MEDIA_COVER_EDGE, MEDIA_COVER_EDGE, &rgb)
+                })
+                .unwrap_or_default();
+            let _ = out_tx.send((key, lines));
+        }
+    });
+    (job_tx, out_rx)
 }
 
 impl MediaCapability {
     pub fn new(watcher: Box<dyn MediaWatcher>) -> Self {
+        let (cover_tx, cover_rx) = start_cover_worker();
         Self {
             watcher,
             last_pushed: None,
             last_info: None,
+            cover_tx,
+            cover_rx,
+            cover_ready: None,
+            cover_inflight: None,
         }
     }
 
@@ -217,18 +247,32 @@ impl MediaCapability {
         }
     }
 
-    /// Fetch + encode cover for the last `build_line` track. `None` if unavailable.
-    /// Returns `(cover_key, chunk_lines)`.
+    /// Cover for the last `build_line` track. The download runs on another thread;
+    /// this returns only a cover that is already encoded. `None` while it is in flight.
     pub fn build_cover_chunks(&mut self) -> Option<(String, Vec<String>)> {
-        let info = self.last_info.as_ref()?;
+        while let Ok(ready) = self.cover_rx.try_recv() {
+            if self.cover_inflight.as_deref() == Some(ready.0.as_str()) {
+                self.cover_inflight = None;
+            }
+            if !ready.1.is_empty() {
+                self.cover_ready = Some(ready);
+            }
+        }
+        let info = self.last_info.clone()?;
         if info.state == MediaState::Stopped || info.title.is_empty() {
             return None;
         }
-        let key = cover::cover_key(info);
-        let bytes = cover::fetch_cover_bytes(info)?;
-        let rgb = cover::jpeg_or_png_to_rgb565(&bytes, MEDIA_COVER_EDGE)?;
-        let lines = cover::encode_cover_chunks(&key, MEDIA_COVER_EDGE, MEDIA_COVER_EDGE, &rgb);
-        Some((key, lines))
+        let key = cover::cover_key(&info);
+        if let Some((ready_key, lines)) = &self.cover_ready {
+            if ready_key == &key {
+                return Some((key.clone(), lines.clone()));
+            }
+        }
+        if self.cover_inflight.as_deref() != Some(key.as_str()) && self.cover_tx.send(info).is_ok()
+        {
+            self.cover_inflight = Some(key);
+        }
+        None
     }
 
     /// Panel inbound line → outbound USB lines (may be empty).
@@ -240,11 +284,20 @@ impl MediaCapability {
         if raw == "MEDIA?" || raw.starts_with("MEDIA?") {
             return vec![self.build_line()];
         }
-        if raw == "MEDIA_COVER?" || raw.starts_with("MEDIA_COVER?") {
-            return self
+        if let Some(rest) = raw.strip_prefix("MEDIA_COVER?") {
+            let lines = self
                 .build_cover_chunks()
                 .map(|(_, lines)| lines)
                 .unwrap_or_default();
+            let rest = rest.trim_start_matches('\t');
+            if rest.is_empty() {
+                return lines;
+            }
+            let mut parts = rest.splitn(2, '\t');
+            let key = parts.next().unwrap_or("");
+            let list = parts.next().unwrap_or("");
+            let indexes: Vec<usize> = list.split(',').filter_map(|text| text.parse().ok()).collect();
+            return cover::cover_lines_for(lines, key, &indexes);
         }
         if raw.starts_with("MEDIA_COVER") {
             return vec![];
@@ -274,6 +327,20 @@ mod tests {
             encode_media_line(false, "stopped", "", "", ""),
             "MEDIA\tv1\t0\t\t\t\t"
         );
+    }
+
+    #[test]
+    fn cover_request_returns_before_the_download() {
+        let mut cap = MediaCapability::new(Box::new(StubWatcher));
+        cap.last_info = Some(MediaInfo {
+            state: MediaState::Playing,
+            title: "Orvalho".into(),
+            artist: "Celiana Satyl".into(),
+            app: "Spotify".into(),
+        });
+        let started = std::time::Instant::now();
+        assert!(cap.build_cover_chunks().is_none());
+        assert!(started.elapsed() < std::time::Duration::from_millis(200));
     }
 
     #[test]

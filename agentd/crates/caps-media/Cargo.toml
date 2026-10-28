@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 tessera-protocol = { path = "../protocol" }
+tessera-proc = { path = "../proc" }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
 

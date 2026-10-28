@@ -157,5 +157,6 @@ tessera::HostServices tessera::MemoryHost::bag() {
     s.http = &http;
     s.scheduler = &scheduler;
     s.logger = &logger;
+    s.data = &data;
     return s;
 }
