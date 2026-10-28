@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.2](https://github.com/gilsondev/Tessera/compare/agent-v0.3.1...agent-v0.3.2) (2026-10-28)
+
+
+### Bug fixes
+
+* **agent:** run the Mac package on the current runner ([f838734](https://github.com/gilsondev/Tessera/commit/f83873493b61fee23a77e50258b0a0b02682e126))
+* **agent:** run the Mac package on the current runner ([d26b36d](https://github.com/gilsondev/Tessera/commit/d26b36dd4ec3efa2ed9bdceaf1f72e43189b4fae))
+
 ## [0.3.1](https://github.com/gilsondev/Tessera/compare/agent-v0.3.0...agent-v0.3.1) (2026-10-28)
 
 
